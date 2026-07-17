@@ -34,9 +34,14 @@ class SetTenantContext
             $isSuperAdmin = $user->isSuperAdmin();
             $empresaId = $user->empresa_id;
         } elseif ($slug = $request->route('empresa')) {
-            $empresaId = Empresa::where('slug', $slug)
+            $empresa = Empresa::where('slug', $slug)
                 ->where('status', 'ativa')
-                ->value('id');
+                ->first();
+
+            abort_if($empresa === null, 404, 'Loja não encontrada.');
+
+            $empresaId = $empresa->id;
+            $request->attributes->set('empresaAtual', $empresa);
         }
 
         DB::statement("SELECT set_config('app.current_empresa_id', ?, false)", [(string) ($empresaId ?? '')]);

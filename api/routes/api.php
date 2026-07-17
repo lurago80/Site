@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Loja\CatalogoController;
+use App\Http\Controllers\Loja\CheckoutController;
+use App\Http\Controllers\Loja\ReservaController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -22,5 +25,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 | O tenant vem do slug {empresa} na URL — ver App\Http\Middleware\SetTenantContext.
 */
 Route::middleware(['tenant'])->prefix('loja/{empresa}')->group(function () {
-    // Rotas de catálogo/agenda/checkout da loja pública entram aqui.
+    Route::get('/produtos', [CatalogoController::class, 'produtos']);
+    Route::get('/agenda', [CatalogoController::class, 'agenda']);
+    Route::post('/reservas', [ReservaController::class, 'store']);
+    Route::post('/checkout', [CheckoutController::class, 'store']);
 });
