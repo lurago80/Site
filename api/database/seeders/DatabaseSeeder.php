@@ -13,7 +13,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Seeder roda como super admin (bypassa RLS) para popular dados iniciais.
-        DB::statement("SET app.is_super_admin = 'true'");
+        DB::statement("SELECT set_config('app.is_super_admin', 'true', false)");
 
         $plano = Plano::create([
             'nome' => 'Básico',

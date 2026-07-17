@@ -39,8 +39,8 @@ class SetTenantContext
                 ->value('id');
         }
 
-        DB::statement('SET app.current_empresa_id = ?', [(string) ($empresaId ?? '')]);
-        DB::statement('SET app.is_super_admin = ?', [$isSuperAdmin ? 'true' : 'false']);
+        DB::statement("SELECT set_config('app.current_empresa_id', ?, false)", [(string) ($empresaId ?? '')]);
+        DB::statement("SELECT set_config('app.is_super_admin', ?, false)", [$isSuperAdmin ? 'true' : 'false']);
 
         return $next($request);
     }
