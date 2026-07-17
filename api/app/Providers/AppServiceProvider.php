@@ -12,6 +12,9 @@ use App\Models\DocumentoFiscalItem;
 use App\Models\User;
 use App\Models\Venda;
 use App\Observers\AuditLogObserver;
+use App\Services\Fiscal\FiscalGatewayInterface;
+use App\Services\Fiscal\NfePhpFiscalGateway;
+use App\Services\Fiscal\SimuladoFiscalGateway;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,7 +40,11 @@ class AppServiceProvider extends ServiceProvider
 
     public function register(): void
     {
-        //
+        $this->app->bind(FiscalGatewayInterface::class, function () {
+            return config('fiscal.driver') === 'nfephp'
+                ? new NfePhpFiscalGateway()
+                : new SimuladoFiscalGateway();
+        });
     }
 
     public function boot(): void

@@ -27,6 +27,11 @@ class Venda extends Model
         return $this->belongsTo(Cliente::class);
     }
 
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class);
+    }
+
     public function itens(): HasMany
     {
         return $this->hasMany(ItemVenda::class);
