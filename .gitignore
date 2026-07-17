@@ -1,0 +1,8 @@
+/api/vendor/
+/api/node_modules/
+/api/.env
+/api/storage/*.key
+/api/storage/logs/*.log
+/api/bootstrap/cache/*.php
+/api/public/hot
+/api/public/storage
