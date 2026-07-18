@@ -33,13 +33,17 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 | 5 | Módulo fiscal: **emissão real de NFC-e validada e autorizada pela SEFAZ-SP em homologação**, com certificado A1 real (empresa de testes). Inclui os campos IBS/CBS da Reforma Tributária (alíquotas de teste da fase de transição 2026) | ✅ Validado com a SEFAZ real |
 | 6 | Senha do certificado digital armazenada com criptografia real (cast `encrypted` do Laravel) | ✅ Implementado |
 | 7 | Painel de gestão fiscal: cancelamento de NFC-e, inutilização de numeração, reimpressão de cupom, importação de venda não fiscal → NFC-e, relatórios e exportação (XMLs + planilha para o contador) | ✅ Implementado e testado (cancelamento validado contra a SEFAZ real) |
+| 8 | **Login único do sistema interno** (Escopo v2, seção 2.2) implementado: e-mail/senha identifica a empresa e o nível de acesso automaticamente, sessão protege o painel de gestão fiscal | ✅ Implementado e testado |
+
+**Achado técnico relevante (2026-07-18):** o RLS por si só criava um paradoxo na autenticação — para descobrir a empresa de um usuário é preciso *ler* a tabela `users` por e-mail, mas o RLS bloqueia essa leitura até o tenant estar definido, e o tenant só se define depois de autenticar. Resolvido com um middleware global (`BootstrapAuthDatabaseContext`) que abre um bypass de RLS só na fase de resolução de autenticação (primeiro middleware do grupo `web`), fechado de volta ao escopo correto pelo `SetTenantContext` antes de qualquer query de negócio rodar. Esse bug só apareceu em teste manual via navegador/curl — os testes automatizados usavam `actingAs()`, que contorna a resolução real de sessão e mascarou o problema. Registrado aqui como lição: **testes automatizados com `actingAs()` não substituem um teste manual do fluxo de login real**.
 
 **Pendências conhecidas, registradas no código (`TODO`) e aqui:**
 - NCM/CFOP por produto ainda são valores fixos genéricos — falta campo próprio no cadastro de produto;
 - Emissão cobre hoje só NFC-e (modelo 65); NFe (modelo 55, com destinatário completo) não implementada;
 - Só testado com Simples Nacional (CRT=1); outros regimes tributários não cobertos;
 - Tabela de `cClassTrib` do IBS/CBS usa o código padrão (000001) — precisa revisão quando a SEFAZ consolidar a tabela definitiva por segmento;
-- **O painel de gestão fiscal (`/fiscal/{empresa}/painel`) ainda não tem tela de login** — está protegido apenas pelo slug da empresa na URL, no mesmo padrão da loja pública. Antes de qualquer uso real (mesmo em homologação exposta), precisa ficar atrás de autenticação do sistema interno (ver seção 2.2 e "Próximos Passos").
+- Painel do Super Admin (gestão de empresas/planos/faturamento, ver seção 2.2) ainda não implementado — usuário `super_admin` autentica mas não tem para onde ir;
+- Sem recuperação de senha ("esqueci minha senha") nem página de erro 403 dedicada para usuário inativo/empresa suspensa (hoje volta pro login com mensagem).
 
 ---
 
@@ -180,7 +184,8 @@ CREATE POLICY empresa_isolation ON <tabela>
 
 - ~~Estruturação do projeto Laravel~~ — feito;
 - ~~Módulo fiscal validado com a SEFAZ real~~ — feito;
-- **Login do sistema interno (prioridade)** — o painel de gestão fiscal e, em breve, o PDV/dashboard precisam de autenticação real antes de qualquer exposição fora do ambiente local de desenvolvimento;
+- ~~Login do sistema interno~~ — feito;
+- **Painel Super Admin (prioridade)** — hoje um usuário `super_admin` consegue logar mas não tem painel para gerir empresas/planos/faturamento;
 - Definição da identidade visual (logo, cores, fotos) para aplicar aos protótipos;
 - NCM/CFOP por produto no cadastro (hoje fixo/genérico no módulo fiscal);
 - NFe modelo 55 (com destinatário completo) — hoje só NFC-e está implementada;

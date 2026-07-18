@@ -33,6 +33,14 @@ class SetTenantContext
         if ($user = $request->user()) {
             $isSuperAdmin = $user->isSuperAdmin();
             $empresaId = $user->empresa_id;
+
+            // A empresa do contexto vem sempre do usuário logado, nunca do
+            // slug da URL - mesmo que a rota tenha {empresa}, um usuário
+            // autenticado não pode "visitar" o painel de outra empresa só
+            // trocando o slug no navegador.
+            if ($user->empresa) {
+                $request->attributes->set('empresaAtual', $user->empresa);
+            }
         } elseif ($slug = $request->route('empresa')) {
             $empresa = Empresa::where('slug', $slug)
                 ->where('status', 'ativa')

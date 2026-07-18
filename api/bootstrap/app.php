@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\VagasIndisponiveisException;
+use App\Http\Middleware\BootstrapAuthDatabaseContext;
 use App\Http\Middleware\SetTenantContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,10 +19,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => SetTenantContext::class,
         ]);
+
+        // Precisa rodar antes até do 'auth' padrão do Laravel - ver
+        // App\Http\Middleware\BootstrapAuthDatabaseContext para o motivo.
+        $middleware->prependToGroup('web', BootstrapAuthDatabaseContext::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // 'api/*' sempre em JSON (loja pública); demais rotas usam a
+        // detecção padrão do Laravel (Accept header) - necessário para o
+        // painel fiscal, que vive em routes/web.php (sessão + CSRF) mas
+        // seu JS chama os endpoints via fetch esperando JSON.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
 
         $exceptions->render(fn (VagasIndisponiveisException $e) => response()->json([

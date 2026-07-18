@@ -16,10 +16,9 @@ use Illuminate\Support\Facades\Response;
  * reimpressão, importação de venda não fiscal, relatórios e exportação
  * de XMLs/planilha para o contador.
  *
- * TODO: hoje protegido só pelo middleware 'tenant' (slug da empresa na
- * URL), igual à loja pública - ainda não existe tela de login do
- * sistema interno. Antes de produção isso precisa ficar atrás de
- * autenticação real (ver Escopo v2, seção 2.2).
+ * Protegido por login (middleware 'auth', ver routes/web.php e
+ * App\Http\Controllers\Auth\LoginController) - a empresa do contexto
+ * vem sempre do usuário autenticado, nunca do slug da URL.
  */
 class GestaoFiscalController extends Controller
 {

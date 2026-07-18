@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Painel Fiscal — {{ $empresaSlug }}</title>
     <style>
         * { box-sizing: border-box; }
@@ -30,10 +31,14 @@
     </style>
 </head>
 <body>
-    <h1>Painel de Gestão Fiscal — {{ $empresaSlug }}</h1>
-    <p style="color:#b02525; font-size:12px;">
-        ⚠ Página ainda sem tela de login (ver TODO no código) — não usar exposta publicamente antes disso.
-    </p>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1>Painel de Gestão Fiscal — {{ $empresaSlug }}</h1>
+        <form method="POST" action="/logout">
+            @csrf
+            <span style="font-size:12px; color:#616e7c; margin-right:8px;">{{ auth()->user()->name }}</span>
+            <button type="submit" class="secundario">Sair</button>
+        </form>
+    </div>
 
     <div class="card">
         <h2>Documentos fiscais</h2>
@@ -89,8 +94,10 @@
 
     <script>
         const empresa = @json($empresaSlug);
-        const apiBase = `/api/fiscal/${empresa}`;
+        const apiBase = `/fiscal/${empresa}`;
         const webBase = `/fiscal/${empresa}`;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        const headersJson = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken };
 
         async function carregarRelatorio() {
             const params = new URLSearchParams({
@@ -127,7 +134,7 @@
             if (!justificativa) return;
             const resp = await fetch(`${apiBase}/documentos/${documentoId}/cancelar`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headersJson,
                 body: JSON.stringify({ justificativa }),
             });
             const dados = await resp.json();
@@ -164,7 +171,7 @@
         async function importar(vendaId) {
             const resp = await fetch(`${apiBase}/vendas/${vendaId}/importar`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headersJson,
                 body: JSON.stringify({ modelo: 65 }),
             });
             const dados = await resp.json();
@@ -185,7 +192,7 @@
             };
             const resp = await fetch(`${apiBase}/inutilizacoes`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headersJson,
                 body: JSON.stringify(dados),
             });
             const resposta = await resp.json();

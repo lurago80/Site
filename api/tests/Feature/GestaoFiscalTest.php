@@ -7,6 +7,7 @@ use App\Models\ConfigFiscal;
 use App\Models\Empresa;
 use App\Models\Plano;
 use App\Models\Produto;
+use App\Models\User;
 use App\Models\Venda;
 use App\Services\Fiscal\EmissaoFiscalService;
 use App\Services\Fiscal\SimuladoFiscalGateway;
@@ -19,6 +20,8 @@ class GestaoFiscalTest extends TestCase
     use InteractsWithTenantContext, RefreshDatabase;
 
     private Empresa $empresa;
+
+    private User $usuario;
 
     protected function setUp(): void
     {
@@ -35,6 +38,15 @@ class GestaoFiscalTest extends TestCase
             'status' => 'ativa',
         ]);
 
+        $this->usuario = User::create([
+            'name' => 'Admin Teste',
+            'email' => 'admin@gestao-fiscal-teste.com',
+            'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id,
+            'perfil' => 'admin',
+        ]);
+
+        $this->actingAs($this->usuario);
         $this->asEmpresa($this->empresa->id);
 
         ConfigFiscal::create([
@@ -87,7 +99,7 @@ class GestaoFiscalTest extends TestCase
         $venda = $this->criarVenda();
         (new EmissaoFiscalService(new SimuladoFiscalGateway()))->emitir($venda, 65);
 
-        $response = $this->getJson("/api/fiscal/{$this->empresa->slug}/relatorio");
+        $response = $this->getJson("/fiscal/{$this->empresa->slug}/relatorio");
 
         $response->assertOk()->assertJsonCount(1);
         $response->assertJsonPath('0.status', 'autorizada');
@@ -98,7 +110,7 @@ class GestaoFiscalTest extends TestCase
         $venda = $this->criarVenda();
         (new EmissaoFiscalService(new SimuladoFiscalGateway()))->emitir($venda, 65);
 
-        $response = $this->getJson("/api/fiscal/{$this->empresa->slug}/relatorio?status=cancelada");
+        $response = $this->getJson("/fiscal/{$this->empresa->slug}/relatorio?status=cancelada");
 
         $response->assertOk()->assertJsonCount(0);
     }
@@ -108,7 +120,7 @@ class GestaoFiscalTest extends TestCase
         $venda = $this->criarVenda();
         $documento = (new EmissaoFiscalService(new SimuladoFiscalGateway()))->emitir($venda, 65);
 
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
             'justificativa' => 'Cliente desistiu da compra no momento da entrega',
         ]);
 
@@ -120,7 +132,7 @@ class GestaoFiscalTest extends TestCase
         $venda = $this->criarVenda();
         $documento = (new EmissaoFiscalService(new SimuladoFiscalGateway()))->emitir($venda, 65);
 
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
             'justificativa' => 'muito curta',
         ]);
 
@@ -132,11 +144,11 @@ class GestaoFiscalTest extends TestCase
         $venda = $this->criarVenda();
         $documento = (new EmissaoFiscalService(new SimuladoFiscalGateway()))->emitir($venda, 65);
 
-        $this->postJson("/api/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
+        $this->postJson("/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
             'justificativa' => 'Primeira tentativa de cancelamento válida',
         ]);
 
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/cancelar", [
             'justificativa' => 'Segunda tentativa de cancelamento válida',
         ]);
 
@@ -145,7 +157,7 @@ class GestaoFiscalTest extends TestCase
 
     public function test_inutilizar_numeracao(): void
     {
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/inutilizacoes", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/inutilizacoes", [
             'modelo' => 65,
             'serie' => '1',
             'numero_inicial' => 100,
@@ -158,7 +170,7 @@ class GestaoFiscalTest extends TestCase
 
     public function test_inutilizar_com_numero_final_menor_que_inicial_falha(): void
     {
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/inutilizacoes", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/inutilizacoes", [
             'modelo' => 65,
             'serie' => '1',
             'numero_inicial' => 200,
@@ -174,7 +186,7 @@ class GestaoFiscalTest extends TestCase
         $this->criarVenda('nao_fiscal');
         $this->criarVenda('fiscal');
 
-        $response = $this->getJson("/api/fiscal/{$this->empresa->slug}/vendas-nao-fiscais");
+        $response = $this->getJson("/fiscal/{$this->empresa->slug}/vendas-nao-fiscais");
 
         $response->assertOk()->assertJsonCount(1);
     }
@@ -183,7 +195,7 @@ class GestaoFiscalTest extends TestCase
     {
         $venda = $this->criarVenda('nao_fiscal');
 
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/vendas/{$venda->id}/importar", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/vendas/{$venda->id}/importar", [
             'modelo' => 65,
         ]);
 
@@ -195,7 +207,7 @@ class GestaoFiscalTest extends TestCase
     {
         $venda = $this->criarVenda('fiscal');
 
-        $response = $this->postJson("/api/fiscal/{$this->empresa->slug}/vendas/{$venda->id}/importar", [
+        $response = $this->postJson("/fiscal/{$this->empresa->slug}/vendas/{$venda->id}/importar", [
             'modelo' => 65,
         ]);
 
