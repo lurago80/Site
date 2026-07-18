@@ -348,4 +348,87 @@ class DashboardTest extends TestCase
 
         $response->assertOk()->assertJsonCount(0);
     }
+
+    public function test_admin_visualiza_config_fiscal(): void
+    {
+        $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/config-fiscal");
+
+        $response->assertOk();
+        $response->assertJsonPath('empresa.cnpj', $this->empresa->cnpj);
+    }
+
+    public function test_atendente_nao_acessa_config_fiscal(): void
+    {
+        $response = $this->actingAs($this->atendente)->getJson("/dashboard/{$this->empresa->slug}/config-fiscal");
+
+        $response->assertStatus(403);
+    }
+
+    public function test_admin_atualiza_config_fiscal_e_endereco_da_empresa(): void
+    {
+        $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-fiscal", [
+            'uf' => 'SP',
+            'municipio' => 'Socorro',
+            'codigo_ibge_municipio' => '3552106',
+            'cep' => '13960-000',
+            'logradouro' => 'Rua Teste',
+            'numero' => '10',
+            'bairro' => 'Centro',
+            'crt' => '1',
+            'inscricao_estadual' => '123456789',
+            'ambiente_ativo' => 'homologacao',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('empresa.uf', 'SP');
+        $response->assertJsonPath('config_fiscal.crt', '1');
+        $this->assertSame('SP', $this->empresa->fresh()->uf);
+    }
+
+    public function test_atualizar_config_fiscal_sem_ambiente_falha(): void
+    {
+        $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-fiscal", [
+            'crt' => '1',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_admin_ve_cadastrado_false_quando_nao_ha_certificado(): void
+    {
+        $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/certificado");
+
+        $response->assertOk()->assertJsonPath('cadastrado', false);
+    }
+
+    public function test_atendente_nao_acessa_certificado(): void
+    {
+        $response = $this->actingAs($this->atendente)->getJson("/dashboard/{$this->empresa->slug}/certificado");
+
+        $response->assertStatus(403);
+    }
+
+    public function test_upload_de_certificado_invalido_retorna_422(): void
+    {
+        $arquivo = \Illuminate\Http\UploadedFile::fake()->create('certificado.pfx', 10);
+
+        $response = $this->actingAs($this->admin)->post("/dashboard/{$this->empresa->slug}/certificado", [
+            'arquivo' => $arquivo,
+            'senha' => 'qualquer-coisa',
+            'tipo' => 'A1',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('message', 'Não foi possível ler o certificado - senha incorreta ou arquivo inválido.');
+    }
+
+    public function test_upload_de_certificado_sem_arquivo_falha_validacao(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/certificado", [
+            'senha' => 'qualquer-coisa',
+            'tipo' => 'A1',
+        ]);
+
+        $response->assertStatus(422);
+    }
 }

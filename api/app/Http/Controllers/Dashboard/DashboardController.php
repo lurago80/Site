@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\CertificadoDigital;
 use App\Models\Cliente;
+use App\Models\ConfigFiscal;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\Fornecedor;
@@ -14,6 +16,8 @@ use App\Models\Venda;
 use App\Models\Vendedor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use NFePHP\Common\Certificate;
 
 /**
  * Dashboard administrativo (Escopo v2, seção 2.2): cadastros, agenda,
@@ -425,6 +429,145 @@ class DashboardController extends Controller
         $usuario->update($dados);
 
         return response()->json($usuario->fresh());
+    }
+
+    // ---- Configuração fiscal (emitente) ----
+
+    /**
+     * Dados do emitente exigidos para emitir NFe/NFC-e: endereço fiscal
+     * completo da empresa (Empresa) + regime tributário/numeração
+     * (ConfigFiscal). Sem isso cadastrado, o NfePhpFiscalGateway rejeita
+     * a emissão - ver Escopo v2, seção 4.2.
+     */
+    public function configFiscal(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $config = ConfigFiscal::where('empresa_id', $empresaAtual->id)->first();
+
+        return response()->json([
+            'empresa' => $empresaAtual->only([
+                'razao_social', 'cnpj', 'uf', 'municipio', 'codigo_ibge_municipio',
+                'cep', 'logradouro', 'numero', 'bairro', 'complemento',
+            ]),
+            'config_fiscal' => $config,
+        ]);
+    }
+
+    public function atualizarConfigFiscal(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'uf' => ['nullable', 'string', 'max:2'],
+            'municipio' => ['nullable', 'string', 'max:255'],
+            'codigo_ibge_municipio' => ['nullable', 'string', 'max:7'],
+            'cep' => ['nullable', 'string', 'max:9'],
+            'logradouro' => ['nullable', 'string', 'max:255'],
+            'numero' => ['nullable', 'string', 'max:20'],
+            'bairro' => ['nullable', 'string', 'max:255'],
+            'crt' => ['nullable', 'string', 'max:255'],
+            'inscricao_estadual' => ['nullable', 'string', 'max:255'],
+            'inscricao_municipal' => ['nullable', 'string', 'max:255'],
+            'ambiente_ativo' => ['required', 'in:producao,homologacao'],
+            'csc_nfce' => ['nullable', 'string', 'max:255'],
+            'id_token_csc' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $empresaAtual->update(array_intersect_key($dados, array_flip([
+            'uf', 'municipio', 'codigo_ibge_municipio', 'cep', 'logradouro', 'numero', 'bairro',
+        ])));
+
+        $config = ConfigFiscal::updateOrCreate(
+            ['empresa_id' => $empresaAtual->id],
+            array_intersect_key($dados, array_flip([
+                'crt', 'inscricao_estadual', 'inscricao_municipal', 'ambiente_ativo', 'csc_nfce', 'id_token_csc',
+            ]))
+        );
+
+        return response()->json(['empresa' => $empresaAtual->fresh(), 'config_fiscal' => $config]);
+    }
+
+    // ---- Certificado digital ----
+
+    public function certificado(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $certificado = CertificadoDigital::where('empresa_id', $empresaAtual->id)->first();
+
+        if ($certificado === null) {
+            return response()->json(['cadastrado' => false]);
+        }
+
+        return response()->json([
+            'cadastrado' => true,
+            'tipo' => $certificado->tipo,
+            'validade' => $certificado->validade,
+            'expirado' => $certificado->validade?->isPast() ?? false,
+        ]);
+    }
+
+    /**
+     * Faz upload do .pfx, valida a senha lendo o certificado de verdade
+     * (NFePHP\Common\Certificate) antes de salvar - evita guardar um
+     * certificado/senha que não funciona e só descobrir isso na hora de
+     * emitir. A validade é extraída do próprio certificado, não digitada.
+     */
+    public function salvarCertificado(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            // 'mimes:pfx,p12' não funciona aqui - PKCS12 não tem um MIME
+            // type padronizado no mapa do Laravel/Symfony, então a regra
+            // rejeitava certificados .pfx reais mesmo com extensão certa.
+            // A validação de verdade é tentar abrir o certificado abaixo.
+            'arquivo' => ['required', 'file', function ($attribute, $value, $fail) {
+                if (! in_array(strtolower($value->getClientOriginalExtension()), ['pfx', 'p12'], true)) {
+                    $fail('O arquivo deve ter extensão .pfx ou .p12.');
+                }
+            }],
+            'senha' => ['required', 'string'],
+            'tipo' => ['required', 'in:A1,A3'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $conteudo = file_get_contents($dados['arquivo']->getRealPath());
+
+        try {
+            $certificadoPfx = Certificate::readPfx($conteudo, $dados['senha']);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Não foi possível ler o certificado - senha incorreta ou arquivo inválido.',
+            ], 422);
+        }
+
+        $validade = $certificadoPfx->getValidTo();
+
+        $caminhoRelativo = "certificados/{$empresaAtual->id}.pfx";
+        Storage::put($caminhoRelativo, $conteudo);
+
+        $certificado = CertificadoDigital::updateOrCreate(
+            ['empresa_id' => $empresaAtual->id],
+            [
+                'tipo' => $dados['tipo'],
+                'arquivo_referencia' => Storage::path($caminhoRelativo),
+                'senha_criptografada' => $dados['senha'],
+                'validade' => $validade,
+            ]
+        );
+
+        return response()->json([
+            'cadastrado' => true,
+            'tipo' => $certificado->tipo,
+            'validade' => $certificado->validade,
+            'expirado' => false,
+        ], 201);
     }
 
     private function exigirAdmin(Request $request): void

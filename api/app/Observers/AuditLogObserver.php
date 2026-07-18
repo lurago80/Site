@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Models\Empresa;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -35,8 +36,14 @@ class AuditLogObserver
 
     private function registrar(string $acao, Model $model, ?array $anteriores, ?array $novos): void
     {
+        // Empresa não tem coluna empresa_id (ela É o tenant) - sem este
+        // caso especial, o log ficava com empresa_id nulo e violava o
+        // RLS de `logs` sempre que um admin comum (não super_admin)
+        // editava os dados da própria empresa.
+        $empresaId = $model instanceof Empresa ? $model->getKey() : $model->getAttribute('empresa_id');
+
         DB::table('logs')->insert([
-            'empresa_id' => $model->getAttribute('empresa_id'),
+            'empresa_id' => $empresaId,
             'usuario_id' => Auth::id(),
             'acao' => $acao,
             'tabela_afetada' => $model->getTable(),

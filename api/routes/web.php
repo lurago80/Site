@@ -97,6 +97,12 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::get('/usuarios', [DashboardController::class, 'usuarios']);
     Route::post('/usuarios', [DashboardController::class, 'criarUsuario']);
     Route::put('/usuarios/{usuarioId}', [DashboardController::class, 'atualizarUsuario']);
+
+    Route::get('/config-fiscal', [DashboardController::class, 'configFiscal']);
+    Route::put('/config-fiscal', [DashboardController::class, 'atualizarConfigFiscal']);
+
+    Route::get('/certificado', [DashboardController::class, 'certificado']);
+    Route::post('/certificado', [DashboardController::class, 'salvarCertificado']);
 });
 
 /*

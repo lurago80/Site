@@ -39,8 +39,11 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 | 11 | **Dashboard administrativo** implementado: indicadores (vagas ocupadas hoje, vendas do mês, ocupação média, comissões), agenda de visitas, produtos, clientes, vendedores, financeiro (contas a pagar/receber) e usuários (restrito a perfil admin) | ✅ Implementado e testado com dados reais |
 | 12 | **NFe (modelo 55)** implementada: destinatário completo (endereço estruturado do cliente, novo), NCM/CFOP por produto, **emissão real autorizada pela SEFAZ-SP em homologação**. Painel de gestão fiscal unificado para NFC-e e NFe: cancelar, inutilizar, reimprimir (view própria em formato DANFE), relatório e exportação com filtro por modelo | ✅ Validado com a SEFAZ real |
 | 13 | **Importar NFC-e → NFe (regularização)**: gera uma NFe formal referenciando uma venda já documentada por NFC-e, com CFOP 5929 (mesmo estado) ou 6929 (fora do estado) resolvido automaticamente pela UF do cliente x UF da empresa. **Validado com emissão real autorizada pela SEFAZ-SP** | ✅ Validado com a SEFAZ real |
+| 14 | **Identidade visual** aplicada em todo o sistema interno (login, dashboard, PDV, painel fiscal, super admin): logo e paleta de cores extraídos do logo da empresa, sistema de design centralizado (`public/css/sistema.css`) | ✅ Implementado |
+| 15 | **Cadastros expandidos**: Produto ganha código/SKU, categoria, unidade, preço de custo e status ativo; Cliente e Fornecedor ganham cadastro/edição completos no dashboard (antes só listagem ou criação implícita via venda) | ✅ Implementado e testado |
+| 16 | **Cadastro de emitente e certificado digital** no dashboard (antes só configurável via script/tinker): endereço fiscal + regime tributário/numeração editáveis pelo admin; upload do certificado `.pfx` com validação real (tenta abrir o certificado com a senha informada antes de salvar) e validade extraída automaticamente do próprio arquivo, não digitada | ✅ Implementado e testado com o certificado real |
 
-Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Dashboard administrativo, Painel Super Admin), a Loja Pública e o módulo fiscal completo (NFC-e + NFe) estão implementados e testados — falta o refinamento visual (protótipos ainda usam CSS simples, sem identidade da marca) e os itens de pendência listados abaixo.
+Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Dashboard administrativo, Painel Super Admin), a Loja Pública e o módulo fiscal completo (NFC-e + NFe) estão implementados, testados e com identidade visual própria — restam os itens de pendência listados abaixo.
 
 **Achado técnico da emissão real de NFe (2026-07-18):** a SEFAZ rejeitou em sequência três pontos que só um teste real revela (documentado como lição - homologação com envio de verdade continua sendo o único jeito confiável de validar isso):
 1. `[745] NF-e sem grupo do PIS` — NFe exige os grupos PIS/COFINS por item mesmo no Simples Nacional (CST 07 - não tributado - resolve, pois o PIS/COFINS já está embutido no DAS unificado);
@@ -56,6 +59,10 @@ Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Da
 - Tabela de `cClassTrib` do IBS/CBS usa o código padrão (000001) — precisa revisão quando a SEFAZ consolidar a tabela definitiva por segmento;
 - Sem recuperação de senha ("esqueci minha senha") nem página de erro 403 dedicada para usuário inativo/empresa suspensa (hoje volta pro login com mensagem);
 - Painel Super Admin ainda não tem cobrança de assinatura automática (Asaas/Vindi/Iugu) nem edição de plano/reassociação de empresa depois de criada — só cadastro inicial e mudança de status.
+
+**Achados técnicos (2026-07-18, cadastro de emitente/certificado):**
+- `AuditLogObserver` gravava `empresa_id = null` no log ao editar o próprio cadastro da `Empresa` (ela não tem coluna `empresa_id`, só `id`) - violava o RLS de `logs` sempre que um admin comum (não super_admin) editava o endereço fiscal da própria empresa. Corrigido tratando `Empresa` como caso especial (usa o próprio `id` como `empresa_id` do log);
+- A regra de validação `mimes:pfx,p12` do Laravel **não reconhece certificados `.pfx` reais** - PKCS12 não tem um MIME type padronizado no mapa do Symfony, então a regra rejeitava até um certificado genuíno com extensão correta. Substituída por validação de extensão + a tentativa real de abrir o certificado com a senha informada (que já seria feita de qualquer forma antes de salvar).
 
 ---
 
@@ -201,7 +208,9 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~PDV (frente de caixa)~~ — feito;
 - ~~Dashboard administrativo~~ — feito;
 - ~~NFe modelo 55 + NCM/CFOP por produto + importar NFC-e→NFe (CFOP 5929/6929)~~ — feito;
-- **Definição da identidade visual (prioridade)** — logo, cores, fotos para aplicar às telas já funcionais (hoje usam CSS simples, sem marca);
-- Pagamento online real na loja pública (Pix/cartão) — hoje o checkout marca a venda como "pago" direto, sem gateway;
+- ~~Identidade visual (logo, cores) no sistema interno~~ — feito;
+- ~~Cadastros expandidos (produto, cliente, fornecedor) + emitente/certificado digital no dashboard~~ — feito;
+- **Pagamento online real na loja pública (prioridade)** — hoje o checkout marca a venda como "pago" direto, sem gateway Pix/cartão;
 - Integração de cobrança de assinatura (Asaas/Vindi/Iugu) no painel Super Admin;
-- Notificações via WhatsApp (Z-API) — confirmação/lembrete de visita, ainda não implementado.
+- Notificações via WhatsApp (Z-API) — confirmação/lembrete de visita, ainda não implementado;
+- Identidade visual por empresa na loja pública (logo/cor própria de cada cliente da plataforma) - hoje só a plataforma tem marca própria, a loja pública ainda não é personalizável por tenant.

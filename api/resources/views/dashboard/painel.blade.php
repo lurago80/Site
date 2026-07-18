@@ -34,6 +34,7 @@
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('financeiro', this)">Financeiro</button>
             <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
+            <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
             <form method="POST" action="/logout" style="padding: 16px;">
                 @csrf
                 <button type="submit" class="secundario" style="width:100%;">Sair</button>
@@ -240,6 +241,68 @@
                     <p class="msg" id="msg-usuarios"></p>
                 </div>
             </section>
+
+            <section id="secao-config-fiscal" class="secao">
+                <h1>Configuração Fiscal</h1>
+
+                <div class="card">
+                    <h2>Emitente</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Razão social e CNPJ não são editáveis aqui - fale com o suporte para corrigi-los.
+                    </p>
+                    <p style="font-size:13px;"><strong id="cf-razao-social"></strong> — CNPJ <span id="cf-cnpj"></span></p>
+                    <div class="linha-form">
+                        <div><label>CEP</label><input type="text" id="cf-cep" style="width:90px"></div>
+                        <div><label>Logradouro</label><input type="text" id="cf-logradouro"></div>
+                        <div><label>Número</label><input type="text" id="cf-numero" style="width:70px"></div>
+                        <div><label>Bairro</label><input type="text" id="cf-bairro"></div>
+                        <div><label>Município</label><input type="text" id="cf-municipio"></div>
+                        <div><label>UF</label><input type="text" id="cf-uf" style="width:50px" maxlength="2"></div>
+                        <div><label>Cód. IBGE município</label><input type="text" id="cf-ibge" style="width:100px"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>Regime tributário (CRT)</label>
+                            <select id="cf-crt">
+                                <option value="1">1 - Simples Nacional</option>
+                                <option value="2">2 - Simples Nacional - excesso sublimite</option>
+                                <option value="3">3 - Regime Normal</option>
+                            </select>
+                        </div>
+                        <div><label>Inscrição Estadual</label><input type="text" id="cf-ie" style="width:120px"></div>
+                        <div><label>Inscrição Municipal</label><input type="text" id="cf-im" style="width:120px"></div>
+                        <div><label>Ambiente</label>
+                            <select id="cf-ambiente">
+                                <option value="homologacao">Homologação</option>
+                                <option value="producao">Produção</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>CSC (NFC-e)</label><input type="text" id="cf-csc"></div>
+                        <div><label>ID do token CSC</label><input type="text" id="cf-csc-id" style="width:100px"></div>
+                        <div><button class="acao" onclick="salvarConfigFiscal()">Salvar</button></div>
+                    </div>
+                    <p class="msg" id="msg-config-fiscal"></p>
+                </div>
+
+                <div class="card">
+                    <h2>Certificado Digital</h2>
+                    <p id="cert-status" style="font-size:13px;">Carregando...</p>
+                    <div class="linha-form">
+                        <div><label>Arquivo (.pfx)</label><input type="file" id="cert-arquivo" accept=".pfx,.p12"></div>
+                        <div><label>Senha</label><input type="password" id="cert-senha" style="width:160px"></div>
+                        <div><label>Tipo</label>
+                            <select id="cert-tipo"><option value="A1">A1</option><option value="A3">A3</option></select>
+                        </div>
+                        <div><button class="acao" onclick="salvarCertificado()">Enviar certificado</button></div>
+                    </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave);">
+                        A senha é criptografada no banco (nunca fica em texto puro) e a validade é lida direto do
+                        certificado - não precisa digitar. O arquivo é validado antes de salvar.
+                    </p>
+                    <p class="msg" id="msg-certificado"></p>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -258,6 +321,7 @@
             vendedores: carregarVendedores,
             financeiro: () => { carregarContasPagar(); carregarContasReceber(); },
             usuarios: carregarUsuarios,
+            'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); },
         };
 
         function mostrarSecao(nome, botao) {
@@ -661,6 +725,86 @@
         async function alternarUsuario(id, ativo) {
             await fetch(`${base}/usuarios/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ ativo }) });
             carregarUsuarios();
+        }
+
+        async function carregarConfigFiscal() {
+            const resp = await fetch(`${base}/config-fiscal`);
+            if (resp.status === 403) { return; }
+            const dados = await resp.json();
+            const e = dados.empresa;
+            const c = dados.config_fiscal || {};
+            document.getElementById('cf-razao-social').textContent = e.razao_social;
+            document.getElementById('cf-cnpj').textContent = e.cnpj;
+            document.getElementById('cf-cep').value = e.cep ?? '';
+            document.getElementById('cf-logradouro').value = e.logradouro ?? '';
+            document.getElementById('cf-numero').value = e.numero ?? '';
+            document.getElementById('cf-bairro').value = e.bairro ?? '';
+            document.getElementById('cf-municipio').value = e.municipio ?? '';
+            document.getElementById('cf-uf').value = e.uf ?? '';
+            document.getElementById('cf-ibge').value = e.codigo_ibge_municipio ?? '';
+            document.getElementById('cf-crt').value = c.crt ?? '1';
+            document.getElementById('cf-ie').value = c.inscricao_estadual ?? '';
+            document.getElementById('cf-im').value = c.inscricao_municipal ?? '';
+            document.getElementById('cf-ambiente').value = c.ambiente_ativo ?? 'homologacao';
+            document.getElementById('cf-csc').value = c.csc_nfce ?? '';
+            document.getElementById('cf-csc-id').value = c.id_token_csc ?? '';
+        }
+
+        async function salvarConfigFiscal() {
+            const dados = {
+                cep: document.getElementById('cf-cep').value || null,
+                logradouro: document.getElementById('cf-logradouro').value || null,
+                numero: document.getElementById('cf-numero').value || null,
+                bairro: document.getElementById('cf-bairro').value || null,
+                municipio: document.getElementById('cf-municipio').value || null,
+                uf: document.getElementById('cf-uf').value || null,
+                codigo_ibge_municipio: document.getElementById('cf-ibge').value || null,
+                crt: document.getElementById('cf-crt').value,
+                inscricao_estadual: document.getElementById('cf-ie').value || null,
+                inscricao_municipal: document.getElementById('cf-im').value || null,
+                ambiente_ativo: document.getElementById('cf-ambiente').value,
+                csc_nfce: document.getElementById('cf-csc').value || null,
+                id_token_csc: document.getElementById('cf-csc-id').value || null,
+            };
+            const resp = await fetch(`${base}/config-fiscal`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-fiscal');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Configuração fiscal salva.';
+        }
+
+        async function carregarCertificado() {
+            const resp = await fetch(`${base}/certificado`);
+            if (resp.status === 403) { return; }
+            const dados = await resp.json();
+            const status = document.getElementById('cert-status');
+            if (!dados.cadastrado) { status.textContent = 'Nenhum certificado cadastrado ainda.'; return; }
+            const validade = new Date(dados.validade).toLocaleDateString('pt-BR');
+            status.innerHTML = dados.expirado
+                ? `<span style="color:var(--cor-perigo-texto);">Certificado ${dados.tipo} EXPIRADO em ${validade}.</span>`
+                : `Certificado ${dados.tipo} válido até ${validade}.`;
+        }
+
+        async function salvarCertificado() {
+            const arquivo = document.getElementById('cert-arquivo').files[0];
+            const msg = document.getElementById('msg-certificado');
+            if (!arquivo) { msg.className = 'msg erro'; msg.textContent = 'Selecione o arquivo .pfx.'; return; }
+
+            const formData = new FormData();
+            formData.append('arquivo', arquivo);
+            formData.append('senha', document.getElementById('cert-senha').value);
+            formData.append('tipo', document.getElementById('cert-tipo').value);
+
+            const resp = await fetch(`${base}/certificado`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken },
+                body: formData,
+            });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Certificado salvo com sucesso.';
+            document.getElementById('cert-senha').value = '';
+            carregarCertificado();
         }
 
         carregarIndicadores();
