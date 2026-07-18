@@ -36,6 +36,9 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 | 8 | **Login único do sistema interno** (Escopo v2, seção 2.2) implementado: e-mail/senha identifica a empresa e o nível de acesso automaticamente, sessão protege o painel de gestão fiscal | ✅ Implementado e testado |
 | 9 | **Painel Super Admin** (Escopo v2, seção 2.2) implementado: gestão de empresas (cadastro, suspensão/reativação), planos e assinaturas. Suspender uma empresa já bloqueia login de todos os usuários dela | ✅ Implementado e testado com dados reais |
 | 10 | **PDV (frente de caixa)** implementado: venda de produtos físicos (com baixa de estoque), venda de visita agendada com trava anti-overbooking (reaproveita o `ReservaVagaService`), comissão por vendedor, venda fiscal (emite NFC-e na hora) ou não fiscal | ✅ Implementado e testado com dados reais |
+| 11 | **Dashboard administrativo** implementado: indicadores (vagas ocupadas hoje, vendas do mês, ocupação média, comissões), agenda de visitas, produtos, clientes, vendedores, financeiro (contas a pagar/receber) e usuários (restrito a perfil admin) | ✅ Implementado e testado com dados reais |
+
+Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Dashboard administrativo, Painel Super Admin) e a Loja Pública estão implementadas e testadas — falta o refinamento visual (protótipos ainda usam CSS simples, sem identidade da marca) e os itens de pendência listados abaixo.
 
 **Achado técnico relevante (2026-07-18):** o RLS por si só criava um paradoxo na autenticação — para descobrir a empresa de um usuário é preciso *ler* a tabela `users` por e-mail, mas o RLS bloqueia essa leitura até o tenant estar definido, e o tenant só se define depois de autenticar. Resolvido com um middleware global (`BootstrapAuthDatabaseContext`) que abre um bypass de RLS só na fase de resolução de autenticação (primeiro middleware do grupo `web`), fechado de volta ao escopo correto pelo `SetTenantContext` antes de qualquer query de negócio rodar. Esse bug só apareceu em teste manual via navegador/curl — os testes automatizados usavam `actingAs()`, que contorna a resolução real de sessão e mascarou o problema. Registrado aqui como lição: **testes automatizados com `actingAs()` não substituem um teste manual do fluxo de login real**.
 
@@ -189,8 +192,10 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~Login do sistema interno~~ — feito;
 - ~~Painel Super Admin~~ — feito (falta cobrança automática de assinatura, ver changelog técnico);
 - ~~PDV (frente de caixa)~~ — feito;
-- **Dashboard administrativo (prioridade)** — cadastros, agenda, financeiro e relatórios da empresa (Escopo v2, seção 2.2), próximo módulo do sistema interno;
-- Definição da identidade visual (logo, cores, fotos) para aplicar aos protótipos;
+- ~~Dashboard administrativo~~ — feito;
+- **Definição da identidade visual (prioridade)** — logo, cores, fotos para aplicar às telas já funcionais (hoje usam CSS simples, sem marca);
+- Pagamento online real na loja pública (Pix/cartão) — hoje o checkout marca a venda como "pago" direto, sem gateway;
 - NCM/CFOP por produto no cadastro (hoje fixo/genérico no módulo fiscal);
 - NFe modelo 55 (com destinatário completo) — hoje só NFC-e está implementada;
-- Integração de cobrança de assinatura (Asaas/Vindi/Iugu) no painel Super Admin.
+- Integração de cobrança de assinatura (Asaas/Vindi/Iugu) no painel Super Admin;
+- Notificações via WhatsApp (Z-API) — confirmação/lembrete de visita, ainda não implementado.

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Fiscal\GestaoFiscalController;
 use App\Http\Controllers\Pdv\PdvController;
 use App\Http\Controllers\SuperAdmin\SuperAdminController;
@@ -53,6 +54,43 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/agenda', [PdvController::class, 'agenda']);
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Dashboard administrativo (cadastros, agenda, financeiro, relatórios)
+|--------------------------------------------------------------------------
+| O tenant vem sempre do usuário autenticado - mesmo padrão dos demais.
+*/
+Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(function () {
+    Route::get('/painel', [DashboardController::class, 'painel']);
+    Route::get('/indicadores', [DashboardController::class, 'indicadores']);
+
+    Route::get('/agenda', [DashboardController::class, 'agenda']);
+    Route::post('/agenda', [DashboardController::class, 'criarAgenda']);
+
+    Route::get('/produtos', [DashboardController::class, 'produtos']);
+    Route::post('/produtos', [DashboardController::class, 'criarProduto']);
+    Route::put('/produtos/{produtoId}', [DashboardController::class, 'atualizarProduto']);
+
+    Route::get('/clientes', [DashboardController::class, 'clientes']);
+
+    Route::get('/vendedores', [DashboardController::class, 'vendedores']);
+    Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);
+
+    Route::get('/fornecedores', [DashboardController::class, 'fornecedores']);
+
+    Route::get('/contas-pagar', [DashboardController::class, 'contasPagar']);
+    Route::post('/contas-pagar', [DashboardController::class, 'criarContaPagar']);
+    Route::put('/contas-pagar/{contaId}/pagar', [DashboardController::class, 'marcarContaPagarPaga']);
+
+    Route::get('/contas-receber', [DashboardController::class, 'contasReceber']);
+    Route::post('/contas-receber', [DashboardController::class, 'criarContaReceber']);
+    Route::put('/contas-receber/{contaId}/pagar', [DashboardController::class, 'marcarContaReceberPaga']);
+
+    Route::get('/usuarios', [DashboardController::class, 'usuarios']);
+    Route::post('/usuarios', [DashboardController::class, 'criarUsuario']);
+    Route::put('/usuarios/{usuarioId}', [DashboardController::class, 'atualizarUsuario']);
 });
 
 /*

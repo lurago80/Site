@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable(['empresa_id', 'fornecedor_id', 'valor', 'vencimento', 'status'])]
 class ContaPagar extends Model
@@ -16,5 +17,10 @@ class ContaPagar extends Model
             'valor' => 'decimal:2',
             'vencimento' => 'date',
         ];
+    }
+
+    public function fornecedor(): BelongsTo
+    {
+        return $this->belongsTo(Fornecedor::class);
     }
 }
