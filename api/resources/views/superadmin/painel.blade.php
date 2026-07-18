@@ -4,38 +4,13 @@
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Painel Super Admin</title>
+    <link rel="stylesheet" href="/css/sistema.css">
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: system-ui, sans-serif; background: #f4f5f7; margin: 0; padding: 24px; color: #1f2933; }
-        h1 { font-size: 20px; }
-        h2 { font-size: 15px; margin-top: 0; }
-        .card { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e7eb; }
-        th { color: #616e7c; font-weight: 600; }
-        button, input, select { font-size: 13px; padding: 6px 10px; border-radius: 4px; border: 1px solid #cbd2d9; }
-        button { background: #1a56db; color: #fff; border: none; cursor: pointer; }
-        button.secundario { background: #616e7c; }
-        .linha-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
-        .linha-form label { display: block; font-size: 11px; color: #616e7c; margin-bottom: 2px; }
-        .status { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-        .status-ativa, .status-em_dia { background: #d1fae5; color: #046c4e; }
-        .status-suspensa, .status-atrasado { background: #fff3bf; color: #8a6d00; }
-        .status-cancelada, .status-cancelado { background: #ffe3e3; color: #b02525; }
-        .msg { font-size: 12px; margin-top: 6px; }
-        .msg.erro { color: #c81e1e; }
-        .msg.ok { color: #046c4e; }
+        body { padding: 0 24px 24px; }
     </style>
 </head>
 <body>
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-        <h1>Painel Super Admin</h1>
-        <form method="POST" action="/logout">
-            @csrf
-            <span style="font-size:12px; color:#616e7c; margin-right:8px;">{{ auth()->user()->name }}</span>
-            <button type="submit" class="secundario">Sair</button>
-        </form>
-    </div>
+    @include('partials.topo', ['titulo' => 'Super Admin'])
 
     <div class="card">
         <h2>Empresas</h2>

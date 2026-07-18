@@ -4,48 +4,33 @@
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Dashboard — {{ $empresaSlug }}</title>
+    <link rel="stylesheet" href="/css/sistema.css">
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2933; }
         .layout { display: flex; min-height: 100vh; }
-        .sidebar { width: 200px; background: #1f2933; color: #fff; padding: 16px 0; flex-shrink: 0; }
-        .sidebar .empresa { padding: 0 16px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid #323f4b; margin-bottom: 8px; }
-        .sidebar button { display: block; width: 100%; text-align: left; background: none; border: none; color: #cbd2d9; padding: 10px 16px; font-size: 13px; cursor: pointer; }
-        .sidebar button:hover, .sidebar button.ativo { background: #323f4b; color: #fff; }
+        .sidebar .logo { padding: 0 16px 12px; }
+        .sidebar .logo img { height: 28px; }
         .conteudo { flex: 1; padding: 24px; }
-        h1 { font-size: 18px; margin-top: 0; }
         .secao { display: none; }
         .secao.ativa { display: block; }
         .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .stat { background: #fff; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-        .stat .label { font-size: 11px; color: #616e7c; }
-        .stat .valor { font-size: 22px; font-weight: 700; margin-top: 4px; }
-        .card { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e7eb; }
-        th { color: #616e7c; font-weight: 600; }
-        input, select, button.acao { font-size: 13px; padding: 6px 10px; border-radius: 4px; border: 1px solid #cbd2d9; }
-        button.acao { background: #1a56db; color: #fff; border: none; cursor: pointer; }
-        button.secundario { background: #616e7c; color:#fff; border: none; cursor: pointer; }
-        .linha-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
-        .linha-form label { display: block; font-size: 11px; color: #616e7c; margin-bottom: 2px; }
-        .msg { font-size: 12px; margin-top: 6px; }
-        .msg.erro { color: #c81e1e; }
-        .msg.ok { color: #046c4e; }
-        .status { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-        .status-em_aberto, .status-aberta { background: #fff3bf; color: #8a6d00; }
-        .status-pago, .status-lotada { background: #d1fae5; color: #046c4e; }
-        .status-atrasado, .status-cancelada { background: #ffe3e3; color: #b02525; }
+        .stat { background: var(--cor-superficie); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra); }
+        .stat .label { font-size: 11px; color: var(--cor-texto-suave); }
+        .stat .valor { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--cor-primaria); }
+        button.acao { background: var(--cor-primaria); color: #fff; border: none; }
+        button.acao:hover { background: var(--cor-primaria-escura); }
+        button.secundario { color: #fff; }
     </style>
 </head>
 <body>
     <div class="layout">
         <div class="sidebar">
+            <div class="logo"><img src="/images/logo.jpg" alt="Logo"></div>
             <div class="empresa">{{ $empresaSlug }}</div>
             <button class="ativo" onclick="mostrarSecao('dashboard', this)">Dashboard</button>
             <button onclick="mostrarSecao('agenda', this)">Agenda de Visitas</button>
             <button onclick="mostrarSecao('produtos', this)">Produtos</button>
             <button onclick="mostrarSecao('clientes', this)">Clientes</button>
+            <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('financeiro', this)">Financeiro</button>
             <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
@@ -93,17 +78,29 @@
             <section id="secao-produtos" class="secao">
                 <h1>Produtos</h1>
                 <div class="card">
+                    <input type="hidden" id="pr-id">
                     <div class="linha-form">
+                        <div><label>Código/SKU</label><input type="text" id="pr-codigo" style="width:100px"></div>
                         <div><label>Nome</label><input type="text" id="pr-nome"></div>
+                        <div><label>Categoria</label><input type="text" id="pr-categoria" style="width:120px"></div>
                         <div><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
-                        <div><label>Preço (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:100px"></div>
+                        <div><label>Unidade</label><input type="text" id="pr-unidade" value="UN" style="width:60px"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>Preço de venda (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:110px"></div>
+                        <div><label>Preço de custo (R$)</label><input type="number" step="0.01" id="pr-custo" style="width:110px"></div>
                         <div><label>Estoque</label><input type="number" id="pr-estoque" style="width:80px"></div>
+                        <div><label>Fornecedor</label><select id="pr-fornecedor"><option value="">Nenhum</option></select></div>
                         <div><label>NCM</label><input type="text" id="pr-ncm" placeholder="8 dígitos" style="width:100px"></div>
                         <div><label>CFOP (interno)</label><input type="text" id="pr-cfop" placeholder="ex: 5102" style="width:90px"></div>
-                        <div><button class="acao" onclick="criarProduto()">Cadastrar</button></div>
+                    </div>
+                    <div class="linha-form">
+                        <div style="flex:1"><label>Descrição</label><input type="text" id="pr-descricao" style="width:100%"></div>
+                        <div><button class="acao" id="pr-botao" onclick="salvarProduto()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioProduto()" style="display:none;" id="pr-cancelar">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Nome</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>NCM</th><th>CFOP</th></tr></thead>
+                        <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>Fornecedor</th><th>NCM</th><th>CFOP</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-produtos"></tbody>
                     </table>
                     <p class="msg" id="msg-produtos"></p>
@@ -112,15 +109,65 @@
 
             <section id="secao-clientes" class="secao">
                 <h1>Clientes</h1>
-                <p style="font-size:12px; color:#616e7c;">
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
                     Endereço completo é obrigatório para emitir NFe (modelo 55) para o cliente - a loja pública e o PDV só coletam nome/CPF na hora da venda.
                 </p>
                 <div class="card">
+                    <input type="hidden" id="cl-id">
+                    <div class="linha-form">
+                        <div><label>Nome</label><input type="text" id="cl-nome"></div>
+                        <div><label>CPF/CNPJ</label><input type="text" id="cl-cpf-cnpj" style="width:140px"></div>
+                        <div><label>Telefone</label><input type="text" id="cl-telefone" style="width:120px"></div>
+                        <div><label>E-mail</label><input type="email" id="cl-email"></div>
+                        <div><label><input type="checkbox" id="cl-lgpd"> Consentimento LGPD</label></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>CEP</label><input type="text" id="cl-cep" style="width:90px"></div>
+                        <div><label>Logradouro</label><input type="text" id="cl-logradouro"></div>
+                        <div><label>Número</label><input type="text" id="cl-numero" style="width:70px"></div>
+                        <div><label>Bairro</label><input type="text" id="cl-bairro"></div>
+                        <div><label>Município</label><input type="text" id="cl-municipio"></div>
+                        <div><label>UF</label><input type="text" id="cl-uf" style="width:50px" maxlength="2"></div>
+                        <div><label>Cód. IBGE</label><input type="text" id="cl-ibge" style="width:80px"></div>
+                        <div><label>IE</label><input type="text" id="cl-ie" style="width:100px"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><button class="acao" id="cl-botao" onclick="salvarCliente()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioCliente()" style="display:none;" id="cl-cancelar">Cancelar edição</button></div>
+                    </div>
                     <table>
                         <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>E-mail</th><th>Telefone</th><th>Endereço</th><th>LGPD</th><th></th></tr></thead>
                         <tbody id="tbody-clientes"></tbody>
                     </table>
                     <p class="msg" id="msg-clientes"></p>
+                </div>
+            </section>
+
+            <section id="secao-fornecedores" class="secao">
+                <h1>Fornecedores</h1>
+                <div class="card">
+                    <input type="hidden" id="fo-id">
+                    <div class="linha-form">
+                        <div><label>Razão social</label><input type="text" id="fo-razao"></div>
+                        <div><label>Nome fantasia</label><input type="text" id="fo-fantasia"></div>
+                        <div><label>CNPJ</label><input type="text" id="fo-cnpj" style="width:140px"></div>
+                        <div><label>IE</label><input type="text" id="fo-ie" style="width:100px"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>Contato</label><input type="text" id="fo-contato"></div>
+                        <div><label>Telefone</label><input type="text" id="fo-telefone" style="width:120px"></div>
+                        <div><label>E-mail</label><input type="email" id="fo-email"></div>
+                        <div style="flex:1"><label>Endereço</label><input type="text" id="fo-endereco" style="width:100%"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><button class="acao" id="fo-botao" onclick="salvarFornecedor()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioFornecedor()" style="display:none;" id="fo-cancelar">Cancelar edição</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Razão social</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th></th></tr></thead>
+                        <tbody id="tbody-fornecedores"></tbody>
+                    </table>
+                    <p class="msg" id="msg-fornecedores"></p>
                 </div>
             </section>
 
@@ -207,6 +254,7 @@
             agenda: carregarAgenda,
             produtos: carregarProdutos,
             clientes: carregarClientes,
+            fornecedores: carregarFornecedores,
             vendedores: carregarVendedores,
             financeiro: () => { carregarContasPagar(); carregarContasReceber(); },
             usuarios: carregarUsuarios,
@@ -263,42 +311,101 @@
             carregarAgenda();
         }
 
+        let produtosCache = [];
+        let fornecedoresCache = [];
+
         async function carregarProdutos() {
+            await carregarFornecedoresParaSelect();
             const resp = await fetch(`${base}/produtos`);
-            const lista = await resp.json();
-            document.getElementById('tbody-produtos').innerHTML = lista.map(p => `
+            produtosCache = await resp.json();
+            document.getElementById('tbody-produtos').innerHTML = produtosCache.map(p => `
                 <tr>
+                    <td>${p.codigo ?? '-'}</td>
                     <td>${p.nome}</td>
+                    <td>${p.categoria ?? '-'}</td>
                     <td>${p.tipo}</td>
                     <td>R$ ${Number(p.preco_venda).toFixed(2)}</td>
                     <td>${p.estoque_atual ?? '-'}</td>
+                    <td>${p.fornecedor ? p.fornecedor.razao_social : '-'}</td>
                     <td>${p.ncm ?? '-'}</td>
                     <td>${p.cfop_padrao ?? '-'}</td>
+                    <td>${p.ativo ? 'Sim' : 'Não'}</td>
+                    <td><button class="secundario" onclick="editarProduto(${p.id})">Editar</button></td>
                 </tr>
-            `).join('') || '<tr><td colspan="6">Nenhum produto cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="11">Nenhum produto cadastrado.</td></tr>';
         }
 
-        async function criarProduto() {
+        async function carregarFornecedoresParaSelect() {
+            const resp = await fetch(`${base}/fornecedores`);
+            fornecedoresCache = await resp.json();
+            document.getElementById('pr-fornecedor').innerHTML = '<option value="">Nenhum</option>' +
+                fornecedoresCache.map(f => `<option value="${f.id}">${f.razao_social}</option>`).join('');
+        }
+
+        function editarProduto(id) {
+            const p = produtosCache.find(x => x.id === id);
+            if (!p) return;
+            document.getElementById('pr-id').value = p.id;
+            document.getElementById('pr-codigo').value = p.codigo ?? '';
+            document.getElementById('pr-nome').value = p.nome;
+            document.getElementById('pr-categoria').value = p.categoria ?? '';
+            document.getElementById('pr-tipo').value = p.tipo;
+            document.getElementById('pr-unidade').value = p.unidade ?? 'UN';
+            document.getElementById('pr-preco').value = p.preco_venda;
+            document.getElementById('pr-custo').value = p.preco_custo ?? '';
+            document.getElementById('pr-estoque').value = p.estoque_atual ?? '';
+            document.getElementById('pr-fornecedor').value = p.fornecedor_id ?? '';
+            document.getElementById('pr-ncm').value = p.ncm ?? '';
+            document.getElementById('pr-cfop').value = p.cfop_padrao ?? '';
+            document.getElementById('pr-descricao').value = p.descricao ?? '';
+            document.getElementById('pr-botao').textContent = 'Salvar edição';
+            document.getElementById('pr-cancelar').style.display = 'inline-block';
+            document.getElementById('secao-produtos').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function limparFormularioProduto() {
+            document.getElementById('pr-id').value = '';
+            ['pr-codigo', 'pr-nome', 'pr-categoria', 'pr-custo', 'pr-estoque', 'pr-ncm', 'pr-cfop', 'pr-descricao']
+                .forEach(id => document.getElementById(id).value = '');
+            document.getElementById('pr-preco').value = '';
+            document.getElementById('pr-unidade').value = 'UN';
+            document.getElementById('pr-fornecedor').value = '';
+            document.getElementById('pr-botao').textContent = 'Cadastrar';
+            document.getElementById('pr-cancelar').style.display = 'none';
+        }
+
+        async function salvarProduto() {
+            const id = document.getElementById('pr-id').value;
             const dados = {
+                codigo: document.getElementById('pr-codigo').value || null,
                 nome: document.getElementById('pr-nome').value,
+                categoria: document.getElementById('pr-categoria').value || null,
                 tipo: document.getElementById('pr-tipo').value,
+                unidade: document.getElementById('pr-unidade').value || 'UN',
                 preco_venda: Number(document.getElementById('pr-preco').value),
+                preco_custo: document.getElementById('pr-custo').value || null,
                 estoque_atual: document.getElementById('pr-estoque').value || null,
+                fornecedor_id: document.getElementById('pr-fornecedor').value || null,
                 ncm: document.getElementById('pr-ncm').value || null,
                 cfop_padrao: document.getElementById('pr-cfop').value || null,
+                descricao: document.getElementById('pr-descricao').value || null,
             };
-            const resp = await fetch(`${base}/produtos`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const url = id ? `${base}/produtos/${id}` : `${base}/produtos`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-produtos');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
-            msg.className = 'msg ok'; msg.textContent = 'Produto cadastrado.';
+            msg.className = 'msg ok'; msg.textContent = id ? 'Produto atualizado.' : 'Produto cadastrado.';
+            limparFormularioProduto();
             carregarProdutos();
         }
 
+        let clientesCache = [];
+
         async function carregarClientes() {
             const resp = await fetch(`${base}/clientes`);
-            const lista = await resp.json();
-            document.getElementById('tbody-clientes').innerHTML = lista.map(c => `
+            clientesCache = await resp.json();
+            document.getElementById('tbody-clientes').innerHTML = clientesCache.map(c => `
                 <tr>
                     <td>${c.nome}</td>
                     <td>${c.cpf_cnpj ?? '-'}</td>
@@ -306,30 +413,131 @@
                     <td>${c.telefone ?? '-'}</td>
                     <td>${c.logradouro ? `${c.logradouro}, ${c.numero} - ${c.municipio}/${c.uf}` : '<em>incompleto</em>'}</td>
                     <td>${c.consentimento_lgpd ? 'Sim' : 'Não'}</td>
-                    <td><button class="secundario" onclick="completarEnderecoCliente(${c.id})">Completar endereço</button></td>
+                    <td><button class="secundario" onclick="editarCliente(${c.id})">Editar</button></td>
                 </tr>
             `).join('') || '<tr><td colspan="7">Nenhum cliente cadastrado.</td></tr>';
         }
 
-        async function completarEnderecoCliente(clienteId) {
-            const dados = {
-                cpf_cnpj: prompt('CPF/CNPJ do cliente:'),
-                uf: prompt('UF (ex: SP):'),
-                municipio: prompt('Município:'),
-                codigo_ibge_municipio: prompt('Código IBGE do município (7 dígitos):'),
-                cep: prompt('CEP:'),
-                logradouro: prompt('Logradouro:'),
-                numero: prompt('Número:'),
-                bairro: prompt('Bairro:'),
-            };
-            if (Object.values(dados).some(v => v === null)) return; // usuário cancelou algum prompt
+        function editarCliente(id) {
+            const c = clientesCache.find(x => x.id === id);
+            if (!c) return;
+            document.getElementById('cl-id').value = c.id;
+            document.getElementById('cl-nome').value = c.nome;
+            document.getElementById('cl-cpf-cnpj').value = c.cpf_cnpj ?? '';
+            document.getElementById('cl-telefone').value = c.telefone ?? '';
+            document.getElementById('cl-email').value = c.email ?? '';
+            document.getElementById('cl-lgpd').checked = !!c.consentimento_lgpd;
+            document.getElementById('cl-cep').value = c.cep ?? '';
+            document.getElementById('cl-logradouro').value = c.logradouro ?? '';
+            document.getElementById('cl-numero').value = c.numero ?? '';
+            document.getElementById('cl-bairro').value = c.bairro ?? '';
+            document.getElementById('cl-municipio').value = c.municipio ?? '';
+            document.getElementById('cl-uf').value = c.uf ?? '';
+            document.getElementById('cl-ibge').value = c.codigo_ibge_municipio ?? '';
+            document.getElementById('cl-ie').value = c.inscricao_estadual ?? '';
+            document.getElementById('cl-botao').textContent = 'Salvar edição';
+            document.getElementById('cl-cancelar').style.display = 'inline-block';
+            document.getElementById('secao-clientes').scrollIntoView({ behavior: 'smooth' });
+        }
 
-            const resp = await fetch(`${base}/clientes/${clienteId}`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+        function limparFormularioCliente() {
+            document.getElementById('cl-id').value = '';
+            ['cl-nome', 'cl-cpf-cnpj', 'cl-telefone', 'cl-email', 'cl-cep', 'cl-logradouro',
+             'cl-numero', 'cl-bairro', 'cl-municipio', 'cl-uf', 'cl-ibge', 'cl-ie']
+                .forEach(id => document.getElementById(id).value = '');
+            document.getElementById('cl-lgpd').checked = false;
+            document.getElementById('cl-botao').textContent = 'Cadastrar';
+            document.getElementById('cl-cancelar').style.display = 'none';
+        }
+
+        async function salvarCliente() {
+            const id = document.getElementById('cl-id').value;
+            const dados = {
+                nome: document.getElementById('cl-nome').value,
+                cpf_cnpj: document.getElementById('cl-cpf-cnpj').value || null,
+                telefone: document.getElementById('cl-telefone').value || null,
+                email: document.getElementById('cl-email').value || null,
+                consentimento_lgpd: document.getElementById('cl-lgpd').checked,
+                cep: document.getElementById('cl-cep').value || null,
+                logradouro: document.getElementById('cl-logradouro').value || null,
+                numero: document.getElementById('cl-numero').value || null,
+                bairro: document.getElementById('cl-bairro').value || null,
+                municipio: document.getElementById('cl-municipio').value || null,
+                uf: document.getElementById('cl-uf').value || null,
+                codigo_ibge_municipio: document.getElementById('cl-ibge').value || null,
+                inscricao_estadual: document.getElementById('cl-ie').value || null,
+            };
+            const url = id ? `${base}/clientes/${id}` : `${base}/clientes`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-clientes');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
-            msg.className = 'msg ok'; msg.textContent = 'Endereço atualizado.';
+            msg.className = 'msg ok'; msg.textContent = id ? 'Cliente atualizado.' : 'Cliente cadastrado.';
+            limparFormularioCliente();
             carregarClientes();
+        }
+
+        let fornecedoresListaCache = [];
+
+        async function carregarFornecedores() {
+            const resp = await fetch(`${base}/fornecedores`);
+            fornecedoresListaCache = await resp.json();
+            document.getElementById('tbody-fornecedores').innerHTML = fornecedoresListaCache.map(f => `
+                <tr>
+                    <td>${f.razao_social}</td>
+                    <td>${f.cnpj ?? '-'}</td>
+                    <td>${f.contato ?? '-'}</td>
+                    <td>${f.telefone ?? '-'}</td>
+                    <td><button class="secundario" onclick="editarFornecedor(${f.id})">Editar</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum fornecedor cadastrado.</td></tr>';
+        }
+
+        function editarFornecedor(id) {
+            const f = fornecedoresListaCache.find(x => x.id === id);
+            if (!f) return;
+            document.getElementById('fo-id').value = f.id;
+            document.getElementById('fo-razao').value = f.razao_social;
+            document.getElementById('fo-fantasia').value = f.nome_fantasia ?? '';
+            document.getElementById('fo-cnpj').value = f.cnpj ?? '';
+            document.getElementById('fo-ie').value = f.inscricao_estadual ?? '';
+            document.getElementById('fo-contato').value = f.contato ?? '';
+            document.getElementById('fo-telefone').value = f.telefone ?? '';
+            document.getElementById('fo-email').value = f.email ?? '';
+            document.getElementById('fo-endereco').value = f.endereco ?? '';
+            document.getElementById('fo-botao').textContent = 'Salvar edição';
+            document.getElementById('fo-cancelar').style.display = 'inline-block';
+            document.getElementById('secao-fornecedores').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function limparFormularioFornecedor() {
+            document.getElementById('fo-id').value = '';
+            ['fo-razao', 'fo-fantasia', 'fo-cnpj', 'fo-ie', 'fo-contato', 'fo-telefone', 'fo-email', 'fo-endereco']
+                .forEach(id => document.getElementById(id).value = '');
+            document.getElementById('fo-botao').textContent = 'Cadastrar';
+            document.getElementById('fo-cancelar').style.display = 'none';
+        }
+
+        async function salvarFornecedor() {
+            const id = document.getElementById('fo-id').value;
+            const dados = {
+                razao_social: document.getElementById('fo-razao').value,
+                nome_fantasia: document.getElementById('fo-fantasia').value || null,
+                cnpj: document.getElementById('fo-cnpj').value || null,
+                inscricao_estadual: document.getElementById('fo-ie').value || null,
+                contato: document.getElementById('fo-contato').value || null,
+                telefone: document.getElementById('fo-telefone').value || null,
+                email: document.getElementById('fo-email').value || null,
+                endereco: document.getElementById('fo-endereco').value || null,
+            };
+            const url = id ? `${base}/fornecedores/${id}` : `${base}/fornecedores`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-fornecedores');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = id ? 'Fornecedor atualizado.' : 'Fornecedor cadastrado.';
+            limparFormularioFornecedor();
+            carregarFornecedores();
         }
 
         async function carregarVendedores() {

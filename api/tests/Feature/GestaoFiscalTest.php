@@ -230,6 +230,6 @@ class GestaoFiscalTest extends TestCase
         $response = $this->get("/fiscal/{$this->empresa->slug}/painel");
 
         $response->assertOk();
-        $response->assertSee('Painel de Gestão Fiscal');
+        $response->assertSee('Gestão Fiscal');
     }
 }

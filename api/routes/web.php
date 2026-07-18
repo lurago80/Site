@@ -76,12 +76,15 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::put('/produtos/{produtoId}', [DashboardController::class, 'atualizarProduto']);
 
     Route::get('/clientes', [DashboardController::class, 'clientes']);
+    Route::post('/clientes', [DashboardController::class, 'criarCliente']);
     Route::put('/clientes/{clienteId}', [DashboardController::class, 'atualizarCliente']);
 
     Route::get('/vendedores', [DashboardController::class, 'vendedores']);
     Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);
 
     Route::get('/fornecedores', [DashboardController::class, 'fornecedores']);
+    Route::post('/fornecedores', [DashboardController::class, 'criarFornecedor']);
+    Route::put('/fornecedores/{fornecedorId}', [DashboardController::class, 'atualizarFornecedor']);
 
     Route::get('/contas-pagar', [DashboardController::class, 'contasPagar']);
     Route::post('/contas-pagar', [DashboardController::class, 'criarContaPagar']);

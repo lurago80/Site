@@ -104,7 +104,7 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            Produto::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
+            Produto::where('empresa_id', $empresaAtual->id)->with('fornecedor')->orderBy('nome')->get()
         );
     }
 
@@ -112,10 +112,15 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
+            'codigo' => ['nullable', 'string', 'max:255'],
             'descricao' => ['nullable', 'string'],
+            'categoria' => ['nullable', 'string', 'max:255'],
             'tipo' => ['required', 'in:fisico,agendamento'],
+            'unidade' => ['nullable', 'string', 'max:6'],
             'preco_venda' => ['required', 'numeric', 'min:0'],
+            'preco_custo' => ['nullable', 'numeric', 'min:0'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
+            'ativo' => ['sometimes', 'boolean'],
             'fornecedor_id' => ['nullable', 'integer'],
             'ncm' => ['nullable', 'string', 'max:8'],
             'cfop_padrao' => ['nullable', 'string', 'max:4'],
@@ -123,7 +128,11 @@ class DashboardController extends Controller
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        $produto = Produto::create($dados + ['empresa_id' => $empresaAtual->id]);
+        $produto = Produto::create($dados + [
+            'empresa_id' => $empresaAtual->id,
+            'unidade' => $dados['unidade'] ?? 'UN',
+            'ativo' => $dados['ativo'] ?? true,
+        ]);
 
         return response()->json($produto, 201);
     }
@@ -134,8 +143,15 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'nome' => ['sometimes', 'string', 'max:255'],
+            'codigo' => ['nullable', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string'],
+            'categoria' => ['nullable', 'string', 'max:255'],
+            'unidade' => ['nullable', 'string', 'max:6'],
             'preco_venda' => ['sometimes', 'numeric', 'min:0'],
+            'preco_custo' => ['nullable', 'numeric', 'min:0'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
+            'ativo' => ['sometimes', 'boolean'],
+            'fornecedor_id' => ['nullable', 'integer'],
             'ncm' => ['nullable', 'string', 'max:8'],
             'cfop_padrao' => ['nullable', 'string', 'max:4'],
         ]);
@@ -156,6 +172,36 @@ class DashboardController extends Controller
         );
     }
 
+    public function criarCliente(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'nome' => ['required', 'string', 'max:255'],
+            'cpf_cnpj' => ['nullable', 'string', 'max:18'],
+            'telefone' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'uf' => ['nullable', 'string', 'max:2'],
+            'municipio' => ['nullable', 'string', 'max:255'],
+            'codigo_ibge_municipio' => ['nullable', 'string', 'max:7'],
+            'cep' => ['nullable', 'string', 'max:9'],
+            'logradouro' => ['nullable', 'string', 'max:255'],
+            'numero' => ['nullable', 'string', 'max:20'],
+            'bairro' => ['nullable', 'string', 'max:255'],
+            'inscricao_estadual' => ['nullable', 'string', 'max:255'],
+            'consentimento_lgpd' => ['sometimes', 'boolean'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $cliente = Cliente::create($dados + [
+            'empresa_id' => $empresaAtual->id,
+            'consentimento_lgpd' => $dados['consentimento_lgpd'] ?? false,
+            'consentimento_lgpd_data' => ($dados['consentimento_lgpd'] ?? false) ? now() : null,
+            'consentimento_lgpd_versao' => ($dados['consentimento_lgpd'] ?? false) ? 'v1' : null,
+        ]);
+
+        return response()->json($cliente, 201);
+    }
+
     /**
      * NFe (modelo 55) exige destinatário com endereço completo - a
      * loja pública e o PDV só coletam nome/CPF na hora da venda, então
@@ -166,7 +212,10 @@ class DashboardController extends Controller
         $cliente = Cliente::findOrFail($clienteId);
 
         $dados = $request->validate([
+            'nome' => ['sometimes', 'string', 'max:255'],
             'cpf_cnpj' => ['nullable', 'string', 'max:18'],
+            'telefone' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
             'uf' => ['nullable', 'string', 'max:2'],
             'municipio' => ['nullable', 'string', 'max:255'],
             'codigo_ibge_municipio' => ['nullable', 'string', 'max:7'],
@@ -180,6 +229,57 @@ class DashboardController extends Controller
         $cliente->update($dados);
 
         return response()->json($cliente->fresh());
+    }
+
+    // ---- Fornecedores ----
+
+    public function fornecedores(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            Fornecedor::where('empresa_id', $empresaAtual->id)->orderBy('razao_social')->get()
+        );
+    }
+
+    public function criarFornecedor(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'razao_social' => ['required', 'string', 'max:255'],
+            'nome_fantasia' => ['nullable', 'string', 'max:255'],
+            'cnpj' => ['nullable', 'string', 'max:18'],
+            'contato' => ['nullable', 'string', 'max:255'],
+            'telefone' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'endereco' => ['nullable', 'string'],
+            'inscricao_estadual' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $fornecedor = Fornecedor::create($dados + ['empresa_id' => $empresaAtual->id]);
+
+        return response()->json($fornecedor, 201);
+    }
+
+    public function atualizarFornecedor(Request $request, string $empresa, int $fornecedorId)
+    {
+        $fornecedor = Fornecedor::findOrFail($fornecedorId);
+
+        $dados = $request->validate([
+            'razao_social' => ['sometimes', 'string', 'max:255'],
+            'nome_fantasia' => ['nullable', 'string', 'max:255'],
+            'cnpj' => ['nullable', 'string', 'max:18'],
+            'contato' => ['nullable', 'string', 'max:255'],
+            'telefone' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'endereco' => ['nullable', 'string'],
+            'inscricao_estadual' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $fornecedor->update($dados);
+
+        return response()->json($fornecedor->fresh());
     }
 
     // ---- Vendedores ----
@@ -271,15 +371,6 @@ class DashboardController extends Controller
         $conta->update(['status' => 'pago']);
 
         return response()->json($conta->fresh());
-    }
-
-    public function fornecedores(Request $request, string $empresa)
-    {
-        $empresaAtual = $request->attributes->get('empresaAtual');
-
-        return response()->json(
-            Fornecedor::where('empresa_id', $empresaAtual->id)->orderBy('razao_social')->get()
-        );
     }
 
     // ---- Usuários (apenas admin) ----

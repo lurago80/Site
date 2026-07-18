@@ -215,4 +215,137 @@ class DashboardTest extends TestCase
 
         $response->assertOk()->assertJsonCount(0);
     }
+
+    public function test_cadastra_produto_com_campos_completos(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/produtos", [
+            'codigo' => 'SKU-001',
+            'nome' => 'Produto Completo',
+            'categoria' => 'Bebidas',
+            'tipo' => 'fisico',
+            'unidade' => 'CX',
+            'preco_venda' => 30.00,
+            'preco_custo' => 18.00,
+            'estoque_atual' => 20,
+            'ncm' => '22030000',
+            'cfop_padrao' => '5102',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('codigo', 'SKU-001');
+        $response->assertJsonPath('unidade', 'CX');
+        $response->assertJsonPath('preco_custo', '18.00');
+        $response->assertJsonPath('ativo', true);
+    }
+
+    public function test_atualiza_produto_existente(): void
+    {
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Produto Original',
+            'tipo' => 'fisico', 'preco_venda' => 10,
+        ]);
+
+        $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/produtos/{$produto->id}", [
+            'nome' => 'Produto Renomeado',
+            'preco_venda' => 15,
+        ]);
+
+        $response->assertOk()->assertJsonPath('nome', 'Produto Renomeado');
+    }
+
+    public function test_cadastra_produto_vinculado_a_fornecedor(): void
+    {
+        $fornecedor = \App\Models\Fornecedor::create([
+            'empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste',
+        ]);
+
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/produtos", [
+            'nome' => 'Produto com Fornecedor',
+            'tipo' => 'fisico',
+            'preco_venda' => 10,
+            'fornecedor_id' => $fornecedor->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame($fornecedor->id, $response->json('fornecedor_id'));
+    }
+
+    public function test_cadastra_cliente_completo(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/clientes", [
+            'nome' => 'Cliente Completo',
+            'cpf_cnpj' => '111.111.111-11',
+            'telefone' => '19999999999',
+            'email' => 'cliente@teste.com',
+            'uf' => 'SP',
+            'municipio' => 'Socorro',
+            'codigo_ibge_municipio' => '3552106',
+            'cep' => '13960-000',
+            'logradouro' => 'Rua Teste',
+            'numero' => '100',
+            'bairro' => 'Centro',
+            'consentimento_lgpd' => true,
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('nome', 'Cliente Completo');
+        $response->assertJsonPath('consentimento_lgpd', true);
+        $this->assertNotNull($response->json('consentimento_lgpd_data'));
+    }
+
+    public function test_cadastra_cliente_minimo_sem_endereco(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/clientes", [
+            'nome' => 'Cliente Simples',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('consentimento_lgpd', false);
+    }
+
+    public function test_cadastra_fornecedor_completo(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/fornecedores", [
+            'razao_social' => 'Fornecedor Completo LTDA',
+            'nome_fantasia' => 'Fornecedor Fantasia',
+            'cnpj' => '11.111.111/0001-11',
+            'contato' => 'João',
+            'telefone' => '1933334444',
+            'email' => 'contato@fornecedor.com',
+            'endereco' => 'Rua dos Fornecedores, 50',
+            'inscricao_estadual' => '123456789',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('razao_social', 'Fornecedor Completo LTDA');
+    }
+
+    public function test_atualiza_fornecedor(): void
+    {
+        $fornecedor = \App\Models\Fornecedor::create([
+            'empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Original',
+        ]);
+
+        $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/fornecedores/{$fornecedor->id}", [
+            'razao_social' => 'Fornecedor Atualizado',
+            'telefone' => '1955556666',
+        ]);
+
+        $response->assertOk()->assertJsonPath('razao_social', 'Fornecedor Atualizado');
+    }
+
+    public function test_fornecedor_de_uma_empresa_nao_aparece_em_outra(): void
+    {
+        $this->asSuperAdmin();
+        $outraEmpresa = Empresa::create([
+            'razao_social' => 'Outra Empresa Fornecedor', 'cnpj' => '33.333.333/0001-33',
+            'slug' => 'outra-empresa-fornecedor', 'plano_id' => $this->empresa->plano_id, 'status' => 'ativa',
+        ]);
+        $this->asEmpresa($outraEmpresa->id);
+        \App\Models\Fornecedor::create([
+            'empresa_id' => $outraEmpresa->id, 'razao_social' => 'Fornecedor da Outra Empresa',
+        ]);
+
+        $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/fornecedores");
+
+        $response->assertOk()->assertJsonCount(0);
+    }
 }

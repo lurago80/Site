@@ -14,14 +14,14 @@
         input, select, button { font-size: 13px; padding: 8px 10px; border-radius: 4px; border: 1px solid #3e4c59; background: #323f4b; color: #e4e7eb; }
         input::placeholder { color: #9aa5b1; }
         button { cursor: pointer; }
-        button.primario { background: #f0a020; color: #17202a; border: none; font-weight: 600; }
+        button.primario { background: #6b76d6; color: #fff; border: none; font-weight: 600; }
         button.secundario { background: #616e7c; color: #fff; border: none; }
         .busca { width: 100%; margin-bottom: 12px; }
         .grid-produtos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
         .produto-btn { text-align: left; background: #2c3947; border: 1px solid #3e4c59; border-radius: 6px; padding: 10px; }
-        .produto-btn:hover { border-color: #f0a020; }
+        .produto-btn:hover { border-color: #6b76d6; }
         .produto-btn .nome { font-size: 12px; display: block; }
-        .produto-btn .preco { font-size: 13px; font-weight: 600; color: #f0a020; }
+        .produto-btn .preco { font-size: 13px; font-weight: 600; color: #6b76d6; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         td, th { padding: 6px 4px; border-bottom: 1px solid #3e4c59; }
         .totais { display:flex; justify-content:space-between; font-size: 20px; font-weight: 700; margin: 10px 0; }
@@ -36,7 +36,10 @@
 </head>
 <body>
     <div class="topo">
-        <h1>PDV — Frente de Caixa — {{ $empresaSlug }}</h1>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <img src="/images/logo.jpg" alt="Logo" style="height:26px; border-radius:3px;">
+            <h1>PDV — Frente de Caixa — {{ $empresaSlug }}</h1>
+        </div>
         <form method="POST" action="/logout">
             @csrf
             <span style="font-size:12px; color:#9aa5b1; margin-right:8px;">{{ auth()->user()->name }}</span>

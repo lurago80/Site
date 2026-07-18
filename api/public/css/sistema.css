@@ -1,0 +1,141 @@
+/*
+ * Sistema de design do sistema interno (login, dashboard, PDV, fiscal,
+ * super admin) - paleta extraída do logo da empresa (Logo/Logo_I9_01.jpg).
+ * Único ponto de verdade das cores/variáveis - as telas devem usar estas
+ * variáveis em vez de valores fixos, para manter tudo consistente.
+ */
+:root {
+    --cor-primaria: #394285;
+    --cor-primaria-escura: #262d5c;
+    --cor-primaria-clara: #eef0fa;
+    --cor-secundaria: #615a52;
+    --cor-secundaria-clara: #f3f1ef;
+
+    --cor-fundo: #f4f5f7;
+    --cor-superficie: #ffffff;
+    --cor-texto: #1f2933;
+    --cor-texto-suave: #616e7c;
+    --cor-borda: #cbd2d9;
+    --cor-borda-suave: #e4e7eb;
+
+    --cor-sucesso-bg: #d1fae5;
+    --cor-sucesso-texto: #046c4e;
+    --cor-alerta-bg: #fff3bf;
+    --cor-alerta-texto: #8a6d00;
+    --cor-perigo-bg: #ffe3e3;
+    --cor-perigo-texto: #b02525;
+
+    --raio: 8px;
+    --sombra: 0 1px 3px rgba(0, 0, 0, .08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--cor-fundo);
+    color: var(--cor-texto);
+    margin: 0;
+}
+
+/* ---- Topo com logo, usado em todas as telas do sistema interno ---- */
+.topo-sistema {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--cor-superficie);
+    padding: 10px 20px;
+    box-shadow: var(--sombra);
+    margin-bottom: 20px;
+}
+
+.topo-sistema .marca {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.topo-sistema .marca img { height: 32px; }
+
+.topo-sistema .marca .titulo {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--cor-primaria);
+}
+
+.topo-sistema .usuario {
+    font-size: 12px;
+    color: var(--cor-texto-suave);
+    margin-right: 8px;
+}
+
+/* ---- Componentes ---- */
+h1 { font-size: 20px; color: var(--cor-primaria-escura); }
+h2 { font-size: 15px; margin-top: 0; color: var(--cor-texto); }
+
+.card {
+    background: var(--cor-superficie);
+    border-radius: var(--raio);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--sombra);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--cor-borda-suave); }
+th { color: var(--cor-texto-suave); font-weight: 600; }
+
+button, input, select {
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--cor-borda);
+    font-family: inherit;
+}
+
+button { cursor: pointer; }
+
+button.btn-primario, button[type="submit"]:not(.secundario):not(.perigo) {
+    background: var(--cor-primaria);
+    color: #fff;
+    border: none;
+}
+button.btn-primario:hover { background: var(--cor-primaria-escura); }
+
+button.secundario {
+    background: var(--cor-secundaria);
+    color: #fff;
+    border: none;
+}
+
+button.perigo {
+    background: var(--cor-perigo-texto);
+    color: #fff;
+    border: none;
+}
+
+button:disabled { background: var(--cor-borda); color: #fff; cursor: not-allowed; }
+
+.linha-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+.linha-form label { display: block; font-size: 11px; color: var(--cor-texto-suave); margin-bottom: 2px; }
+
+.status { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.status-autorizada, .status-ativa, .status-em_dia, .status-pago, .status-homologada, .status-aberta {
+    background: var(--cor-sucesso-bg); color: var(--cor-sucesso-texto);
+}
+.status-contingencia, .status-suspensa, .status-atrasado, .status-em_aberto {
+    background: var(--cor-alerta-bg); color: var(--cor-alerta-texto);
+}
+.status-cancelada, .status-rejeitada, .status-cancelado {
+    background: var(--cor-perigo-bg); color: var(--cor-perigo-texto);
+}
+
+.msg { font-size: 12px; margin-top: 6px; }
+.msg.erro { color: var(--cor-perigo-texto); }
+.msg.ok { color: var(--cor-sucesso-texto); }
+
+/* ---- Sidebar (dashboard) ---- */
+.sidebar { width: 200px; background: var(--cor-primaria-escura); color: #fff; padding: 16px 0; flex-shrink: 0; }
+.sidebar .empresa { padding: 0 16px 16px; font-weight: 700; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 8px; }
+.sidebar button { display: block; width: 100%; text-align: left; background: none; border: none; color: #cbd2d9; padding: 10px 16px; font-size: 13px; }
+.sidebar button:hover, .sidebar button.ativo { background: rgba(255,255,255,.12); color: #fff; }
