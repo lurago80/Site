@@ -22,15 +22,18 @@ use Illuminate\Support\Facades\Storage;
  */
 class EmissaoFiscalService
 {
-    public function __construct(private readonly FiscalGatewayInterface $gateway) {}
+    public function __construct(
+        private readonly FiscalGatewayInterface $gateway,
+        private readonly CfopResolver $cfopResolver = new CfopResolver(),
+    ) {}
 
-    public function emitir(Venda $venda, int $modelo): DocumentoFiscal
+    public function emitir(Venda $venda, int $modelo, ?int $documentoOrigemId = null): DocumentoFiscal
     {
         if (! in_array($modelo, [55, 65], true)) {
             throw new \InvalidArgumentException('Modelo fiscal inválido: use 55 (NFe) ou 65 (NFC-e).');
         }
 
-        return DB::transaction(function () use ($venda, $modelo) {
+        return DB::transaction(function () use ($venda, $modelo, $documentoOrigemId) {
             $configFiscal = ConfigFiscal::query()
                 ->where('empresa_id', $venda->empresa_id)
                 ->lockForUpdate()
@@ -45,6 +48,7 @@ class EmissaoFiscalService
             $documento = DocumentoFiscal::create([
                 'empresa_id' => $venda->empresa_id,
                 'venda_id' => $venda->id,
+                'documento_fiscal_origem_id' => $documentoOrigemId,
                 'modelo' => $modelo,
                 'serie' => $serie,
                 'numero' => $numero,
@@ -58,7 +62,7 @@ class EmissaoFiscalService
                 ->where('empresa_id', $venda->empresa_id)
                 ->first();
 
-            $itensEmMemoria = $this->montarItensEmMemoria($venda, $documento);
+            $itensEmMemoria = $this->montarItensEmMemoria($venda, $documento, $documentoOrigemId !== null);
 
             $resultado = $this->gateway->emitir(
                 $documento,
@@ -100,6 +104,30 @@ class EmissaoFiscalService
         }
 
         return $this->emitir($venda, $modelo);
+    }
+
+    /**
+     * Emite uma NFe (modelo 55) "regularizando" uma venda já documentada
+     * por uma NFC-e - CFOP 5929 (mesmo estado) ou 6929 (interestadual),
+     * ver Fiscal\CfopResolver. Pedido do cliente em 2026-07-18: empresas
+     * que vendem via NFC-e no balcão às vezes precisam de uma NFe formal
+     * para o cliente pessoa jurídica usar na contabilidade dele.
+     */
+    public function importarVendaNfce(DocumentoFiscal $documentoNfce): DocumentoFiscal
+    {
+        if ($documentoNfce->modelo !== 65) {
+            throw new \RuntimeException('Este documento não é uma NFC-e (modelo 65).');
+        }
+
+        if ($documentoNfce->status !== 'autorizada') {
+            throw new \RuntimeException('Só é possível gerar NFe a partir de uma NFC-e autorizada.');
+        }
+
+        if ($documentoNfce->venda === null) {
+            throw new \RuntimeException('NFC-e sem venda associada.');
+        }
+
+        return $this->emitir($documentoNfce->venda, 55, $documentoNfce->id);
     }
 
     public function cancelar(DocumentoFiscal $documento, string $justificativa): DocumentoFiscal
@@ -204,14 +232,23 @@ class EmissaoFiscalService
     /**
      * @return Collection<int, DocumentoFiscalItem>
      */
-    private function montarItensEmMemoria(Venda $venda, DocumentoFiscal $documento): Collection
+    private function montarItensEmMemoria(Venda $venda, DocumentoFiscal $documento, bool $regularizacaoDeNfce): Collection
     {
-        return $venda->itens->map(function ($itemVenda) use ($venda, $documento) {
+        $ufEmpresa = $venda->empresa->uf;
+        $ufCliente = $venda->cliente?->uf ?: $ufEmpresa;
+
+        return $venda->itens->map(function ($itemVenda) use ($venda, $documento, $ufEmpresa, $ufCliente, $regularizacaoDeNfce) {
+            $cfop = $ufEmpresa
+                ? $this->cfopResolver->resolver($ufEmpresa, $ufCliente, $itemVenda->produto?->cfop_padrao, $regularizacaoDeNfce)
+                : null;
+
             return new DocumentoFiscalItem([
                 'empresa_id' => $venda->empresa_id,
                 'documento_fiscal_id' => $documento->id,
                 'item_venda_id' => $itemVenda->id,
                 'produto_id' => $itemVenda->produto_id,
+                'ncm' => $itemVenda->produto?->ncm,
+                'cfop' => $cfop,
                 'quantidade' => $itemVenda->quantidade,
                 'valor_unitario' => $itemVenda->valor_unitario,
                 'valor_total' => $itemVenda->valor_total,

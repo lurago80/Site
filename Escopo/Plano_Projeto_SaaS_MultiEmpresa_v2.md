@@ -37,14 +37,21 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 | 9 | **Painel Super Admin** (Escopo v2, seção 2.2) implementado: gestão de empresas (cadastro, suspensão/reativação), planos e assinaturas. Suspender uma empresa já bloqueia login de todos os usuários dela | ✅ Implementado e testado com dados reais |
 | 10 | **PDV (frente de caixa)** implementado: venda de produtos físicos (com baixa de estoque), venda de visita agendada com trava anti-overbooking (reaproveita o `ReservaVagaService`), comissão por vendedor, venda fiscal (emite NFC-e na hora) ou não fiscal | ✅ Implementado e testado com dados reais |
 | 11 | **Dashboard administrativo** implementado: indicadores (vagas ocupadas hoje, vendas do mês, ocupação média, comissões), agenda de visitas, produtos, clientes, vendedores, financeiro (contas a pagar/receber) e usuários (restrito a perfil admin) | ✅ Implementado e testado com dados reais |
+| 12 | **NFe (modelo 55)** implementada: destinatário completo (endereço estruturado do cliente, novo), NCM/CFOP por produto, **emissão real autorizada pela SEFAZ-SP em homologação**. Painel de gestão fiscal unificado para NFC-e e NFe: cancelar, inutilizar, reimprimir (view própria em formato DANFE), relatório e exportação com filtro por modelo | ✅ Validado com a SEFAZ real |
+| 13 | **Importar NFC-e → NFe (regularização)**: gera uma NFe formal referenciando uma venda já documentada por NFC-e, com CFOP 5929 (mesmo estado) ou 6929 (fora do estado) resolvido automaticamente pela UF do cliente x UF da empresa. **Validado com emissão real autorizada pela SEFAZ-SP** | ✅ Validado com a SEFAZ real |
 
-Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Dashboard administrativo, Painel Super Admin) e a Loja Pública estão implementadas e testadas — falta o refinamento visual (protótipos ainda usam CSS simples, sem identidade da marca) e os itens de pendência listados abaixo.
+Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Dashboard administrativo, Painel Super Admin), a Loja Pública e o módulo fiscal completo (NFC-e + NFe) estão implementados e testados — falta o refinamento visual (protótipos ainda usam CSS simples, sem identidade da marca) e os itens de pendência listados abaixo.
+
+**Achado técnico da emissão real de NFe (2026-07-18):** a SEFAZ rejeitou em sequência três pontos que só um teste real revela (documentado como lição - homologação com envio de verdade continua sendo o único jeito confiável de validar isso):
+1. `[745] NF-e sem grupo do PIS` — NFe exige os grupos PIS/COFINS por item mesmo no Simples Nacional (CST 07 - não tributado - resolve, pois o PIS/COFINS já está embutido no DAS unificado);
+2. `[232]`/`[805]` — destinatário pessoa jurídica dentro do mesmo estado sem Inscrição Estadual cadastrada: a SEFAZ-SP não aceita nem "não contribuinte" (indIEDest=9) nem "isento" (indIEDest=2) para CNPJ — **a IE do cliente PJ precisa ser real**, cadastrada no dashboard antes de emitir. Para CPF (pessoa física), indIEDest=9 funciona normalmente;
+3. `[679] Chave de Acesso referenciada com Modelo inválido` — a tag `NFref/refNFe` do NFePHP só vale para referenciar outra NFe, não uma NFC-e; removida do fluxo de regularização (o vínculo já fica registrado internamente via `documento_fiscal_origem_id` e aparece no painel);
+4. `[434] NF-e sem indicativo do intermediador` — campo novo do schema PL_010 (Reforma Tributária), `indIntermed=0` (operação sem marketplace) resolve.
 
 **Achado técnico relevante (2026-07-18):** o RLS por si só criava um paradoxo na autenticação — para descobrir a empresa de um usuário é preciso *ler* a tabela `users` por e-mail, mas o RLS bloqueia essa leitura até o tenant estar definido, e o tenant só se define depois de autenticar. Resolvido com um middleware global (`BootstrapAuthDatabaseContext`) que abre um bypass de RLS só na fase de resolução de autenticação (primeiro middleware do grupo `web`), fechado de volta ao escopo correto pelo `SetTenantContext` antes de qualquer query de negócio rodar. Esse bug só apareceu em teste manual via navegador/curl — os testes automatizados usavam `actingAs()`, que contorna a resolução real de sessão e mascarou o problema. Registrado aqui como lição: **testes automatizados com `actingAs()` não substituem um teste manual do fluxo de login real**.
 
 **Pendências conhecidas, registradas no código (`TODO`) e aqui:**
-- NCM/CFOP por produto ainda são valores fixos genéricos — falta campo próprio no cadastro de produto;
-- Emissão cobre hoje só NFC-e (modelo 65); NFe (modelo 55, com destinatário completo) não implementada;
+- Cliente pessoa jurídica sem Inscrição Estadual real cadastrada **não consegue** receber NFe dentro do mesmo estado (rejeição confirmada pela SEFAZ-SP) — o dashboard já tem campo para isso, mas depende de o operador preencher a IE de cada cliente PJ antes de emitir;
 - Só testado com Simples Nacional (CRT=1); outros regimes tributários não cobertos;
 - Tabela de `cClassTrib` do IBS/CBS usa o código padrão (000001) — precisa revisão quando a SEFAZ consolidar a tabela definitiva por segmento;
 - Sem recuperação de senha ("esqueci minha senha") nem página de erro 403 dedicada para usuário inativo/empresa suspensa (hoje volta pro login com mensagem);
@@ -193,9 +200,8 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~Painel Super Admin~~ — feito (falta cobrança automática de assinatura, ver changelog técnico);
 - ~~PDV (frente de caixa)~~ — feito;
 - ~~Dashboard administrativo~~ — feito;
+- ~~NFe modelo 55 + NCM/CFOP por produto + importar NFC-e→NFe (CFOP 5929/6929)~~ — feito;
 - **Definição da identidade visual (prioridade)** — logo, cores, fotos para aplicar às telas já funcionais (hoje usam CSS simples, sem marca);
 - Pagamento online real na loja pública (Pix/cartão) — hoje o checkout marca a venda como "pago" direto, sem gateway;
-- NCM/CFOP por produto no cadastro (hoje fixo/genérico no módulo fiscal);
-- NFe modelo 55 (com destinatário completo) — hoje só NFC-e está implementada;
 - Integração de cobrança de assinatura (Asaas/Vindi/Iugu) no painel Super Admin;
 - Notificações via WhatsApp (Z-API) — confirmação/lembrete de visita, ainda não implementado.

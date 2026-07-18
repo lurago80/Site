@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'empresa_id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'endereco',
+    'uf', 'municipio', 'codigo_ibge_municipio', 'cep', 'logradouro', 'numero', 'bairro', 'inscricao_estadual',
     'consentimento_lgpd', 'consentimento_lgpd_data', 'consentimento_lgpd_versao',
 ])]
 class Cliente extends Model

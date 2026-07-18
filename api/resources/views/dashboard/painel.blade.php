@@ -98,10 +98,12 @@
                         <div><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
                         <div><label>Preço (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:100px"></div>
                         <div><label>Estoque</label><input type="number" id="pr-estoque" style="width:80px"></div>
+                        <div><label>NCM</label><input type="text" id="pr-ncm" placeholder="8 dígitos" style="width:100px"></div>
+                        <div><label>CFOP (interno)</label><input type="text" id="pr-cfop" placeholder="ex: 5102" style="width:90px"></div>
                         <div><button class="acao" onclick="criarProduto()">Cadastrar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Nome</th><th>Tipo</th><th>Preço</th><th>Estoque</th></tr></thead>
+                        <thead><tr><th>Nome</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>NCM</th><th>CFOP</th></tr></thead>
                         <tbody id="tbody-produtos"></tbody>
                     </table>
                     <p class="msg" id="msg-produtos"></p>
@@ -110,11 +112,15 @@
 
             <section id="secao-clientes" class="secao">
                 <h1>Clientes</h1>
+                <p style="font-size:12px; color:#616e7c;">
+                    Endereço completo é obrigatório para emitir NFe (modelo 55) para o cliente - a loja pública e o PDV só coletam nome/CPF na hora da venda.
+                </p>
                 <div class="card">
                     <table>
-                        <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>E-mail</th><th>Telefone</th><th>LGPD</th></tr></thead>
+                        <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>E-mail</th><th>Telefone</th><th>Endereço</th><th>LGPD</th><th></th></tr></thead>
                         <tbody id="tbody-clientes"></tbody>
                     </table>
+                    <p class="msg" id="msg-clientes"></p>
                 </div>
             </section>
 
@@ -266,8 +272,10 @@
                     <td>${p.tipo}</td>
                     <td>R$ ${Number(p.preco_venda).toFixed(2)}</td>
                     <td>${p.estoque_atual ?? '-'}</td>
+                    <td>${p.ncm ?? '-'}</td>
+                    <td>${p.cfop_padrao ?? '-'}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="4">Nenhum produto cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="6">Nenhum produto cadastrado.</td></tr>';
         }
 
         async function criarProduto() {
@@ -276,6 +284,8 @@
                 tipo: document.getElementById('pr-tipo').value,
                 preco_venda: Number(document.getElementById('pr-preco').value),
                 estoque_atual: document.getElementById('pr-estoque').value || null,
+                ncm: document.getElementById('pr-ncm').value || null,
+                cfop_padrao: document.getElementById('pr-cfop').value || null,
             };
             const resp = await fetch(`${base}/produtos`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
@@ -294,9 +304,32 @@
                     <td>${c.cpf_cnpj ?? '-'}</td>
                     <td>${c.email ?? '-'}</td>
                     <td>${c.telefone ?? '-'}</td>
+                    <td>${c.logradouro ? `${c.logradouro}, ${c.numero} - ${c.municipio}/${c.uf}` : '<em>incompleto</em>'}</td>
                     <td>${c.consentimento_lgpd ? 'Sim' : 'Não'}</td>
+                    <td><button class="secundario" onclick="completarEnderecoCliente(${c.id})">Completar endereço</button></td>
                 </tr>
-            `).join('') || '<tr><td colspan="5">Nenhum cliente cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="7">Nenhum cliente cadastrado.</td></tr>';
+        }
+
+        async function completarEnderecoCliente(clienteId) {
+            const dados = {
+                cpf_cnpj: prompt('CPF/CNPJ do cliente:'),
+                uf: prompt('UF (ex: SP):'),
+                municipio: prompt('Município:'),
+                codigo_ibge_municipio: prompt('Código IBGE do município (7 dígitos):'),
+                cep: prompt('CEP:'),
+                logradouro: prompt('Logradouro:'),
+                numero: prompt('Número:'),
+                bairro: prompt('Bairro:'),
+            };
+            if (Object.values(dados).some(v => v === null)) return; // usuário cancelou algum prompt
+
+            const resp = await fetch(`${base}/clientes/${clienteId}`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-clientes');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Endereço atualizado.';
+            carregarClientes();
         }
 
         async function carregarVendedores() {

@@ -117,6 +117,8 @@ class DashboardController extends Controller
             'preco_venda' => ['required', 'numeric', 'min:0'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
             'fornecedor_id' => ['nullable', 'integer'],
+            'ncm' => ['nullable', 'string', 'max:8'],
+            'cfop_padrao' => ['nullable', 'string', 'max:4'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -134,6 +136,8 @@ class DashboardController extends Controller
             'nome' => ['sometimes', 'string', 'max:255'],
             'preco_venda' => ['sometimes', 'numeric', 'min:0'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
+            'ncm' => ['nullable', 'string', 'max:8'],
+            'cfop_padrao' => ['nullable', 'string', 'max:4'],
         ]);
 
         $produto->update($dados);
@@ -150,6 +154,32 @@ class DashboardController extends Controller
         return response()->json(
             Cliente::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
         );
+    }
+
+    /**
+     * NFe (modelo 55) exige destinatário com endereço completo - a
+     * loja pública e o PDV só coletam nome/CPF na hora da venda, então
+     * o dashboard precisa permitir completar isso depois.
+     */
+    public function atualizarCliente(Request $request, string $empresa, int $clienteId)
+    {
+        $cliente = Cliente::findOrFail($clienteId);
+
+        $dados = $request->validate([
+            'cpf_cnpj' => ['nullable', 'string', 'max:18'],
+            'uf' => ['nullable', 'string', 'max:2'],
+            'municipio' => ['nullable', 'string', 'max:255'],
+            'codigo_ibge_municipio' => ['nullable', 'string', 'max:7'],
+            'cep' => ['nullable', 'string', 'max:9'],
+            'logradouro' => ['nullable', 'string', 'max:255'],
+            'numero' => ['nullable', 'string', 'max:20'],
+            'bairro' => ['nullable', 'string', 'max:255'],
+            'inscricao_estadual' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $cliente->update($dados);
+
+        return response()->json($cliente->fresh());
     }
 
     // ---- Vendedores ----

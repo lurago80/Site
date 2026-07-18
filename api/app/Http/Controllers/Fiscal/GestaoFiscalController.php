@@ -13,8 +13,13 @@ use Illuminate\Support\Facades\Response;
 
 /**
  * Painel de gestão fiscal: cancelamento, inutilização de numeração,
- * reimpressão, importação de venda não fiscal, relatórios e exportação
- * de XMLs/planilha para o contador.
+ * reimpressão, importação de venda não fiscal (ou de NFC-e para NFe),
+ * relatórios e exportação de XMLs/planilha para o contador.
+ *
+ * Cobre NFC-e (modelo 65) e NFe (modelo 55) na mesma tela/mesmas rotas -
+ * a maioria das ações é agnóstica a modelo (cancelar, inutilizar,
+ * reimprimir, exportar); só a importação e o relatório aceitam um
+ * filtro/parâmetro `modelo` explícito.
  *
  * Protegido por login (middleware 'auth', ver routes/web.php e
  * App\Http\Controllers\Auth\LoginController) - a empresa do contexto
@@ -33,6 +38,7 @@ class GestaoFiscalController extends Controller
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
             'status' => ['nullable', 'string'],
+            'modelo' => ['nullable', 'integer', 'in:55,65'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -42,6 +48,7 @@ class GestaoFiscalController extends Controller
             $filtros['data_inicio'] ?? null,
             $filtros['data_fim'] ?? null,
             $filtros['status'] ?? null,
+            $filtros['modelo'] ?? null,
         );
 
         return response()->json($documentos->map(fn (DocumentoFiscal $d) => [
@@ -52,6 +59,7 @@ class GestaoFiscalController extends Controller
             'status' => $d->status,
             'chave_acesso' => $d->chave_acesso,
             'total' => $d->total,
+            'documento_fiscal_origem_id' => $d->documento_fiscal_origem_id,
             'created_at' => $d->created_at,
         ]));
     }
@@ -67,6 +75,34 @@ class GestaoFiscalController extends Controller
             ->get();
 
         return response()->json($vendas);
+    }
+
+    /**
+     * NFC-e autorizadas que ainda não têm uma NFe de regularização
+     * vinculada - candidatas a "importar para NFe" (CFOP 5929/6929).
+     */
+    public function nfcesDisponiveisParaNfe(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $documentos = DocumentoFiscal::where('empresa_id', $empresaAtual->id)
+            ->where('modelo', 65)
+            ->where('status', 'autorizada')
+            ->whereDoesntHave('regularizacoes')
+            ->with('venda.cliente')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json($documentos->map(fn (DocumentoFiscal $d) => [
+            'id' => $d->id,
+            'numero' => $d->numero,
+            'total' => $d->total,
+            'created_at' => $d->created_at,
+            'cliente' => $d->venda?->cliente?->nome,
+            'cliente_completo' => $d->venda?->cliente !== null
+                && ! empty($d->venda->cliente->uf)
+                && ! empty($d->venda->cliente->logradouro),
+        ]));
     }
 
     public function cancelar(Request $request, string $empresa, int $documentoId)
@@ -131,11 +167,31 @@ class GestaoFiscalController extends Controller
         return response()->json($documento, 201);
     }
 
+    /**
+     * Gera uma NFe (modelo 55) a partir de uma NFC-e já autorizada,
+     * usando CFOP 5929 (mesmo estado) ou 6929 (interestadual) - ver
+     * Fiscal\CfopResolver e EmissaoFiscalService::importarVendaNfce().
+     */
+    public function importarVendaNfce(Request $request, string $empresa, int $documentoNfceId)
+    {
+        $documentoNfce = DocumentoFiscal::findOrFail($documentoNfceId);
+
+        try {
+            $documento = $this->emissaoFiscalService->importarVendaNfce($documentoNfce);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($documento, 201);
+    }
+
     public function reimprimir(Request $request, string $empresa, int $documentoId)
     {
         $documento = DocumentoFiscal::with(['itens.produto', 'venda.cliente', 'empresa'])->findOrFail($documentoId);
 
-        return view('fiscal.cupom', ['documento' => $documento]);
+        $view = $documento->modelo === 55 ? 'fiscal.nfe' : 'fiscal.cupom';
+
+        return view($view, ['documento' => $documento]);
     }
 
     public function exportarXmls(Request $request, string $empresa)
@@ -143,6 +199,7 @@ class GestaoFiscalController extends Controller
         $filtros = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'modelo' => ['nullable', 'integer', 'in:55,65'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -151,6 +208,7 @@ class GestaoFiscalController extends Controller
             $empresaAtual,
             $filtros['data_inicio'] ?? null,
             $filtros['data_fim'] ?? null,
+            $filtros['modelo'] ?? null,
         );
 
         return Response::download($caminho)->deleteFileAfterSend();
@@ -161,6 +219,7 @@ class GestaoFiscalController extends Controller
         $filtros = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'modelo' => ['nullable', 'integer', 'in:55,65'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -169,6 +228,7 @@ class GestaoFiscalController extends Controller
             $empresaAtual,
             $filtros['data_inicio'] ?? null,
             $filtros['data_fim'] ?? null,
+            $filtros['modelo'] ?? null,
         );
 
         return Response::download($caminho)->deleteFileAfterSend();

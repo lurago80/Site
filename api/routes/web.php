@@ -34,9 +34,11 @@ Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(functio
 
     Route::get('/relatorio', [GestaoFiscalController::class, 'relatorio']);
     Route::get('/vendas-nao-fiscais', [GestaoFiscalController::class, 'vendasNaoFiscais']);
+    Route::get('/nfces-disponiveis-para-nfe', [GestaoFiscalController::class, 'nfcesDisponiveisParaNfe']);
     Route::post('/documentos/{documentoId}/cancelar', [GestaoFiscalController::class, 'cancelar']);
     Route::post('/inutilizacoes', [GestaoFiscalController::class, 'inutilizar']);
     Route::post('/vendas/{vendaId}/importar', [GestaoFiscalController::class, 'importarVendaNaoFiscal']);
+    Route::post('/nfces/{documentoNfceId}/importar-para-nfe', [GestaoFiscalController::class, 'importarVendaNfce']);
     Route::get('/documentos/{documentoId}/reimprimir', [GestaoFiscalController::class, 'reimprimir']);
     Route::get('/exportar/xmls', [GestaoFiscalController::class, 'exportarXmls']);
     Route::get('/exportar/relatorio-contador', [GestaoFiscalController::class, 'exportarRelatorioContador']);
@@ -74,6 +76,7 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::put('/produtos/{produtoId}', [DashboardController::class, 'atualizarProduto']);
 
     Route::get('/clientes', [DashboardController::class, 'clientes']);
+    Route::put('/clientes/{clienteId}', [DashboardController::class, 'atualizarCliente']);
 
     Route::get('/vendedores', [DashboardController::class, 'vendedores']);
     Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);

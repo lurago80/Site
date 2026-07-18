@@ -6,7 +6,10 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['empresa_id', 'fornecedor_id', 'nome', 'descricao', 'tipo', 'preco_venda', 'estoque_atual'])]
+#[Fillable([
+    'empresa_id', 'fornecedor_id', 'nome', 'descricao', 'tipo', 'preco_venda', 'estoque_atual',
+    'ncm', 'cfop_padrao',
+])]
 class Produto extends Model
 {
     protected function casts(): array

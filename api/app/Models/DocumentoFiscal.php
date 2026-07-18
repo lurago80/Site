@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'empresa_id', 'venda_id', 'modelo', 'serie', 'numero', 'chave_acesso',
+    'empresa_id', 'venda_id', 'documento_fiscal_origem_id', 'modelo', 'serie', 'numero', 'chave_acesso',
     'ambiente', 'status', 'protocolo_autorizacao', 'natureza_operacao', 'cfop_geral',
     'valor_produtos', 'desconto', 'frete', 'total', 'valor_icms', 'valor_pis', 'valor_cofins',
     'xml_path', 'danfe_path', 'motivo_cancelamento', 'data_cancelamento',
@@ -44,5 +44,15 @@ class DocumentoFiscal extends Model
     public function itens(): HasMany
     {
         return $this->hasMany(DocumentoFiscalItem::class);
+    }
+
+    public function documentoOrigem(): BelongsTo
+    {
+        return $this->belongsTo(DocumentoFiscal::class, 'documento_fiscal_origem_id');
+    }
+
+    public function regularizacoes(): HasMany
+    {
+        return $this->hasMany(DocumentoFiscal::class, 'documento_fiscal_origem_id');
     }
 }

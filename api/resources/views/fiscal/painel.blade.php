@@ -43,6 +43,13 @@
     <div class="card">
         <h2>Documentos fiscais</h2>
         <div class="linha-form">
+            <div><label>Modelo</label>
+                <select id="f-modelo">
+                    <option value="">Todos</option>
+                    <option value="65">NFC-e</option>
+                    <option value="55">NFe</option>
+                </select>
+            </div>
             <div><label>Data início</label><input type="date" id="f-data-inicio"></div>
             <div><label>Data fim</label><input type="date" id="f-data-fim"></div>
             <div>
@@ -69,12 +76,31 @@
     </div>
 
     <div class="card">
-        <h2>Importar venda não fiscal → emitir NFC-e</h2>
+        <h2>Importar venda não fiscal → emitir documento</h2>
+        <div class="linha-form">
+            <div><label>Emitir como</label>
+                <select id="imp-modelo"><option value="65">NFC-e (65)</option><option value="55">NFe (55)</option></select>
+            </div>
+        </div>
         <table>
             <thead><tr><th>Venda</th><th>Cliente</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
             <tbody id="tbody-vendas"><tr><td colspan="5">Carregando...</td></tr></tbody>
         </table>
         <p class="msg" id="msg-importar"></p>
+    </div>
+
+    <div class="card">
+        <h2>Importar NFC-e → NFe (regularização)</h2>
+        <p style="font-size:12px; color:#616e7c; margin-top:0;">
+            Gera uma NFe formal referenciando uma NFC-e já autorizada, com CFOP 5929 (mesmo estado)
+            ou 6929 (fora do estado) - útil quando o cliente pessoa jurídica precisa de NFe para a contabilidade dele.
+            Exige que o cliente da venda tenha endereço completo cadastrado.
+        </p>
+        <table>
+            <thead><tr><th>NFC-e</th><th>Cliente</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+            <tbody id="tbody-nfces-disponiveis"><tr><td colspan="5">Carregando...</td></tr></tbody>
+        </table>
+        <p class="msg" id="msg-importar-nfe"></p>
     </div>
 
     <div class="card">
@@ -101,6 +127,7 @@
 
         async function carregarRelatorio() {
             const params = new URLSearchParams({
+                modelo: document.getElementById('f-modelo').value,
                 data_inicio: document.getElementById('f-data-inicio').value,
                 data_fim: document.getElementById('f-data-fim').value,
                 status: document.getElementById('f-status').value,
@@ -146,6 +173,7 @@
 
         function exportar(tipo) {
             const params = new URLSearchParams({
+                modelo: document.getElementById('f-modelo').value,
                 data_inicio: document.getElementById('f-data-inicio').value,
                 data_fim: document.getElementById('f-data-fim').value,
             });
@@ -169,16 +197,46 @@
         }
 
         async function importar(vendaId) {
+            const modelo = Number(document.getElementById('imp-modelo').value);
             const resp = await fetch(`${apiBase}/vendas/${vendaId}/importar`, {
                 method: 'POST',
                 headers: headersJson,
-                body: JSON.stringify({ modelo: 65 }),
+                body: JSON.stringify({ modelo }),
             });
             const dados = await resp.json();
             const msg = document.getElementById('msg-importar');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
-            msg.className = 'msg ok'; msg.textContent = `NFC-e emitida: status ${dados.status}.`;
+            msg.className = 'msg ok'; msg.textContent = `${modelo === 55 ? 'NFe' : 'NFC-e'} emitida: status ${dados.status}.`;
             carregarVendasNaoFiscais();
+            carregarRelatorio();
+        }
+
+        async function carregarNfcesDisponiveis() {
+            const resp = await fetch(`${apiBase}/nfces-disponiveis-para-nfe`);
+            const lista = await resp.json();
+            const tbody = document.getElementById('tbody-nfces-disponiveis');
+            if (!lista.length) { tbody.innerHTML = '<tr><td colspan="5">Nenhuma NFC-e disponível para importar.</td></tr>'; return; }
+            tbody.innerHTML = lista.map(d => `
+                <tr>
+                    <td>#${d.numero}</td>
+                    <td>${d.cliente || 'Não identificado'}${d.cliente_completo ? '' : ' <span style="color:#c81e1e;">(endereço incompleto)</span>'}</td>
+                    <td>R$ ${Number(d.total).toFixed(2)}</td>
+                    <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
+                    <td><button onclick="importarNfce(${d.id})" ${d.cliente_completo ? '' : 'disabled'}>Gerar NFe</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function importarNfce(documentoNfceId) {
+            const resp = await fetch(`${apiBase}/nfces/${documentoNfceId}/importar-para-nfe`, {
+                method: 'POST',
+                headers: headersJson,
+            });
+            const dados = await resp.json();
+            const msg = document.getElementById('msg-importar-nfe');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
+            msg.className = 'msg ok'; msg.textContent = `NFe emitida: status ${dados.status}.`;
+            carregarNfcesDisponiveis();
             carregarRelatorio();
         }
 
@@ -203,6 +261,7 @@
 
         carregarRelatorio();
         carregarVendasNaoFiscais();
+        carregarNfcesDisponiveis();
     </script>
 </body>
 </html>
