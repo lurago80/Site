@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Fiscal\GestaoFiscalController;
+use App\Http\Controllers\Pdv\PdvController;
 use App\Http\Controllers\SuperAdmin\SuperAdminController;
 use Illuminate\Support\Facades\Route;
 
@@ -38,6 +39,20 @@ Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(functio
     Route::get('/documentos/{documentoId}/reimprimir', [GestaoFiscalController::class, 'reimprimir']);
     Route::get('/exportar/xmls', [GestaoFiscalController::class, 'exportarXmls']);
     Route::get('/exportar/relatorio-contador', [GestaoFiscalController::class, 'exportarRelatorioContador']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| PDV (frente de caixa)
+|--------------------------------------------------------------------------
+| O tenant vem sempre do usuário autenticado - mesmo padrão do painel fiscal.
+*/
+Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function () {
+    Route::get('/caixa', [PdvController::class, 'caixa']);
+    Route::get('/produtos', [PdvController::class, 'produtos']);
+    Route::get('/agenda', [PdvController::class, 'agenda']);
+    Route::get('/vendedores', [PdvController::class, 'vendedores']);
+    Route::post('/vendas', [PdvController::class, 'finalizar']);
 });
 
 /*

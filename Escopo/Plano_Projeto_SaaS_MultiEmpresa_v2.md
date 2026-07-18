@@ -35,6 +35,7 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 | 7 | Painel de gestão fiscal: cancelamento de NFC-e, inutilização de numeração, reimpressão de cupom, importação de venda não fiscal → NFC-e, relatórios e exportação (XMLs + planilha para o contador) | ✅ Implementado e testado (cancelamento validado contra a SEFAZ real) |
 | 8 | **Login único do sistema interno** (Escopo v2, seção 2.2) implementado: e-mail/senha identifica a empresa e o nível de acesso automaticamente, sessão protege o painel de gestão fiscal | ✅ Implementado e testado |
 | 9 | **Painel Super Admin** (Escopo v2, seção 2.2) implementado: gestão de empresas (cadastro, suspensão/reativação), planos e assinaturas. Suspender uma empresa já bloqueia login de todos os usuários dela | ✅ Implementado e testado com dados reais |
+| 10 | **PDV (frente de caixa)** implementado: venda de produtos físicos (com baixa de estoque), venda de visita agendada com trava anti-overbooking (reaproveita o `ReservaVagaService`), comissão por vendedor, venda fiscal (emite NFC-e na hora) ou não fiscal | ✅ Implementado e testado com dados reais |
 
 **Achado técnico relevante (2026-07-18):** o RLS por si só criava um paradoxo na autenticação — para descobrir a empresa de um usuário é preciso *ler* a tabela `users` por e-mail, mas o RLS bloqueia essa leitura até o tenant estar definido, e o tenant só se define depois de autenticar. Resolvido com um middleware global (`BootstrapAuthDatabaseContext`) que abre um bypass de RLS só na fase de resolução de autenticação (primeiro middleware do grupo `web`), fechado de volta ao escopo correto pelo `SetTenantContext` antes de qualquer query de negócio rodar. Esse bug só apareceu em teste manual via navegador/curl — os testes automatizados usavam `actingAs()`, que contorna a resolução real de sessão e mascarou o problema. Registrado aqui como lição: **testes automatizados com `actingAs()` não substituem um teste manual do fluxo de login real**.
 
@@ -187,7 +188,8 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~Módulo fiscal validado com a SEFAZ real~~ — feito;
 - ~~Login do sistema interno~~ — feito;
 - ~~Painel Super Admin~~ — feito (falta cobrança automática de assinatura, ver changelog técnico);
-- **PDV / Dashboard administrativo (prioridade)** — próximos módulos do sistema interno: frente de caixa e cadastros/agenda/financeiro/relatórios da empresa;
+- ~~PDV (frente de caixa)~~ — feito;
+- **Dashboard administrativo (prioridade)** — cadastros, agenda, financeiro e relatórios da empresa (Escopo v2, seção 2.2), próximo módulo do sistema interno;
 - Definição da identidade visual (logo, cores, fotos) para aplicar aos protótipos;
 - NCM/CFOP por produto no cadastro (hoje fixo/genérico no módulo fiscal);
 - NFe modelo 55 (com destinatário completo) — hoje só NFC-e está implementada;
