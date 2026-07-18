@@ -66,7 +66,7 @@ class LoginController extends Controller
         $user = Auth::user();
 
         if ($user->isSuperAdmin()) {
-            return redirect('/login')->withErrors(['email' => 'Painel do Super Admin ainda não implementado.']);
+            return redirect('/superadmin/painel');
         }
 
         return redirect("/fiscal/{$user->empresa->slug}/painel");

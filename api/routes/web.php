@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Fiscal\GestaoFiscalController;
+use App\Http\Controllers\SuperAdmin\SuperAdminController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -37,4 +38,21 @@ Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(functio
     Route::get('/documentos/{documentoId}/reimprimir', [GestaoFiscalController::class, 'reimprimir']);
     Route::get('/exportar/xmls', [GestaoFiscalController::class, 'exportarXmls']);
     Route::get('/exportar/relatorio-contador', [GestaoFiscalController::class, 'exportarRelatorioContador']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Painel Super Admin (uso interno da equipe da plataforma)
+|--------------------------------------------------------------------------
+| Restrito a usuários com perfil super_admin - ver EnsureSuperAdmin.
+*/
+Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->group(function () {
+    Route::get('/painel', [SuperAdminController::class, 'painel']);
+    Route::get('/empresas', [SuperAdminController::class, 'empresas']);
+    Route::post('/empresas', [SuperAdminController::class, 'criarEmpresa']);
+    Route::put('/empresas/{empresaId}', [SuperAdminController::class, 'atualizarEmpresa']);
+    Route::get('/planos', [SuperAdminController::class, 'planos']);
+    Route::post('/planos', [SuperAdminController::class, 'criarPlano']);
+    Route::get('/assinaturas', [SuperAdminController::class, 'assinaturas']);
+    Route::post('/assinaturas', [SuperAdminController::class, 'criarAssinatura']);
 });

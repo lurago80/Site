@@ -34,6 +34,7 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 | 6 | Senha do certificado digital armazenada com criptografia real (cast `encrypted` do Laravel) | ✅ Implementado |
 | 7 | Painel de gestão fiscal: cancelamento de NFC-e, inutilização de numeração, reimpressão de cupom, importação de venda não fiscal → NFC-e, relatórios e exportação (XMLs + planilha para o contador) | ✅ Implementado e testado (cancelamento validado contra a SEFAZ real) |
 | 8 | **Login único do sistema interno** (Escopo v2, seção 2.2) implementado: e-mail/senha identifica a empresa e o nível de acesso automaticamente, sessão protege o painel de gestão fiscal | ✅ Implementado e testado |
+| 9 | **Painel Super Admin** (Escopo v2, seção 2.2) implementado: gestão de empresas (cadastro, suspensão/reativação), planos e assinaturas. Suspender uma empresa já bloqueia login de todos os usuários dela | ✅ Implementado e testado com dados reais |
 
 **Achado técnico relevante (2026-07-18):** o RLS por si só criava um paradoxo na autenticação — para descobrir a empresa de um usuário é preciso *ler* a tabela `users` por e-mail, mas o RLS bloqueia essa leitura até o tenant estar definido, e o tenant só se define depois de autenticar. Resolvido com um middleware global (`BootstrapAuthDatabaseContext`) que abre um bypass de RLS só na fase de resolução de autenticação (primeiro middleware do grupo `web`), fechado de volta ao escopo correto pelo `SetTenantContext` antes de qualquer query de negócio rodar. Esse bug só apareceu em teste manual via navegador/curl — os testes automatizados usavam `actingAs()`, que contorna a resolução real de sessão e mascarou o problema. Registrado aqui como lição: **testes automatizados com `actingAs()` não substituem um teste manual do fluxo de login real**.
 
@@ -42,8 +43,8 @@ Registra o que foi efetivamente construído e validado desde o alinhamento acima
 - Emissão cobre hoje só NFC-e (modelo 65); NFe (modelo 55, com destinatário completo) não implementada;
 - Só testado com Simples Nacional (CRT=1); outros regimes tributários não cobertos;
 - Tabela de `cClassTrib` do IBS/CBS usa o código padrão (000001) — precisa revisão quando a SEFAZ consolidar a tabela definitiva por segmento;
-- Painel do Super Admin (gestão de empresas/planos/faturamento, ver seção 2.2) ainda não implementado — usuário `super_admin` autentica mas não tem para onde ir;
-- Sem recuperação de senha ("esqueci minha senha") nem página de erro 403 dedicada para usuário inativo/empresa suspensa (hoje volta pro login com mensagem).
+- Sem recuperação de senha ("esqueci minha senha") nem página de erro 403 dedicada para usuário inativo/empresa suspensa (hoje volta pro login com mensagem);
+- Painel Super Admin ainda não tem cobrança de assinatura automática (Asaas/Vindi/Iugu) nem edição de plano/reassociação de empresa depois de criada — só cadastro inicial e mudança de status.
 
 ---
 
@@ -185,8 +186,9 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~Estruturação do projeto Laravel~~ — feito;
 - ~~Módulo fiscal validado com a SEFAZ real~~ — feito;
 - ~~Login do sistema interno~~ — feito;
-- **Painel Super Admin (prioridade)** — hoje um usuário `super_admin` consegue logar mas não tem painel para gerir empresas/planos/faturamento;
+- ~~Painel Super Admin~~ — feito (falta cobrança automática de assinatura, ver changelog técnico);
+- **PDV / Dashboard administrativo (prioridade)** — próximos módulos do sistema interno: frente de caixa e cadastros/agenda/financeiro/relatórios da empresa;
 - Definição da identidade visual (logo, cores, fotos) para aplicar aos protótipos;
 - NCM/CFOP por produto no cadastro (hoje fixo/genérico no módulo fiscal);
 - NFe modelo 55 (com destinatário completo) — hoje só NFC-e está implementada;
-- Desenvolvimento incremental dos módulos restantes (PDV, dashboard administrativo, painel Super Admin), com validação a cada entrega.
+- Integração de cobrança de assinatura (Asaas/Vindi/Iugu) no painel Super Admin.

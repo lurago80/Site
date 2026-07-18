@@ -2,6 +2,7 @@
 
 use App\Exceptions\VagasIndisponiveisException;
 use App\Http\Middleware\BootstrapAuthDatabaseContext;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\SetTenantContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'tenant' => SetTenantContext::class,
+            'super_admin' => EnsureSuperAdmin::class,
         ]);
 
         // Precisa rodar antes até do 'auth' padrão do Laravel - ver

@@ -29,4 +29,9 @@ class Empresa extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    public function assinaturas(): HasMany
+    {
+        return $this->hasMany(Assinatura::class);
+    }
 }
