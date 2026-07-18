@@ -7,6 +7,7 @@ use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
 use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
+use App\Services\Fiscal\Dto\ResultadoEventoFiscal;
 use Illuminate\Support\Collection;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Make;
@@ -59,6 +60,93 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $respostaEnvio = $tools->sefazEnviaLote([$xmlAssinado], $idLote, indSinc: 1);
 
         return $this->interpretarResposta($respostaEnvio, $xmlAssinado);
+    }
+
+    public function cancelar(
+        DocumentoFiscal $documento,
+        string $justificativa,
+        Empresa $empresa,
+        ConfigFiscal $configFiscal,
+        ?CertificadoDigital $certificado,
+    ): ResultadoEventoFiscal {
+        if ($certificado === null) {
+            throw new \RuntimeException("Empresa {$empresa->slug} não possui certificado digital cadastrado.");
+        }
+
+        if (empty($documento->chave_acesso) || empty($documento->protocolo_autorizacao)) {
+            throw new \RuntimeException('Documento sem chave de acesso/protocolo - não é possível cancelar.');
+        }
+
+        $tools = $this->montarTools($empresa, $configFiscal, $certificado);
+        $tools->model($documento->modelo);
+
+        $resposta = $tools->sefazCancela(
+            $documento->chave_acesso,
+            $justificativa,
+            $documento->protocolo_autorizacao,
+        );
+
+        // cStat 135 = homologado dentro do prazo, 155 = homologado fora do prazo
+        return $this->interpretarEvento($resposta, ['135', '155']);
+    }
+
+    public function inutilizar(
+        Empresa $empresa,
+        ConfigFiscal $configFiscal,
+        ?CertificadoDigital $certificado,
+        int $modelo,
+        string $serie,
+        int $numeroInicial,
+        int $numeroFinal,
+        string $justificativa,
+    ): ResultadoEventoFiscal {
+        if ($certificado === null) {
+            throw new \RuntimeException("Empresa {$empresa->slug} não possui certificado digital cadastrado.");
+        }
+
+        $tools = $this->montarTools($empresa, $configFiscal, $certificado);
+        $tools->model($modelo);
+
+        $resposta = $tools->sefazInutiliza((int) $serie, $numeroInicial, $numeroFinal, $justificativa);
+
+        // cStat 102 = inutilização homologada
+        return $this->interpretarEvento($resposta, ['102']);
+    }
+
+    /**
+     * @param  string[]  $codigosSucesso
+     */
+    private function interpretarEvento(string $respostaSoap, array $codigosSucesso): ResultadoEventoFiscal
+    {
+        $limpo = preg_replace('/(<\/?)([a-zA-Z0-9]+:)/', '$1', $respostaSoap);
+        $limpo = preg_replace('/\sxmlns(:\w+)?="[^"]*"/', '', $limpo);
+        $doc = simplexml_load_string($limpo);
+
+        if ($doc === false) {
+            throw new \RuntimeException('Resposta da SEFAZ não pôde ser interpretada: '.$respostaSoap);
+        }
+
+        // infEvento (cancelamento) ou infInut (inutilização) - ambos têm cStat/xMotivo/nProt
+        $noh = $doc->xpath('//infEvento')[0] ?? $doc->xpath('//infInut')[0] ?? null;
+
+        if ($noh === null) {
+            $cStat = (string) ($doc->xpath('//cStat')[0] ?? '');
+            $xMotivo = (string) ($doc->xpath('//xMotivo')[0] ?? '');
+
+            return new ResultadoEventoFiscal(status: 'rejeitada', protocolo: null, motivo: "[{$cStat}] {$xMotivo}");
+        }
+
+        $cStat = (string) $noh->cStat;
+        $xMotivo = (string) $noh->xMotivo;
+        $protocolo = (string) $noh->nProt;
+
+        $sucesso = in_array($cStat, $codigosSucesso, true);
+
+        return new ResultadoEventoFiscal(
+            status: $sucesso ? 'homologada' : 'rejeitada',
+            protocolo: $protocolo !== '' ? $protocolo : null,
+            motivo: $sucesso ? null : "[{$cStat}] {$xMotivo}",
+        );
     }
 
     private function montarTools(Empresa $empresa, ConfigFiscal $configFiscal, CertificadoDigital $certificado): Tools

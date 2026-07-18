@@ -9,6 +9,7 @@ use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\DocumentoFiscal;
 use App\Models\DocumentoFiscalItem;
+use App\Models\NumeracaoInutilizada;
 use App\Models\User;
 use App\Models\Venda;
 use App\Observers\AuditLogObserver;
@@ -36,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
         ConfigFiscal::class,
         DocumentoFiscal::class,
         DocumentoFiscalItem::class,
+        NumeracaoInutilizada::class,
     ];
 
     public function register(): void

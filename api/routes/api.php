@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Fiscal\GestaoFiscalController;
 use App\Http\Controllers\Loja\CatalogoController;
 use App\Http\Controllers\Loja\CheckoutController;
 use App\Http\Controllers\Loja\ReservaController;
@@ -29,4 +30,19 @@ Route::middleware(['tenant'])->prefix('loja/{empresa}')->group(function () {
     Route::get('/agenda', [CatalogoController::class, 'agenda']);
     Route::post('/reservas', [ReservaController::class, 'store']);
     Route::post('/checkout', [CheckoutController::class, 'store']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Gestão fiscal (ações mutáveis do painel - ver routes/web.php para as
+| páginas navegáveis: painel, reimpressão e downloads)
+|--------------------------------------------------------------------------
+| TODO: hoje só protegido por 'tenant' (slug na URL) - sem login ainda.
+*/
+Route::middleware(['tenant'])->prefix('fiscal/{empresa}')->group(function () {
+    Route::get('/relatorio', [GestaoFiscalController::class, 'relatorio']);
+    Route::get('/vendas-nao-fiscais', [GestaoFiscalController::class, 'vendasNaoFiscais']);
+    Route::post('/documentos/{documentoId}/cancelar', [GestaoFiscalController::class, 'cancelar']);
+    Route::post('/inutilizacoes', [GestaoFiscalController::class, 'inutilizar']);
+    Route::post('/vendas/{vendaId}/importar', [GestaoFiscalController::class, 'importarVendaNaoFiscal']);
 });

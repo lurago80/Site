@@ -7,6 +7,7 @@ use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
 use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
+use App\Services\Fiscal\Dto\ResultadoEventoFiscal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -43,6 +44,35 @@ class SimuladoFiscalGateway implements FiscalGatewayInterface
             protocoloAutorizacao: 'SIMULADO-'.Str::random(15),
             xml: null,
             motivoRejeicao: null,
+        );
+    }
+
+    public function cancelar(
+        DocumentoFiscal $documento,
+        string $justificativa,
+        Empresa $empresa,
+        ConfigFiscal $configFiscal,
+        ?CertificadoDigital $certificado,
+    ): ResultadoEventoFiscal {
+        return new ResultadoEventoFiscal(
+            status: 'homologada',
+            protocolo: 'SIMULADO-CANC-'.Str::random(15),
+        );
+    }
+
+    public function inutilizar(
+        Empresa $empresa,
+        ConfigFiscal $configFiscal,
+        ?CertificadoDigital $certificado,
+        int $modelo,
+        string $serie,
+        int $numeroInicial,
+        int $numeroFinal,
+        string $justificativa,
+    ): ResultadoEventoFiscal {
+        return new ResultadoEventoFiscal(
+            status: 'homologada',
+            protocolo: 'SIMULADO-INUT-'.Str::random(15),
         );
     }
 }

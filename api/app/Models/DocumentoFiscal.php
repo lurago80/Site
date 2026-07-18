@@ -36,6 +36,11 @@ class DocumentoFiscal extends Model
         return $this->belongsTo(Venda::class);
     }
 
+    public function empresa(): BelongsTo
+    {
+        return $this->belongsTo(Empresa::class);
+    }
+
     public function itens(): HasMany
     {
         return $this->hasMany(DocumentoFiscalItem::class);

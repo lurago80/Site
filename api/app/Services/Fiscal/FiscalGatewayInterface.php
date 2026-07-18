@@ -7,6 +7,7 @@ use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
 use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
+use App\Services\Fiscal\Dto\ResultadoEventoFiscal;
 use Illuminate\Support\Collection;
 
 /**
@@ -28,4 +29,23 @@ interface FiscalGatewayInterface
         ConfigFiscal $configFiscal,
         ?CertificadoDigital $certificado,
     ): ResultadoEmissaoFiscal;
+
+    public function cancelar(
+        DocumentoFiscal $documento,
+        string $justificativa,
+        Empresa $empresa,
+        ConfigFiscal $configFiscal,
+        ?CertificadoDigital $certificado,
+    ): ResultadoEventoFiscal;
+
+    public function inutilizar(
+        Empresa $empresa,
+        ConfigFiscal $configFiscal,
+        ?CertificadoDigital $certificado,
+        int $modelo,
+        string $serie,
+        int $numeroInicial,
+        int $numeroFinal,
+        string $justificativa,
+    ): ResultadoEventoFiscal;
 }

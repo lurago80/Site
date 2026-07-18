@@ -33,4 +33,9 @@ class DocumentoFiscalItem extends Model
     {
         return $this->belongsTo(DocumentoFiscal::class);
     }
+
+    public function produto(): BelongsTo
+    {
+        return $this->belongsTo(Produto::class);
+    }
 }

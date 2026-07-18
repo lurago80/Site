@@ -6,14 +6,16 @@ use App\Models\CertificadoDigital;
 use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\DocumentoFiscalItem;
+use App\Models\NumeracaoInutilizada;
 use App\Models\Venda;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
- * Orquestra a emissão de um documento fiscal (NFe/NFC-e) a partir de
- * uma venda: reserva o próximo número da série (com lock, mesmo
- * princípio anti-concorrência do ReservaVagaService), delega a emissão
+ * Orquestra a emissão, cancelamento e inutilização de documentos fiscais
+ * (NFe/NFC-e): reserva o próximo número da série (com lock, mesmo
+ * princípio anti-concorrência do ReservaVagaService), delega a operação
  * em si ao FiscalGatewayInterface configurado, e persiste o resultado.
  *
  * Modelo 55 = NFe, 65 = NFC-e (ver Escopo v2, seção 4.2).
@@ -70,7 +72,7 @@ class EmissaoFiscalService
                 'status' => $resultado->status,
                 'chave_acesso' => $resultado->chaveAcesso,
                 'protocolo_autorizacao' => $resultado->protocoloAutorizacao,
-                'xml_path' => $resultado->xml,
+                'xml_path' => $this->salvarXml($venda->empresa_id, $resultado->chaveAcesso, $documento->id, $resultado->xml),
                 'motivo_cancelamento' => $resultado->motivoRejeicao,
             ]);
 
@@ -79,7 +81,105 @@ class EmissaoFiscalService
                 $item->save();
             }
 
+            if ($venda->tipo_doc !== 'fiscal') {
+                $venda->update(['tipo_doc' => 'fiscal']);
+            }
+
             return $documento->fresh('itens');
+        });
+    }
+
+    /**
+     * Converte uma venda não fiscal (ex.: registrada só no PDV sem nota)
+     * em uma venda fiscal, emitindo o documento correspondente agora.
+     */
+    public function importarVendaNaoFiscal(Venda $venda, int $modelo): DocumentoFiscal
+    {
+        if ($venda->tipo_doc === 'fiscal') {
+            throw new \RuntimeException('Esta venda já possui documento fiscal emitido.');
+        }
+
+        return $this->emitir($venda, $modelo);
+    }
+
+    public function cancelar(DocumentoFiscal $documento, string $justificativa): DocumentoFiscal
+    {
+        if (mb_strlen($justificativa) < 15) {
+            throw new \InvalidArgumentException('Justificativa do cancelamento deve ter ao menos 15 caracteres.');
+        }
+
+        if ($documento->status !== 'autorizada') {
+            throw new \RuntimeException('Só é possível cancelar um documento autorizado.');
+        }
+
+        return DB::transaction(function () use ($documento, $justificativa) {
+            $configFiscal = ConfigFiscal::where('empresa_id', $documento->empresa_id)->firstOrFail();
+            $certificado = CertificadoDigital::where('empresa_id', $documento->empresa_id)->first();
+
+            $resultado = $this->gateway->cancelar(
+                $documento,
+                $justificativa,
+                $documento->empresa,
+                $configFiscal,
+                $certificado,
+            );
+
+            if ($resultado->status !== 'homologada') {
+                throw new \RuntimeException("Cancelamento rejeitado pela SEFAZ: {$resultado->motivo}");
+            }
+
+            $documento->update([
+                'status' => 'cancelada',
+                'motivo_cancelamento' => $justificativa,
+                'data_cancelamento' => now(),
+            ]);
+
+            return $documento->fresh();
+        });
+    }
+
+    public function inutilizar(
+        \App\Models\Empresa $empresa,
+        int $modelo,
+        string $serie,
+        int $numeroInicial,
+        int $numeroFinal,
+        string $justificativa,
+    ): NumeracaoInutilizada {
+        if (mb_strlen($justificativa) < 15) {
+            throw new \InvalidArgumentException('Justificativa da inutilização deve ter ao menos 15 caracteres.');
+        }
+
+        if ($numeroInicial > $numeroFinal) {
+            throw new \InvalidArgumentException('Número inicial não pode ser maior que o final.');
+        }
+
+        return DB::transaction(function () use ($empresa, $modelo, $serie, $numeroInicial, $numeroFinal, $justificativa) {
+            $configFiscal = ConfigFiscal::where('empresa_id', $empresa->id)->firstOrFail();
+            $certificado = CertificadoDigital::where('empresa_id', $empresa->id)->first();
+
+            $resultado = $this->gateway->inutilizar(
+                $empresa,
+                $configFiscal,
+                $certificado,
+                $modelo,
+                $serie,
+                $numeroInicial,
+                $numeroFinal,
+                $justificativa,
+            );
+
+            return NumeracaoInutilizada::create([
+                'empresa_id' => $empresa->id,
+                'modelo' => $modelo,
+                'serie' => $serie,
+                'numero_inicial' => $numeroInicial,
+                'numero_final' => $numeroFinal,
+                'justificativa' => $justificativa,
+                'status' => $resultado->status,
+                'protocolo' => $resultado->protocolo,
+                'motivo' => $resultado->motivo,
+            ]);
         });
     }
 
@@ -117,5 +217,23 @@ class EmissaoFiscalService
                 'valor_total' => $itemVenda->valor_total,
             ]);
         });
+    }
+
+    /**
+     * Grava o XML retornado pelo gateway em disco e devolve o CAMINHO do
+     * arquivo (não o conteúdo) - é isso que a coluna xml_path guarda.
+     */
+    private function salvarXml(int $empresaId, ?string $chaveAcesso, int $documentoId, ?string $xml): ?string
+    {
+        if ($xml === null) {
+            return null;
+        }
+
+        $nomeArquivo = ($chaveAcesso ?: "documento-{$documentoId}").'.xml';
+        $caminhoRelativo = "fiscal/xmls/{$empresaId}/{$nomeArquivo}";
+
+        Storage::put($caminhoRelativo, $xml);
+
+        return Storage::path($caminhoRelativo);
     }
 }

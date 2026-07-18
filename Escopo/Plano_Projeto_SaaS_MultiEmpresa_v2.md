@@ -20,6 +20,29 @@ SaaS para comércio com venda direta e/ou agendamento de experiências · Loja P
 
 ---
 
+## Changelog técnico — 2026-07-18 (implementação, sem mudança de decisão de escopo)
+
+Registra o que foi efetivamente construído e validado desde o alinhamento acima. Não substitui as decisões da tabela anterior — é o relato de implementação.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Esqueleto Laravel 13 criado, RLS habilitado (`FORCE ROW LEVEL SECURITY`) e testado em todas as tabelas multi-tenant, middleware `SetTenantContext` implementado | ✅ Implementado e testado |
+| 2 | `ReservaVagaService` (lock pessimista) implementado e testado; comando agendado `app:liberar-reservas-expiradas` liberando reservas vencidas | ✅ Implementado e testado |
+| 3 | Fluxo completo da loja pública (catálogo, reserva, checkout com consentimento LGPD) | ✅ Implementado e testado |
+| 4 | Log de auditoria genérico (`AuditLogObserver`) aplicado a 9 models sensíveis via `AppServiceProvider`, com redação de campos sensíveis (senha) | ✅ Implementado e testado |
+| 5 | Módulo fiscal: **emissão real de NFC-e validada e autorizada pela SEFAZ-SP em homologação**, com certificado A1 real (empresa de testes). Inclui os campos IBS/CBS da Reforma Tributária (alíquotas de teste da fase de transição 2026) | ✅ Validado com a SEFAZ real |
+| 6 | Senha do certificado digital armazenada com criptografia real (cast `encrypted` do Laravel) | ✅ Implementado |
+| 7 | Painel de gestão fiscal: cancelamento de NFC-e, inutilização de numeração, reimpressão de cupom, importação de venda não fiscal → NFC-e, relatórios e exportação (XMLs + planilha para o contador) | ✅ Implementado e testado (cancelamento validado contra a SEFAZ real) |
+
+**Pendências conhecidas, registradas no código (`TODO`) e aqui:**
+- NCM/CFOP por produto ainda são valores fixos genéricos — falta campo próprio no cadastro de produto;
+- Emissão cobre hoje só NFC-e (modelo 65); NFe (modelo 55, com destinatário completo) não implementada;
+- Só testado com Simples Nacional (CRT=1); outros regimes tributários não cobertos;
+- Tabela de `cClassTrib` do IBS/CBS usa o código padrão (000001) — precisa revisão quando a SEFAZ consolidar a tabela definitiva por segmento;
+- **O painel de gestão fiscal (`/fiscal/{empresa}/painel`) ainda não tem tela de login** — está protegido apenas pelo slug da empresa na URL, no mesmo padrão da loja pública. Antes de qualquer uso real (mesmo em homologação exposta), precisa ficar atrás de autenticação do sistema interno (ver seção 2.2 e "Próximos Passos").
+
+---
+
 ## 1. Resumo Executivo
 
 *(mantém-se o conteúdo original do documento v1 — plataforma multi-empresa com venda direta e/ou agendamento de experiências, três frentes integradas: loja pública, sistema interno e módulo fiscal, sobre base multi-tenant.)*
@@ -34,6 +57,19 @@ O maior desafio técnico do projeto continua sendo duplo: (1) impedir overbookin
 - Captura de **consentimento LGPD** no cadastro do cliente (loja pública e PDV), com timestamp e versão do termo aceito.
 - **Log de auditoria** ativo desde o primeiro módulo entregue, cobrindo todas as tabelas sensíveis (fiscal, financeiro, cliente, usuário).
 - Ambiente de **homologação fiscal** disponível por empresa antes da liberação em produção.
+
+### 2.5 Painel de Gestão Fiscal (novo — 2026-07-18)
+
+Tela dedicada à operação do dia a dia do módulo fiscal, complementando a emissão automática feita pelo checkout/PDV:
+
+- **Relatório de documentos fiscais** — listagem com filtro por período e status (autorizada, cancelada, rejeitada, contingência);
+- **Cancelamento de NFC-e** — dentro do prazo permitido pela SEFAZ, com justificativa obrigatória (mín. 15 caracteres), enviado de fato à SEFAZ (não é só uma marcação local);
+- **Inutilização de numeração** — para faixas de número que nunca chegaram a ser usadas (ex.: falha no sistema no meio da emissão);
+- **Reimpressão de cupom** — reconstrói o cupom NFC-e a partir dos dados já armazenados, sem precisar consultar a SEFAZ de novo;
+- **Importar venda não fiscal → NFC-e** — para vendas registradas no PDV sem nota (ex.: em contingência) que precisam ser regularizadas depois;
+- **Exportação** — pacote `.zip` com os XMLs do período e planilha `.csv` resumo para envio ao contador.
+
+Validado com emissão e cancelamento reais na SEFAZ-SP (homologação). Pendência: falta tela de login do sistema interno para proteger o acesso (ver changelog técnico acima).
 
 ## 3. Arquitetura da Solução
 
@@ -94,7 +130,23 @@ CREATE POLICY empresa_isolation ON <tabela>
 |---|---|
 | `ambiente_ativo` | Produção / homologação — define em qual ambiente a empresa está operando no momento |
 
-`log` (auditoria) — estrutura mantida do v1, mas com regra de implementação explícita: aplicado via observer/trait genérico do Laravel em todos os models sensíveis (`documento_fiscal`, `conta_pagar`, `conta_receber`, `cliente`, `usuario`, `venda`), cobrindo `create`, `update`, `delete` e leitura de dados fiscais/financeiros sensíveis — não implementado manualmente módulo a módulo.
+`log` (auditoria) — estrutura mantida do v1, mas com regra de implementação explícita: aplicado via observer genérico do Laravel em todos os models sensíveis (`documento_fiscal`, `documento_fiscal_item`, `numeracao_inutilizada`, `conta_pagar`, `conta_receber`, `certificado_digital`, `config_fiscal`, `cliente`, `usuario`, `venda`), cobrindo `create`, `update` e `delete` — não implementado manualmente módulo a módulo.
+
+`empresa` — novos campos de endereço fiscal (obrigatórios no XML de NFe/NFC-e, ausentes na v1):
+
+| Campo | Descrição |
+|---|---|
+| `uf` / `municipio` / `codigo_ibge_municipio` | Localização fiscal do emitente |
+| `cep` / `logradouro` / `numero` / `bairro` / `complemento` | Endereço completo do emitente |
+
+`numeracao_inutilizada` — nova tabela, registra faixas de numeração de NFe/NFC-e formalmente inutilizadas junto à SEFAZ:
+
+| Campo | Descrição |
+|---|---|
+| `empresa_id` / `modelo` / `serie` | Escopo da inutilização |
+| `numero_inicial` / `numero_final` | Faixa inutilizada |
+| `justificativa` | Motivo (mín. 15 caracteres, exigido pela SEFAZ) |
+| `status` / `protocolo` / `motivo` | Retorno da SEFAZ (homologada/rejeitada) |
 
 ## 5. Telas do Sistema
 
@@ -126,7 +178,10 @@ CREATE POLICY empresa_isolation ON <tabela>
 
 ## 9. Próximos Passos
 
-- Validação deste documento v2 com o cliente;
+- ~~Estruturação do projeto Laravel~~ — feito;
+- ~~Módulo fiscal validado com a SEFAZ real~~ — feito;
+- **Login do sistema interno (prioridade)** — o painel de gestão fiscal e, em breve, o PDV/dashboard precisam de autenticação real antes de qualquer exposição fora do ambiente local de desenvolvimento;
 - Definição da identidade visual (logo, cores, fotos) para aplicar aos protótipos;
-- Estruturação do projeto Laravel: esqueleto da API, migrations do banco com RLS habilitado, middleware de contexto multi-tenant e testes automatizados de isolamento;
-- Desenvolvimento incremental por módulo, com validação a cada entrega.
+- NCM/CFOP por produto no cadastro (hoje fixo/genérico no módulo fiscal);
+- NFe modelo 55 (com destinatário completo) — hoje só NFC-e está implementada;
+- Desenvolvimento incremental dos módulos restantes (PDV, dashboard administrativo, painel Super Admin), com validação a cada entrega.
