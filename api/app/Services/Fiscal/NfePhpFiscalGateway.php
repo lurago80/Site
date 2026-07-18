@@ -74,7 +74,9 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             'razaosocial' => $empresa->razao_social,
             'cnpj' => preg_replace('/\D/', '', $empresa->cnpj),
             'siglaUF' => $empresa->uf,
-            'schemes' => 'PL_009_V4',
+            // PL_010_V1.30 inclui os grupos IBS/CBS da Reforma Tributária,
+            // exigidos pela SEFAZ a partir de 2026 - ver tagIBSCBS.
+            'schemes' => 'PL_010_V1.30',
             'versao' => '4.00',
             'tokenIBPT' => '',
             'CSC' => $configFiscal->csc_nfce ?? '',
@@ -90,7 +92,9 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         Empresa $empresa,
         ConfigFiscal $configFiscal,
     ): string {
-        $nfe = new Make();
+        // schema > 9 habilita os campos da Reforma Tributária (IBS/CBS)
+        // exigidos pela SEFAZ a partir de 2026 - ver tagIBSCBS abaixo.
+        $nfe = new Make('PL_010_V130');
 
         $cUF = $this->codigoUf($empresa->uf);
         $tpAmb = $configFiscal->ambiente_ativo === 'producao' ? 1 : 2;
@@ -172,6 +176,27 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $std->item = $numeroItem;
             $std->vTotTrib = 0;
             $nfe->tagimposto($std);
+
+            // Reforma Tributária (IBS/CBS) - alíquotas de teste da fase de
+            // transição 2026 (LC 214/2025): CBS 0,9% / IBS 0,1% combinados.
+            // CST 000 = tributação integral, cClassTrib 000001 = padrão sem
+            // benefício. TODO: revisar quando a SEFAZ consolidar a tabela
+            // definitiva de cClassTrib por segmento.
+            $vIBS = round($valorItem * 0.001, 2);
+            $vCBS = round($valorItem * 0.009, 2);
+
+            $std = new \stdClass();
+            $std->item = $numeroItem;
+            $std->CST = '000';
+            $std->cClassTrib = '000001';
+            $std->vBC = $valorItem;
+            $std->gIBSUF_pIBSUF = 0.10;
+            $std->gIBSUF_vIBSUF = $vIBS;
+            $std->gIBSMun_pIBSMun = 0;
+            $std->gIBSMun_vIBSMun = 0;
+            $std->gCBS_pCBS = 0.90;
+            $std->gCBS_vCBS = $vCBS;
+            $nfe->tagIBSCBS($std);
         }
 
         $std = new \stdClass();
