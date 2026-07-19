@@ -9,6 +9,7 @@ use App\Models\Produto;
 use App\Models\ReservaTemporaria;
 use App\Models\Venda;
 use App\Services\Agendamento\ReservaVagaService;
+use App\Services\Notificacao\NotificacaoService;
 use App\Services\Pagamento\PagamentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class CheckoutController extends Controller
     public function __construct(
         private readonly ReservaVagaService $reservaVagaService,
         private readonly PagamentoService $pagamentoService,
+        private readonly NotificacaoService $notificacaoService,
     ) {}
 
     public function store(Request $request, string $empresa)
@@ -104,6 +106,10 @@ class CheckoutController extends Controller
             // gateway) - aprova na hora, como o checkout já fazia antes
             // deste módulo existir.
             $venda->update(['status_pagamento' => 'pago']);
+        }
+
+        if ($venda->fresh()->status_pagamento === 'pago') {
+            $this->notificacaoService->enviarConfirmacaoAgendamento($venda);
         }
 
         $vendaFinal = $venda->fresh()->load('itens', 'cliente');

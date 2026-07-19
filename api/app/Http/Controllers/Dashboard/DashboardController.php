@@ -8,6 +8,7 @@ use App\Models\CertificadoDigital;
 use App\Models\Cliente;
 use App\Models\ConfigFiscal;
 use App\Models\ConfigPagamento;
+use App\Models\ConfigWhatsapp;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\FormaPagamento;
@@ -675,6 +676,62 @@ class DashboardController extends Controller
             'ambiente' => $config->ambiente,
             'ativo' => $config->ativo,
             'tem_credenciais' => ! empty($config->access_token) || ! empty($config->client_secret),
+        ]);
+    }
+
+    // ---- Configuração de notificação WhatsApp ----
+
+    /**
+     * Provedor de WhatsApp escolhido POR EMPRESA (Escopo v2, decisão de
+     * 2026-07-19: o cliente decide entre Z-API pago ou Baileys gratuito
+     * mas fora dos Termos de Uso do WhatsApp) - mesmo padrão do Config.
+     * Pagamento, admin-only.
+     */
+    public function configWhatsapp(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $config = ConfigWhatsapp::where('empresa_id', $empresaAtual->id)->first();
+
+        return response()->json($config ? [
+            'provider' => $config->provider,
+            'ativo' => $config->ativo,
+            'tem_credenciais' => ! empty($config->token) || ! empty($config->client_token),
+            'instance_id' => $config->instance_id,
+        ] : null);
+    }
+
+    public function atualizarConfigWhatsapp(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'provider' => ['required', 'in:zapi,baileys'],
+            'instance_id' => ['nullable', 'string', 'max:255'],
+            'token' => ['nullable', 'string'],
+            'client_token' => ['nullable', 'string'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        // Só sobrescreve credenciais quando o operador realmente digitou
+        // algo novo - o front-end nunca reenvia o token existente (ele
+        // não é devolvido pela API por segurança, ver configWhatsapp()).
+        if (empty($dados['token'])) {
+            unset($dados['token']);
+        }
+        if (empty($dados['client_token'])) {
+            unset($dados['client_token']);
+        }
+
+        $config = ConfigWhatsapp::updateOrCreate(['empresa_id' => $empresaAtual->id], $dados);
+
+        return response()->json([
+            'provider' => $config->provider,
+            'ativo' => $config->ativo,
+            'tem_credenciais' => ! empty($config->token) || ! empty($config->client_token),
         ]);
     }
 

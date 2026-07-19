@@ -36,6 +36,7 @@
             <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
             <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
             <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
+            <button onclick="mostrarSecao('whatsapp', this)">WhatsApp</button>
             <form method="POST" action="/logout" style="padding: 16px;">
                 @csrf
                 <button type="submit" class="secundario" style="width:100%;">Sair</button>
@@ -365,6 +366,38 @@
                     <p class="msg" id="msg-config-pagamento"></p>
                 </div>
             </section>
+
+            <section id="secao-whatsapp" class="secao">
+                <h1>WhatsApp</h1>
+
+                <div class="card">
+                    <h2>Provedor de notificação</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Confirmação de agendamento e lembrete de visita (dia anterior) via WhatsApp. Z-API é pago,
+                        mas é uma API oficial simples de configurar. Baileys é gratuito, porém usa um número comum
+                        via QR code e fica fora dos Termos de Uso do WhatsApp (risco de banimento do número) -
+                        ainda não disponível nesta versão, exige um serviço à parte. Sem configurar aqui, as
+                        notificações ficam em modo simulado (só registradas, não enviadas de verdade).
+                    </p>
+                    <p id="wa-status" style="font-size:13px;">Carregando...</p>
+                    <div class="linha-form">
+                        <div><label>Provedor</label>
+                            <select id="wa-provider">
+                                <option value="zapi">Z-API (pago)</option>
+                                <option value="baileys">Baileys (gratuito - em breve)</option>
+                            </select>
+                        </div>
+                        <div><label><input type="checkbox" id="wa-ativo"> Ativo</label></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>Instance ID (Z-API)</label><input type="text" id="wa-instance-id"></div>
+                        <div style="flex:1"><label>Token</label><input type="password" id="wa-token" placeholder="Deixe em branco para manter o atual"></div>
+                        <div style="flex:1"><label>Client-Token</label><input type="password" id="wa-client-token" placeholder="Deixe em branco para manter o atual"></div>
+                        <div><button class="acao" onclick="salvarConfigWhatsapp()">Salvar</button></div>
+                    </div>
+                    <p class="msg" id="msg-config-whatsapp"></p>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -385,6 +418,7 @@
             usuarios: carregarUsuarios,
             'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); },
             pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
+            whatsapp: () => { carregarConfigWhatsapp(); },
         };
 
         function mostrarSecao(nome, botao) {
@@ -938,6 +972,41 @@
             msg.className = 'msg ok'; msg.textContent = 'Configuração de pagamento salva.';
             document.getElementById('pg-token').value = '';
             carregarConfigPagamento();
+        }
+
+        async function carregarConfigWhatsapp() {
+            const resp = await fetch(`${base}/config-whatsapp`);
+            if (resp.status === 403) { return; }
+            const dados = await resp.json();
+            const status = document.getElementById('wa-status');
+            if (!dados) { status.textContent = 'Nenhum provedor configurado ainda - notificações em modo simulado.'; return; }
+            document.getElementById('wa-provider').value = dados.provider;
+            document.getElementById('wa-ativo').checked = dados.ativo;
+            document.getElementById('wa-instance-id').value = dados.instance_id ?? '';
+            status.textContent = dados.tem_credenciais
+                ? `Provedor ${dados.provider} configurado - ${dados.ativo ? 'ativo' : 'inativo'}.`
+                : `Provedor ${dados.provider} selecionado, mas sem credenciais salvas ainda.`;
+        }
+
+        async function salvarConfigWhatsapp() {
+            const dados = {
+                provider: document.getElementById('wa-provider').value,
+                ativo: document.getElementById('wa-ativo').checked,
+                instance_id: document.getElementById('wa-instance-id').value || null,
+            };
+            const token = document.getElementById('wa-token').value;
+            const clientToken = document.getElementById('wa-client-token').value;
+            if (token) { dados.token = token; }
+            if (clientToken) { dados.client_token = clientToken; }
+
+            const resp = await fetch(`${base}/config-whatsapp`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-whatsapp');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Configuração de WhatsApp salva.';
+            document.getElementById('wa-token').value = '';
+            document.getElementById('wa-client-token').value = '';
+            carregarConfigWhatsapp();
         }
 
         carregarIndicadores();

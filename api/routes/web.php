@@ -111,6 +111,8 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
 
     Route::get('/config-pagamento', [DashboardController::class, 'configPagamento']);
     Route::put('/config-pagamento', [DashboardController::class, 'atualizarConfigPagamento']);
+    Route::get('/config-whatsapp', [DashboardController::class, 'configWhatsapp']);
+    Route::put('/config-whatsapp', [DashboardController::class, 'atualizarConfigWhatsapp']);
 });
 
 /*
