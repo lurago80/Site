@@ -50,6 +50,34 @@ class PagamentoService
         });
     }
 
+    public function criarCobrancaCartao(Venda $venda, string $tokenCartao, int $parcelas, string $metodoPagamento): Cobranca
+    {
+        return DB::transaction(function () use ($venda, $tokenCartao, $parcelas, $metodoPagamento) {
+            $config = ConfigPagamento::where('empresa_id', $venda->empresa_id)->first();
+            $gateway = $this->factory->paraEmpresa($config);
+            $gatewayNome = ($config && $config->ativo) ? $config->gateway : 'simulado';
+
+            $resultado = $gateway->criarCobrancaCartao($venda, $config ?? new ConfigPagamento(), $tokenCartao, $parcelas, $metodoPagamento);
+
+            $cobranca = Cobranca::create([
+                'empresa_id' => $venda->empresa_id,
+                'venda_id' => $venda->id,
+                'gateway' => $gatewayNome,
+                'metodo' => $metodoPagamento,
+                'referencia_externa' => $resultado->referenciaExterna,
+                'status' => $resultado->status,
+                'valor' => $venda->valor_total,
+                'payload_retorno' => $resultado->payloadBruto,
+            ]);
+
+            if ($resultado->status === 'aprovado') {
+                $venda->update(['status_pagamento' => 'pago']);
+            }
+
+            return $cobranca;
+        });
+    }
+
     /**
      * Consulta o status atual no gateway e sincroniza cobrança + venda -
      * usado tanto pelo webhook do gateway quanto por um botão manual de

@@ -77,6 +77,10 @@
                 <input type="text" id="cliente-cpf" placeholder="CPF/CNPJ (opcional)">
             </div>
 
+            <div class="linha">
+                <select id="forma-pagamento"><option value="">Forma de pagamento (opcional)</option></select>
+            </div>
+
             <button class="primario" style="width:100%; padding:12px;" onclick="finalizarVenda()">Finalizar Venda (F10)</button>
             <p class="msg" id="msg-venda"></p>
         </div>
@@ -117,6 +121,13 @@
             const vendedores = await resp.json();
             document.getElementById('vendedor').innerHTML = '<option value="">Sem vendedor</option>' +
                 vendedores.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('');
+        }
+
+        async function carregarFormasPagamento() {
+            const resp = await fetch(`${base}/formas-pagamento`);
+            const formas = await resp.json();
+            document.getElementById('forma-pagamento').innerHTML = '<option value="">Forma de pagamento (opcional)</option>' +
+                formas.map(f => `<option value="${f.id}">${f.descricao}</option>`).join('');
         }
 
         function adicionarProduto(id, nome, preco) {
@@ -160,6 +171,7 @@
             const dados = {
                 tipo_doc: document.getElementById('tipo-doc').value,
                 vendedor_id: document.getElementById('vendedor').value || null,
+                forma_pagamento_id: document.getElementById('forma-pagamento').value || null,
                 cliente: {
                     nome: document.getElementById('cliente-nome').value || null,
                     cpf_cnpj: document.getElementById('cliente-cpf').value || null,
@@ -190,6 +202,7 @@
         carregarProdutos();
         carregarAgenda();
         carregarVendedores();
+        carregarFormasPagamento();
     </script>
 </body>
 </html>

@@ -17,13 +17,15 @@ use Illuminate\Support\Facades\DB;
  * Fecha a compra da loja pública: cadastra/atualiza o cliente, gera a
  * venda e, se houver reserva de vaga, confirma-a (ReservaVagaService).
  *
- * Pagamento via Pix passa pelo PagamentoService de verdade (Escopo v2,
- * decisão de 2026-07-18) - a venda nasce "pendente" e só vira "pago"
- * quando o gateway confirma (instantaneamente, se a empresa ainda não
- * configurou um gateway real e está usando o SimuladoPagamentoGateway).
- * Cartão ainda não tem tokenização no front-end, então por ora continua
- * sendo aprovado na hora, como todo o checkout era antes deste módulo -
- * ver TODO abaixo.
+ * Pagamento (Pix ou cartão) passa pelo PagamentoService de verdade
+ * (Escopo v2, decisão de 2026-07-18) - a venda nasce "pendente" e só
+ * vira "pago" quando o gateway confirma (instantaneamente, se a
+ * empresa ainda não configurou um gateway real e está usando o
+ * SimuladoPagamentoGateway). O token do cartão é gerado no front-end
+ * (SDK do gateway, ex. Mercado Pago.js/Bricks - este repositório expõe
+ * só a API, o front-end de loja pública é um projeto à parte); sem
+ * token, o checkout usa o SimuladoPagamentoGateway (aprova na hora),
+ * útil para lojas que ainda não integraram a cobrança online no front.
  */
 class CheckoutController extends Controller
 {
@@ -45,6 +47,9 @@ class CheckoutController extends Controller
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
             'forma_pagamento' => ['required', 'string', 'in:pix,cartao'],
+            'cartao_token' => ['nullable', 'string'],
+            'cartao_parcelas' => ['nullable', 'integer', 'min:1'],
+            'cartao_metodo' => ['nullable', 'string', 'in:cartao_credito,cartao_debito'],
         ]);
 
         abort_if(
@@ -87,9 +92,17 @@ class CheckoutController extends Controller
 
         if ($dados['forma_pagamento'] === 'pix') {
             $cobranca = $this->pagamentoService->criarCobrancaPix($venda);
+        } elseif (! empty($dados['cartao_token'])) {
+            $cobranca = $this->pagamentoService->criarCobrancaCartao(
+                $venda,
+                $dados['cartao_token'],
+                $dados['cartao_parcelas'] ?? 1,
+                $dados['cartao_metodo'] ?? 'cartao_credito',
+            );
         } else {
-            // TODO: cartão real exige tokenização no front-end (Mercado
-            // Pago.js/Bricks) - até isso existir, aprova na hora.
+            // Sem token de cartão (front-end ainda não integrou o SDK do
+            // gateway) - aprova na hora, como o checkout já fazia antes
+            // deste módulo existir.
             $venda->update(['status_pagamento' => 'pago']);
         }
 

@@ -132,6 +132,65 @@ class PagamentoTest extends TestCase
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer token-teste'));
     }
 
+    public function test_mercadopago_cria_cobranca_cartao_real_via_http_fake(): void
+    {
+        Http::fake([
+            'api.mercadopago.com/v1/payments' => Http::response([
+                'id' => 987654321,
+                'status' => 'approved',
+            ], 201),
+        ]);
+
+        ConfigPagamento::create([
+            'empresa_id' => $this->empresa->id,
+            'gateway' => 'mercadopago',
+            'ambiente' => 'sandbox',
+            'access_token' => 'token-teste',
+            'ativo' => true,
+        ]);
+
+        $service = app(PagamentoService::class);
+        $cobranca = $service->criarCobrancaCartao($this->venda, 'card-token-fake', 2, 'cartao_credito');
+
+        $this->assertSame('mercadopago', $cobranca->gateway);
+        $this->assertSame('cartao_credito', $cobranca->metodo);
+        $this->assertSame('aprovado', $cobranca->status);
+        $this->assertSame('987654321', $cobranca->referencia_externa);
+        $this->assertSame('pago', $this->venda->fresh()->status_pagamento);
+    }
+
+    public function test_checkout_publico_com_token_de_cartao_usa_pagamento_service(): void
+    {
+        Http::fake([
+            'api.mercadopago.com/v1/payments' => Http::response(['id' => 555, 'status' => 'approved'], 201),
+        ]);
+
+        ConfigPagamento::create([
+            'empresa_id' => $this->empresa->id,
+            'gateway' => 'mercadopago',
+            'ambiente' => 'sandbox',
+            'access_token' => 'token-teste',
+            'ativo' => true,
+        ]);
+
+        \App\Models\Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Produto Cartão', 'tipo' => 'fisico', 'preco_venda' => 30,
+        ]);
+        $produto = \App\Models\Produto::where('empresa_id', $this->empresa->id)->where('nome', 'Produto Cartão')->first();
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => ['nome' => 'Cliente Cartão', 'consentimento_lgpd' => true],
+            'itens' => [['produto_id' => $produto->id, 'quantidade' => 1]],
+            'forma_pagamento' => 'cartao',
+            'cartao_token' => 'card-token-fake',
+            'cartao_parcelas' => 1,
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame('pago', $response->json('status_pagamento'));
+        $this->assertSame('aprovado', $response->json('cobranca.status'));
+    }
+
     public function test_webhook_mercadopago_atualiza_cobranca_para_aprovado(): void
     {
         Http::fake([
