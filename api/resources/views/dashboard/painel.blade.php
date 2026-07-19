@@ -375,27 +375,42 @@
                     <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
                         Confirmação de agendamento e lembrete de visita (dia anterior) via WhatsApp. Z-API é pago,
                         mas é uma API oficial simples de configurar. Baileys é gratuito, porém usa um número comum
-                        via QR code e fica fora dos Termos de Uso do WhatsApp (risco de banimento do número) -
-                        ainda não disponível nesta versão, exige um serviço à parte. Sem configurar aqui, as
-                        notificações ficam em modo simulado (só registradas, não enviadas de verdade).
+                        pareado por QR code e fica fora dos Termos de Uso do WhatsApp (risco de banimento do
+                        número) - a escolha é sua. Sem configurar aqui, as notificações ficam em modo simulado
+                        (só registradas, não enviadas de verdade).
                     </p>
                     <p id="wa-status" style="font-size:13px;">Carregando...</p>
                     <div class="linha-form">
                         <div><label>Provedor</label>
-                            <select id="wa-provider">
+                            <select id="wa-provider" onchange="alternarCamposProvedor()">
                                 <option value="zapi">Z-API (pago)</option>
-                                <option value="baileys">Baileys (gratuito - em breve)</option>
+                                <option value="baileys">Baileys (gratuito, via QR code)</option>
                             </select>
                         </div>
                         <div><label><input type="checkbox" id="wa-ativo"> Ativo</label></div>
                     </div>
-                    <div class="linha-form">
+                    <div class="linha-form" id="wa-campos-zapi">
                         <div><label>Instance ID (Z-API)</label><input type="text" id="wa-instance-id"></div>
                         <div style="flex:1"><label>Token</label><input type="password" id="wa-token" placeholder="Deixe em branco para manter o atual"></div>
                         <div style="flex:1"><label>Client-Token</label><input type="password" id="wa-client-token" placeholder="Deixe em branco para manter o atual"></div>
-                        <div><button class="acao" onclick="salvarConfigWhatsapp()">Salvar</button></div>
                     </div>
+                    <div class="linha-form"><div><button class="acao" onclick="salvarConfigWhatsapp()">Salvar</button></div></div>
                     <p class="msg" id="msg-config-whatsapp"></p>
+                </div>
+
+                <div class="card" id="card-baileys" style="display:none;">
+                    <h2>Parear número (Baileys)</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Escaneie o QR code abaixo com o WhatsApp do celular que vai enviar as mensagens
+                        (Configurações → Aparelhos conectados → Conectar aparelho). A sessão fica salva no
+                        servidor - não precisa escanear de novo, a menos que desconecte.
+                    </p>
+                    <p id="baileys-status" style="font-size:13px; font-weight:600;">Carregando...</p>
+                    <div id="baileys-qr-wrap" style="margin:12px 0;"></div>
+                    <div class="linha-form">
+                        <div><button class="acao" onclick="baileysIniciar()">Gerar QR code / Reconectar</button></div>
+                        <div><button class="secundario" onclick="baileysDesconectar()">Desconectar</button></div>
+                    </div>
                 </div>
             </section>
         </div>
@@ -418,7 +433,7 @@
             usuarios: carregarUsuarios,
             'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); },
             pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
-            whatsapp: () => { carregarConfigWhatsapp(); },
+            whatsapp: () => { carregarConfigWhatsapp(); alternarCamposProvedor(); baileysAtualizarStatus(); },
         };
 
         function mostrarSecao(nome, botao) {
@@ -986,6 +1001,49 @@
             status.textContent = dados.tem_credenciais
                 ? `Provedor ${dados.provider} configurado - ${dados.ativo ? 'ativo' : 'inativo'}.`
                 : `Provedor ${dados.provider} selecionado, mas sem credenciais salvas ainda.`;
+            alternarCamposProvedor();
+        }
+
+        function alternarCamposProvedor() {
+            const isBaileys = document.getElementById('wa-provider').value === 'baileys';
+            document.getElementById('wa-campos-zapi').style.display = isBaileys ? 'none' : 'flex';
+            document.getElementById('card-baileys').style.display = isBaileys ? 'block' : 'none';
+        }
+
+        async function baileysAtualizarStatus() {
+            const el = document.getElementById('baileys-status');
+            const qrWrap = document.getElementById('baileys-qr-wrap');
+            try {
+                const resp = await fetch(`${base}/whatsapp-baileys/status`);
+                const dados = await resp.json();
+                if (!resp.ok) { el.textContent = dados.erro || 'Erro ao consultar status.'; return; }
+
+                if (dados.status === 'conectado') {
+                    el.textContent = 'Conectado.';
+                    qrWrap.innerHTML = '';
+                } else if (dados.status === 'aguardando_qr' && dados.qr) {
+                    el.textContent = 'Aguardando leitura do QR code...';
+                    qrWrap.innerHTML = `<img src="${dados.qr}" alt="QR code" style="max-width:220px; border-radius:6px;">`;
+                } else {
+                    el.textContent = 'Desconectado.';
+                    qrWrap.innerHTML = '';
+                }
+            } catch (e) {
+                el.textContent = 'Não foi possível falar com o serviço de WhatsApp (whatsapp-service não está rodando?).';
+            }
+        }
+
+        async function baileysIniciar() {
+            document.getElementById('baileys-status').textContent = 'Gerando QR code...';
+            const resp = await fetch(`${base}/whatsapp-baileys/iniciar`, { method: 'POST', headers: headersJson });
+            const dados = await resp.json();
+            if (!resp.ok) { document.getElementById('baileys-status').textContent = dados.erro || 'Erro ao iniciar sessão.'; return; }
+            baileysAtualizarStatus();
+        }
+
+        async function baileysDesconectar() {
+            await fetch(`${base}/whatsapp-baileys/desconectar`, { method: 'POST', headers: headersJson });
+            baileysAtualizarStatus();
         }
 
         async function salvarConfigWhatsapp() {

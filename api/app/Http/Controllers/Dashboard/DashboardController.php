@@ -19,6 +19,7 @@ use App\Models\Venda;
 use App\Models\Vendedor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use NFePHP\Common\Certificate;
 
@@ -733,6 +734,54 @@ class DashboardController extends Controller
             'ativo' => $config->ativo,
             'tem_credenciais' => ! empty($config->token) || ! empty($config->client_token),
         ]);
+    }
+
+    // ---- Pareamento da sessão Baileys (WhatsApp gratuito via QR code) ----
+
+    /**
+     * Proxy fino para o microserviço Node.js (whatsapp-service/) que
+     * roda o Baileys - o Laravel não fala o protocolo do WhatsApp Web
+     * diretamente, só repassa a ação para o serviço interno.
+     */
+    public function baileysStatus(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return $this->proxyBaileys('get', "/empresas/{$empresaAtual->id}/status");
+    }
+
+    public function baileysIniciar(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return $this->proxyBaileys('post', "/empresas/{$empresaAtual->id}/iniciar");
+    }
+
+    public function baileysDesconectar(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return $this->proxyBaileys('post', "/empresas/{$empresaAtual->id}/desconectar");
+    }
+
+    private function proxyBaileys(string $metodo, string $caminho)
+    {
+        $url = rtrim(config('services.baileys.url'), '/').$caminho;
+
+        try {
+            $resposta = Http::withHeaders(['x-internal-token' => config('services.baileys.token')])
+                ->timeout(15)
+                ->{$metodo}($url);
+        } catch (\Illuminate\Http\Client\ConnectionException) {
+            return response()->json([
+                'erro' => 'Não foi possível conectar ao serviço de WhatsApp (whatsapp-service). Verifique se ele está rodando.',
+            ], 503);
+        }
+
+        return response()->json($resposta->json(), $resposta->status());
     }
 
     private function exigirAdmin(Request $request): void

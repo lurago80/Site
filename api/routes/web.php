@@ -113,6 +113,9 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::put('/config-pagamento', [DashboardController::class, 'atualizarConfigPagamento']);
     Route::get('/config-whatsapp', [DashboardController::class, 'configWhatsapp']);
     Route::put('/config-whatsapp', [DashboardController::class, 'atualizarConfigWhatsapp']);
+    Route::get('/whatsapp-baileys/status', [DashboardController::class, 'baileysStatus']);
+    Route::post('/whatsapp-baileys/iniciar', [DashboardController::class, 'baileysIniciar']);
+    Route::post('/whatsapp-baileys/desconectar', [DashboardController::class, 'baileysDesconectar']);
 });
 
 /*

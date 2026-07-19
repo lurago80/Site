@@ -139,8 +139,12 @@ class NotificacaoTest extends TestCase
         Http::assertSent(fn ($request) => $request->hasHeader('Client-Token', 'client-token-teste'));
     }
 
-    public function test_baileys_configurado_lanca_excecao_de_pendente(): void
+    public function test_baileys_envia_mensagem_real_via_microservico_http_fake(): void
     {
+        Http::fake([
+            '*/empresas/*/enviar' => Http::response(['id' => 'BAILEYS-MSG-1'], 200),
+        ]);
+
         ConfigWhatsapp::create([
             'empresa_id' => $this->empresa->id, 'provider' => 'baileys', 'ativo' => true,
         ]);
@@ -151,9 +155,32 @@ class NotificacaoTest extends TestCase
         ]);
 
         $service = app(NotificacaoService::class);
+        $notificacao = $service->enviarLembreteVisita($agenda, $this->cliente, $this->cliente->telefone);
 
-        $this->expectException(\RuntimeException::class);
-        $service->enviarLembreteVisita($agenda, $this->cliente, $this->cliente->telefone);
+        $this->assertSame('baileys', $notificacao->provider);
+        $this->assertSame('enviado', $notificacao->status);
+        $this->assertSame('BAILEYS-MSG-1', $notificacao->referencia_externa);
+    }
+
+    public function test_baileys_com_sessao_desconectada_registra_falha_sem_quebrar(): void
+    {
+        Http::fake([
+            '*/empresas/*/enviar' => Http::response(['erro' => 'Sessão do WhatsApp não está conectada para esta empresa.'], 409),
+        ]);
+
+        ConfigWhatsapp::create([
+            'empresa_id' => $this->empresa->id, 'provider' => 'baileys', 'ativo' => true,
+        ]);
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'status' => 'aberta', 'valor_visita' => 60,
+        ]);
+
+        $service = app(NotificacaoService::class);
+        $notificacao = $service->enviarLembreteVisita($agenda, $this->cliente, $this->cliente->telefone);
+
+        $this->assertSame('falha', $notificacao->status);
     }
 
     public function test_comando_de_lembrete_envia_para_visitas_de_amanha(): void

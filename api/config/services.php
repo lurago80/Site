@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Microserviço Node.js (whatsapp-service/) que roda o Baileys -
+    // ver App\Services\Notificacao\BaileysNotificacaoGateway.
+    'baileys' => [
+        'url' => env('BAILEYS_SERVICE_URL', 'http://127.0.0.1:3300'),
+        'token' => env('BAILEYS_INTERNAL_TOKEN'),
+    ],
+
 ];
