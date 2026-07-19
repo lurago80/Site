@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Assinatura;
 use App\Models\CertificadoDigital;
 use App\Models\Cliente;
+use App\Models\ConfigPagamento;
 use App\Models\Empresa;
 use App\Models\ConfigFiscal;
 use App\Models\ContaPagar;
@@ -42,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         NumeracaoInutilizada::class,
         Empresa::class,
         Assinatura::class,
+        ConfigPagamento::class,
     ];
 
     public function register(): void

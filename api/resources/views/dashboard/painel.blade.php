@@ -35,6 +35,7 @@
             <button onclick="mostrarSecao('financeiro', this)">Financeiro</button>
             <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
             <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
+            <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
             <form method="POST" action="/logout" style="padding: 16px;">
                 @csrf
                 <button type="submit" class="secundario" style="width:100%;">Sair</button>
@@ -303,6 +304,67 @@
                     <p class="msg" id="msg-certificado"></p>
                 </div>
             </section>
+
+            <section id="secao-pagamentos" class="secao">
+                <h1>Pagamentos</h1>
+
+                <div class="card">
+                    <h2>Formas de pagamento</h2>
+                    <div class="linha-form">
+                        <div><label>Descrição</label><input type="text" id="fp-descricao"></div>
+                        <div><label>Tipo</label>
+                            <select id="fp-tipo">
+                                <option value="dinheiro">Dinheiro</option>
+                                <option value="pix">Pix</option>
+                                <option value="cartao_credito">Cartão crédito</option>
+                                <option value="cartao_debito">Cartão débito</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </div>
+                        <div><label>Código tPag (NFe)</label><input type="text" id="fp-codigo" style="width:70px" maxlength="2" placeholder="ex: 17"></div>
+                        <div><button class="acao" onclick="criarFormaPagamento()">Cadastrar</button></div>
+                    </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
+                        Código tPag: 01=dinheiro, 03=cartão crédito, 04=cartão débito, 17=Pix, 99=outros - usado na nota fiscal.
+                    </p>
+                    <table>
+                        <thead><tr><th>Descrição</th><th>Tipo</th><th>Código tPag</th><th>Ativo</th><th></th></tr></thead>
+                        <tbody id="tbody-formas-pagamento"></tbody>
+                    </table>
+                    <p class="msg" id="msg-formas-pagamento"></p>
+                </div>
+
+                <div class="card">
+                    <h2>Gateway de pagamento (Pix/cartão online)</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Cada empresa pode usar o gateway com a melhor taxa negociada. Sem configurar aqui, o checkout
+                        da loja pública funciona em modo simulado (aprova na hora, sem cobrar de verdade).
+                    </p>
+                    <p id="pg-status" style="font-size:13px;">Carregando...</p>
+                    <div class="linha-form">
+                        <div><label>Gateway</label>
+                            <select id="pg-gateway">
+                                <option value="mercadopago">Mercado Pago</option>
+                                <option value="pagseguro">PagSeguro</option>
+                                <option value="cielo">Cielo</option>
+                            </select>
+                        </div>
+                        <div><label>Ambiente</label>
+                            <select id="pg-ambiente">
+                                <option value="sandbox">Sandbox (testes)</option>
+                                <option value="producao">Produção</option>
+                            </select>
+                        </div>
+                        <div><label><input type="checkbox" id="pg-ativo"> Ativo</label></div>
+                    </div>
+                    <div class="linha-form">
+                        <div style="flex:1"><label>Access Token / Client Secret</label><input type="password" id="pg-token" placeholder="Deixe em branco para manter o atual"></div>
+                        <div><label>Public Key / Client ID</label><input type="text" id="pg-public-key"></div>
+                        <div><button class="acao" onclick="salvarConfigPagamento()">Salvar</button></div>
+                    </div>
+                    <p class="msg" id="msg-config-pagamento"></p>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -322,6 +384,7 @@
             financeiro: () => { carregarContasPagar(); carregarContasReceber(); },
             usuarios: carregarUsuarios,
             'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); },
+            pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
         };
 
         function mostrarSecao(nome, botao) {
@@ -805,6 +868,76 @@
             msg.className = 'msg ok'; msg.textContent = 'Certificado salvo com sucesso.';
             document.getElementById('cert-senha').value = '';
             carregarCertificado();
+        }
+
+        async function carregarFormasPagamento() {
+            const resp = await fetch(`${base}/formas-pagamento`);
+            const lista = await resp.json();
+            document.getElementById('tbody-formas-pagamento').innerHTML = lista.map(f => `
+                <tr>
+                    <td>${f.descricao}</td>
+                    <td>${f.tipo}</td>
+                    <td>${f.codigo_tpag}</td>
+                    <td>${f.ativo ? 'Sim' : 'Não'}</td>
+                    <td><button class="secundario" onclick="alternarFormaPagamento(${f.id}, ${!f.ativo})">${f.ativo ? 'Desativar' : 'Ativar'}</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhuma forma de pagamento cadastrada.</td></tr>';
+        }
+
+        async function criarFormaPagamento() {
+            const dados = {
+                descricao: document.getElementById('fp-descricao').value,
+                tipo: document.getElementById('fp-tipo').value,
+                codigo_tpag: document.getElementById('fp-codigo').value,
+            };
+            const resp = await fetch(`${base}/formas-pagamento`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-formas-pagamento');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Forma de pagamento cadastrada.';
+            document.getElementById('fp-descricao').value = '';
+            document.getElementById('fp-codigo').value = '';
+            carregarFormasPagamento();
+        }
+
+        async function alternarFormaPagamento(id, ativo) {
+            await fetch(`${base}/formas-pagamento/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ ativo }) });
+            carregarFormasPagamento();
+        }
+
+        async function carregarConfigPagamento() {
+            const resp = await fetch(`${base}/config-pagamento`);
+            if (resp.status === 403) { return; }
+            const dados = await resp.json();
+            const status = document.getElementById('pg-status');
+            if (!dados) { status.textContent = 'Nenhum gateway configurado ainda - checkout usa modo simulado.'; return; }
+            document.getElementById('pg-gateway').value = dados.gateway;
+            document.getElementById('pg-ambiente').value = dados.ambiente;
+            document.getElementById('pg-ativo').checked = dados.ativo;
+            document.getElementById('pg-public-key').value = dados.public_key ?? dados.client_id ?? '';
+            status.textContent = dados.tem_credenciais
+                ? `Gateway ${dados.gateway} configurado (${dados.ambiente}) - ${dados.ativo ? 'ativo' : 'inativo'}.`
+                : `Gateway ${dados.gateway} selecionado, mas sem credenciais salvas ainda.`;
+        }
+
+        async function salvarConfigPagamento() {
+            const dados = {
+                gateway: document.getElementById('pg-gateway').value,
+                ambiente: document.getElementById('pg-ambiente').value,
+                ativo: document.getElementById('pg-ativo').checked,
+                public_key: document.getElementById('pg-public-key').value || null,
+                client_id: document.getElementById('pg-public-key').value || null,
+            };
+            const token = document.getElementById('pg-token').value;
+            if (token) { dados.access_token = token; dados.client_secret = token; }
+
+            const resp = await fetch(`${base}/config-pagamento`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-pagamento');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Configuração de pagamento salva.';
+            document.getElementById('pg-token').value = '';
+            carregarConfigPagamento();
         }
 
         carregarIndicadores();

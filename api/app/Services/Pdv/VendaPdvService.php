@@ -41,6 +41,7 @@ class VendaPdvService
                 'empresa_id' => $empresa->id,
                 'cliente_id' => $cliente?->id,
                 'vendedor_id' => $vendedor?->id,
+                'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
                 'canal' => 'pdv',
                 'tipo_doc' => $dados['tipo_doc'],
                 'status_pagamento' => 'pago',

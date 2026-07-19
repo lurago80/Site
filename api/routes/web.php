@@ -55,6 +55,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/produtos', [PdvController::class, 'produtos']);
     Route::get('/agenda', [PdvController::class, 'agenda']);
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
+    Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
 });
 
@@ -103,6 +104,13 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
 
     Route::get('/certificado', [DashboardController::class, 'certificado']);
     Route::post('/certificado', [DashboardController::class, 'salvarCertificado']);
+
+    Route::get('/formas-pagamento', [DashboardController::class, 'formasPagamento']);
+    Route::post('/formas-pagamento', [DashboardController::class, 'criarFormaPagamento']);
+    Route::put('/formas-pagamento/{formaId}', [DashboardController::class, 'atualizarFormaPagamento']);
+
+    Route::get('/config-pagamento', [DashboardController::class, 'configPagamento']);
+    Route::put('/config-pagamento', [DashboardController::class, 'atualizarConfigPagamento']);
 });
 
 /*

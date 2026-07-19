@@ -9,6 +9,7 @@ use App\Models\Produto;
 use App\Models\ReservaTemporaria;
 use App\Models\Venda;
 use App\Services\Agendamento\ReservaVagaService;
+use App\Services\Pagamento\PagamentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -16,14 +17,20 @@ use Illuminate\Support\Facades\DB;
  * Fecha a compra da loja pública: cadastra/atualiza o cliente, gera a
  * venda e, se houver reserva de vaga, confirma-a (ReservaVagaService).
  *
- * A cobrança em si (Pix/cartão) ainda não está integrada a um gateway -
- * por ora a venda já nasce como "pago", simulando a confirmação do
- * pagamento. Trocar isso pelo webhook real do gateway não deve exigir
- * mudanças na lógica de reserva/estoque abaixo.
+ * Pagamento via Pix passa pelo PagamentoService de verdade (Escopo v2,
+ * decisão de 2026-07-18) - a venda nasce "pendente" e só vira "pago"
+ * quando o gateway confirma (instantaneamente, se a empresa ainda não
+ * configurou um gateway real e está usando o SimuladoPagamentoGateway).
+ * Cartão ainda não tem tokenização no front-end, então por ora continua
+ * sendo aprovado na hora, como todo o checkout era antes deste módulo -
+ * ver TODO abaixo.
  */
 class CheckoutController extends Controller
 {
-    public function __construct(private readonly ReservaVagaService $reservaVagaService) {}
+    public function __construct(
+        private readonly ReservaVagaService $reservaVagaService,
+        private readonly PagamentoService $pagamentoService,
+    ) {}
 
     public function store(Request $request, string $empresa)
     {
@@ -37,7 +44,7 @@ class CheckoutController extends Controller
             'itens' => ['nullable', 'array'],
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
-            'forma_pagamento' => ['required', 'string'],
+            'forma_pagamento' => ['required', 'string', 'in:pix,cartao'],
         ]);
 
         abort_if(
@@ -56,7 +63,7 @@ class CheckoutController extends Controller
                 'cliente_id' => $cliente->id,
                 'canal' => 'site',
                 'tipo_doc' => 'nao_fiscal',
-                'status_pagamento' => 'pago',
+                'status_pagamento' => 'pendente',
                 'valor_total' => 0,
                 'data_venda' => now(),
             ]);
@@ -73,10 +80,28 @@ class CheckoutController extends Controller
 
             $venda->update(['valor_total' => $valorTotal]);
 
-            return $venda->load('itens', 'cliente');
+            return $venda;
         });
 
-        return response()->json($venda, 201);
+        $cobranca = null;
+
+        if ($dados['forma_pagamento'] === 'pix') {
+            $cobranca = $this->pagamentoService->criarCobrancaPix($venda);
+        } else {
+            // TODO: cartão real exige tokenização no front-end (Mercado
+            // Pago.js/Bricks) - até isso existir, aprova na hora.
+            $venda->update(['status_pagamento' => 'pago']);
+        }
+
+        $vendaFinal = $venda->fresh()->load('itens', 'cliente');
+        $vendaFinal->setAttribute('cobranca', $cobranca ? [
+            'status' => $cobranca->status,
+            'qr_code' => $cobranca->qr_code,
+            'qr_code_base64' => $cobranca->qr_code_base64,
+            'expira_em' => $cobranca->expira_em,
+        ] : null);
+
+        return response()->json($vendaFinal, 201);
     }
 
     private function localizarOuCriarCliente(int $empresaId, array $dadosCliente): Cliente

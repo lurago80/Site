@@ -272,7 +272,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $this->tagIBSCBSTeste2026($nfe, $numeroItem, $valorItem);
         }
 
-        $this->finalizarTotaisETransporte($nfe, $valorTotal);
+        $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento);
 
         $xml = $nfe->montaNFe();
 
@@ -437,7 +437,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $this->tagIBSCBSTeste2026($nfe, $numeroItem, $valorItem);
         }
 
-        $this->finalizarTotaisETransporte($nfe, $valorTotal);
+        $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento);
 
         $xml = $nfe->montaNFe();
 
@@ -510,7 +510,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $nfe->tagIBSCBS($std);
     }
 
-    private function finalizarTotaisETransporte(Make $nfe, float $valorTotal): void
+    private function finalizarTotaisETransporte(Make $nfe, float $valorTotal, DocumentoFiscal $documento): void
     {
         $std = new \stdClass();
         $std->vBC = 0;
@@ -538,7 +538,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $nfe->tagpag($std);
 
         $std = new \stdClass();
-        $std->tPag = '01'; // dinheiro - TODO: mapear forma_pagamento real da venda
+        $std->tPag = $documento->venda?->formaPagamento?->codigo_tpag ?? '99'; // 99 = outros, quando não informado
         $std->vPag = $valorTotal;
         $nfe->tagdetPag($std);
     }

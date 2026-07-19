@@ -7,8 +7,10 @@ use App\Models\AgendaVisitacao;
 use App\Models\CertificadoDigital;
 use App\Models\Cliente;
 use App\Models\ConfigFiscal;
+use App\Models\ConfigPagamento;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
+use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
 use App\Models\Produto;
 use App\Models\User;
@@ -568,6 +570,112 @@ class DashboardController extends Controller
             'validade' => $certificado->validade,
             'expirado' => false,
         ], 201);
+    }
+
+    // ---- Formas de pagamento ----
+
+    public function formasPagamento(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            FormaPagamento::where('empresa_id', $empresaAtual->id)->orderBy('descricao')->get()
+        );
+    }
+
+    public function criarFormaPagamento(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'descricao' => ['required', 'string', 'max:255'],
+            'tipo' => ['required', 'in:dinheiro,pix,cartao_credito,cartao_debito,outro'],
+            'codigo_tpag' => ['required', 'string', 'max:2'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $forma = FormaPagamento::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($forma, 201);
+    }
+
+    public function atualizarFormaPagamento(Request $request, string $empresa, int $formaId)
+    {
+        $this->exigirAdmin($request);
+
+        $forma = FormaPagamento::findOrFail($formaId);
+
+        $dados = $request->validate([
+            'descricao' => ['sometimes', 'string', 'max:255'],
+            'tipo' => ['sometimes', 'in:dinheiro,pix,cartao_credito,cartao_debito,outro'],
+            'codigo_tpag' => ['sometimes', 'string', 'max:2'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $forma->update($dados);
+
+        return response()->json($forma->fresh());
+    }
+
+    // ---- Configuração de gateway de pagamento ----
+
+    /**
+     * Gateway de pagamento escolhido POR EMPRESA (Escopo v2, decisão de
+     * 2026-07-18: cada empresa cliente pode ter taxas melhores em
+     * gateways diferentes) - mesmo padrão do Config. Fiscal, admin-only.
+     */
+    public function configPagamento(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $config = ConfigPagamento::where('empresa_id', $empresaAtual->id)->first();
+
+        return response()->json($config ? [
+            'gateway' => $config->gateway,
+            'ambiente' => $config->ambiente,
+            'ativo' => $config->ativo,
+            'tem_credenciais' => ! empty($config->access_token) || ! empty($config->client_secret),
+            'public_key' => $config->public_key,
+            'client_id' => $config->client_id,
+        ] : null);
+    }
+
+    public function atualizarConfigPagamento(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'gateway' => ['required', 'in:mercadopago,pagseguro,cielo'],
+            'ambiente' => ['required', 'in:sandbox,producao'],
+            'access_token' => ['nullable', 'string'],
+            'public_key' => ['nullable', 'string', 'max:255'],
+            'client_id' => ['nullable', 'string', 'max:255'],
+            'client_secret' => ['nullable', 'string'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        // Só sobrescreve credenciais quando o operador realmente digitou
+        // algo novo - o front-end nunca reenvia o token existente (ele
+        // não é devolvido pela API por segurança, ver configPagamento()).
+        if (empty($dados['access_token'])) {
+            unset($dados['access_token']);
+        }
+        if (empty($dados['client_secret'])) {
+            unset($dados['client_secret']);
+        }
+
+        $config = ConfigPagamento::updateOrCreate(['empresa_id' => $empresaAtual->id], $dados);
+
+        return response()->json([
+            'gateway' => $config->gateway,
+            'ambiente' => $config->ambiente,
+            'ativo' => $config->ativo,
+            'tem_credenciais' => ! empty($config->access_token) || ! empty($config->client_secret),
+        ]);
     }
 
     private function exigirAdmin(Request $request): void
