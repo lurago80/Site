@@ -279,13 +279,15 @@
                 <div class="card">
                     <h2 style="font-size:14px; margin-top:0;">Contas a pagar</h2>
                     <div class="linha-form">
+                        <div><label>Fornecedor</label><select id="cp-fornecedor"><option value="">Nenhum</option></select></div>
+                        <div style="flex:1"><label>Histórico</label><input type="text" id="cp-historico" placeholder="Ex: Compra de insumos - NF 1234"></div>
                         <div><label>Valor (R$)</label><input type="number" step="0.01" id="cp-valor" style="width:100px"></div>
                         <div><label>Vencimento</label><input type="date" id="cp-vencimento"></div>
                         <div><label>Categoria (plano de contas)</label><select id="cp-plano-conta"><option value="">Sem categoria</option></select></div>
                         <div><button class="acao" onclick="criarContaPagar()">Lançar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Fornecedor</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Fornecedor</th><th>Histórico</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-contas-pagar"></tbody>
                     </table>
                     <p class="msg" id="msg-contas-pagar"></p>
@@ -293,13 +295,15 @@
                 <div class="card">
                     <h2 style="font-size:14px; margin-top:0;">Contas a receber</h2>
                     <div class="linha-form">
+                        <div><label>Cliente</label><select id="cr-cliente"><option value="">Nenhum</option></select></div>
+                        <div style="flex:1"><label>Histórico</label><input type="text" id="cr-historico" placeholder="Ex: Venda avulsa - pedido 5678"></div>
                         <div><label>Valor (R$)</label><input type="number" step="0.01" id="cr-valor" style="width:100px"></div>
                         <div><label>Vencimento</label><input type="date" id="cr-vencimento"></div>
                         <div><label>Categoria (plano de contas)</label><select id="cr-plano-conta"><option value="">Sem categoria</option></select></div>
                         <div><button class="acao" onclick="criarContaReceber()">Lançar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Cliente</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Cliente</th><th>Histórico</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-contas-receber"></tbody>
                     </table>
                     <p class="msg" id="msg-contas-receber"></p>
@@ -1187,17 +1191,20 @@
             document.getElementById('tbody-contas-pagar').innerHTML = lista.map(c => `
                 <tr>
                     <td>${c.fornecedor ? c.fornecedor.razao_social : '-'}</td>
+                    <td>${c.historico ?? '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
                     <td>${c.vencimento}</td>
                     <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
                     <td>${c.status !== 'pago' ? `<button class="secundario" onclick="pagarContaPagar(${c.id})">Marcar pago</button>` : ''}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="6">Nenhuma conta a pagar.</td></tr>';
+            `).join('') || '<tr><td colspan="7">Nenhuma conta a pagar.</td></tr>';
         }
 
         async function criarContaPagar() {
             const dados = {
+                fornecedor_id: document.getElementById('cp-fornecedor').value || null,
+                historico: document.getElementById('cp-historico').value || null,
                 valor: Number(document.getElementById('cp-valor').value),
                 vencimento: document.getElementById('cp-vencimento').value,
                 plano_conta_id: document.getElementById('cp-plano-conta').value || null,
@@ -1207,6 +1214,10 @@
             const msg = document.getElementById('msg-contas-pagar');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Conta lançada.';
+            document.getElementById('cp-fornecedor').value = '';
+            document.getElementById('cp-historico').value = '';
+            document.getElementById('cp-valor').value = '';
+            document.getElementById('cp-vencimento').value = '';
             carregarContasPagar();
         }
 
@@ -1222,17 +1233,20 @@
             document.getElementById('tbody-contas-receber').innerHTML = lista.map(c => `
                 <tr>
                     <td>${c.cliente ? c.cliente.nome : '-'}</td>
+                    <td>${c.historico ?? '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
                     <td>${c.vencimento}</td>
                     <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
                     <td>${c.status !== 'pago' ? `<button class="secundario" onclick="pagarContaReceber(${c.id})">Marcar pago</button>` : ''}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="6">Nenhuma conta a receber.</td></tr>';
+            `).join('') || '<tr><td colspan="7">Nenhuma conta a receber.</td></tr>';
         }
 
         async function criarContaReceber() {
             const dados = {
+                cliente_id: document.getElementById('cr-cliente').value || null,
+                historico: document.getElementById('cr-historico').value || null,
                 valor: Number(document.getElementById('cr-valor').value),
                 vencimento: document.getElementById('cr-vencimento').value,
                 plano_conta_id: document.getElementById('cr-plano-conta').value || null,
@@ -1242,6 +1256,10 @@
             const msg = document.getElementById('msg-contas-receber');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Conta lançada.';
+            document.getElementById('cr-cliente').value = '';
+            document.getElementById('cr-historico').value = '';
+            document.getElementById('cr-valor').value = '';
+            document.getElementById('cr-vencimento').value = '';
             carregarContasReceber();
         }
 
@@ -1252,15 +1270,21 @@
         }
 
         async function carregarSelectsFinanceiro() {
-            const [planos, bancosLista] = await Promise.all([
+            const [planos, bancosLista, fornecedoresLista, clientesLista] = await Promise.all([
                 fetch(`${base}/plano-contas`).then(r => r.json()),
                 fetch(`${base}/bancos`).then(r => r.json()),
+                fetch(`${base}/fornecedores`).then(r => r.json()),
+                fetch(`${base}/clientes`).then(r => r.json()),
             ]);
             const opcoesPlanos = '<option value="">Sem categoria</option>' + planos.map(p => `<option value="${p.id}">${p.codigo ? p.codigo + ' - ' : ''}${p.nome}</option>`).join('');
             document.getElementById('cp-plano-conta').innerHTML = opcoesPlanos;
             document.getElementById('cr-plano-conta').innerHTML = opcoesPlanos;
             document.getElementById('fin-banco-pagamento').innerHTML = '<option value="">Nenhum (não lança no banco)</option>' +
                 bancosLista.map(b => `<option value="${b.id}">${b.nome}</option>`).join('');
+            document.getElementById('cp-fornecedor').innerHTML = '<option value="">Nenhum</option>' +
+                fornecedoresLista.map(f => `<option value="${f.id}">${f.razao_social}</option>`).join('');
+            document.getElementById('cr-cliente').innerHTML = '<option value="">Nenhum</option>' +
+                clientesLista.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
         }
 
         // ---- Grupos de produto ----

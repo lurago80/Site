@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['empresa_id', 'cliente_id', 'plano_conta_id', 'banco_id', 'valor', 'vencimento', 'status'])]
+#[Fillable(['empresa_id', 'cliente_id', 'historico', 'plano_conta_id', 'banco_id', 'valor', 'vencimento', 'status'])]
 class ContaReceber extends Model
 {
     protected $table = 'contas_receber';

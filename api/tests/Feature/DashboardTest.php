@@ -220,6 +220,48 @@ class DashboardTest extends TestCase
         $response->assertCreated()->assertJsonPath('status', 'em_aberto');
     }
 
+    public function test_conta_a_pagar_registra_historico_e_fornecedor(): void
+    {
+        $fornecedor = \App\Models\Fornecedor::create([
+            'empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste',
+        ]);
+
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/contas-pagar", [
+            'fornecedor_id' => $fornecedor->id,
+            'historico' => 'Compra de insumos - NF 1234',
+            'valor' => 300.00,
+            'vencimento' => now()->addWeek()->toDateString(),
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('historico', 'Compra de insumos - NF 1234')
+            ->assertJsonPath('fornecedor_id', $fornecedor->id);
+
+        $listagem = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/contas-pagar");
+        $listagem->assertOk()->assertJsonPath('0.fornecedor.razao_social', 'Fornecedor Teste');
+    }
+
+    public function test_conta_a_receber_registra_historico_e_cliente(): void
+    {
+        $cliente = Cliente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'consentimento_lgpd' => true,
+        ]);
+
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/contas-receber", [
+            'cliente_id' => $cliente->id,
+            'historico' => 'Venda avulsa - pedido 5678',
+            'valor' => 250.00,
+            'vencimento' => now()->addWeek()->toDateString(),
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('historico', 'Venda avulsa - pedido 5678')
+            ->assertJsonPath('cliente_id', $cliente->id);
+
+        $listagem = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/contas-receber");
+        $listagem->assertOk()->assertJsonPath('0.cliente.nome', 'Cliente Teste');
+    }
+
     public function test_admin_cadastra_usuario(): void
     {
         $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/usuarios", [

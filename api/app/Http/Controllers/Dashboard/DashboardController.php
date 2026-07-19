@@ -411,6 +411,7 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'fornecedor_id' => ['nullable', 'integer'],
+            'historico' => ['nullable', 'string', 'max:255'],
             'plano_conta_id' => ['nullable', 'integer'],
             'valor' => ['required', 'numeric', 'min:0'],
             'vencimento' => ['required', 'date'],
@@ -469,6 +470,7 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'cliente_id' => ['nullable', 'integer'],
+            'historico' => ['nullable', 'string', 'max:255'],
             'plano_conta_id' => ['nullable', 'integer'],
             'valor' => ['required', 'numeric', 'min:0'],
             'vencimento' => ['required', 'date'],
