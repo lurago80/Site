@@ -120,20 +120,26 @@
                     <div class="linha-form">
                         <div><label>Nome</label><input type="text" id="cl-nome"></div>
                         <div><label>CPF/CNPJ</label><input type="text" id="cl-cpf-cnpj" style="width:140px"></div>
+                        <div style="align-self:flex-end;"><button type="button" class="secundario" onclick="buscarCnpjCliente()">Buscar CNPJ</button></div>
                         <div><label>Telefone</label><input type="text" id="cl-telefone" style="width:120px"></div>
                         <div><label>E-mail</label><input type="email" id="cl-email"></div>
                         <div><label><input type="checkbox" id="cl-lgpd"> Consentimento LGPD</label></div>
                     </div>
                     <div class="linha-form">
-                        <div><label>CEP</label><input type="text" id="cl-cep" style="width:90px"></div>
+                        <div><label>CEP</label><input type="text" id="cl-cep" style="width:90px" placeholder="00000-000" onblur="buscarCepCliente()"></div>
                         <div><label>Logradouro</label><input type="text" id="cl-logradouro"></div>
                         <div><label>Número</label><input type="text" id="cl-numero" style="width:70px"></div>
                         <div><label>Bairro</label><input type="text" id="cl-bairro"></div>
                         <div><label>Município</label><input type="text" id="cl-municipio"></div>
                         <div><label>UF</label><input type="text" id="cl-uf" style="width:50px" maxlength="2"></div>
                         <div><label>Cód. IBGE</label><input type="text" id="cl-ibge" style="width:80px"></div>
-                        <div><label>IE</label><input type="text" id="cl-ie" style="width:100px"></div>
+                        <div><label>IE</label><input type="text" id="cl-ie" style="width:100px" placeholder="preencher manualmente"></div>
                     </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
+                        CEP preenche o endereço automaticamente. "Buscar CNPJ" traz razão social/endereço da Receita
+                        Federal - Inscrição Estadual não vem dessa consulta (é cadastrada por estado, não existe API
+                        nacional gratuita), preencha à mão.
+                    </p>
                     <div class="linha-form">
                         <div><button class="acao" id="cl-botao" onclick="salvarCliente()">Cadastrar</button></div>
                         <div><button class="secundario" onclick="limparFormularioCliente()" style="display:none;" id="cl-cancelar">Cancelar edição</button></div>
@@ -154,14 +160,22 @@
                         <div><label>Razão social</label><input type="text" id="fo-razao"></div>
                         <div><label>Nome fantasia</label><input type="text" id="fo-fantasia"></div>
                         <div><label>CNPJ</label><input type="text" id="fo-cnpj" style="width:140px"></div>
-                        <div><label>IE</label><input type="text" id="fo-ie" style="width:100px"></div>
+                        <div style="align-self:flex-end;"><button type="button" class="secundario" onclick="buscarCnpjFornecedor()">Buscar CNPJ</button></div>
+                        <div><label>IE</label><input type="text" id="fo-ie" style="width:100px" placeholder="preencher manualmente"></div>
                     </div>
                     <div class="linha-form">
                         <div><label>Contato</label><input type="text" id="fo-contato"></div>
                         <div><label>Telefone</label><input type="text" id="fo-telefone" style="width:120px"></div>
                         <div><label>E-mail</label><input type="email" id="fo-email"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label>CEP</label><input type="text" id="fo-cep" style="width:90px" placeholder="00000-000" onblur="buscarCepFornecedor()"></div>
                         <div style="flex:1"><label>Endereço</label><input type="text" id="fo-endereco" style="width:100%"></div>
                     </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
+                        CEP preenche o endereço automaticamente. "Buscar CNPJ" traz razão social/endereço da Receita
+                        Federal - Inscrição Estadual não vem dessa consulta, preencha à mão.
+                    </p>
                     <div class="linha-form">
                         <div><button class="acao" id="fo-botao" onclick="salvarFornecedor()">Cadastrar</button></div>
                         <div><button class="secundario" onclick="limparFormularioFornecedor()" style="display:none;" id="fo-cancelar">Cancelar edição</button></div>
@@ -254,7 +268,7 @@
                     </p>
                     <p style="font-size:13px;"><strong id="cf-razao-social"></strong> — CNPJ <span id="cf-cnpj"></span></p>
                     <div class="linha-form">
-                        <div><label>CEP</label><input type="text" id="cf-cep" style="width:90px"></div>
+                        <div><label>CEP</label><input type="text" id="cf-cep" style="width:90px" placeholder="00000-000" onblur="buscarCepEmitente()"></div>
                         <div><label>Logradouro</label><input type="text" id="cf-logradouro"></div>
                         <div><label>Número</label><input type="text" id="cf-numero" style="width:70px"></div>
                         <div><label>Bairro</label><input type="text" id="cf-bairro"></div>
@@ -576,6 +590,94 @@
             carregarProdutos();
         }
 
+        // Consulta pública de CNPJ (BrasilAPI, dados da Receita Federal - sem
+        // chave) e de CEP (ViaCEP) - usadas nos cadastros de cliente e
+        // fornecedor para reduzir digitação manual. Nenhuma das duas
+        // devolve Inscrição Estadual (é cadastrada por estado, não existe
+        // fonte nacional gratuita) - esse campo continua manual.
+        async function consultarCnpjEmBrasilApi(cnpj) {
+            const digitos = (cnpj || '').replace(/\D/g, '');
+            if (digitos.length !== 14) { throw new Error('Informe um CNPJ válido (14 dígitos) para buscar.'); }
+            const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digitos}`);
+            if (!resp.ok) { throw new Error('CNPJ não encontrado ou serviço de consulta indisponível no momento.'); }
+            return resp.json();
+        }
+
+        async function consultarCepEmViaCep(cep) {
+            const digitos = (cep || '').replace(/\D/g, '');
+            if (digitos.length !== 8) { return null; }
+            const resp = await fetch(`https://viacep.com.br/ws/${digitos}/json/`);
+            const dados = await resp.json();
+            if (dados.erro) { throw new Error('CEP não encontrado.'); }
+            return dados;
+        }
+
+        async function buscarCnpjCliente() {
+            const msg = document.getElementById('msg-clientes');
+            try {
+                const d = await consultarCnpjEmBrasilApi(document.getElementById('cl-cpf-cnpj').value);
+                if (d.razao_social) document.getElementById('cl-nome').value = d.razao_social;
+                document.getElementById('cl-cep').value = d.cep ?? '';
+                document.getElementById('cl-logradouro').value = d.logradouro ?? '';
+                document.getElementById('cl-numero').value = d.numero ?? '';
+                document.getElementById('cl-bairro').value = d.bairro ?? '';
+                document.getElementById('cl-municipio').value = d.municipio ?? '';
+                document.getElementById('cl-uf').value = d.uf ?? '';
+                document.getElementById('cl-ibge').value = d.codigo_municipio_ibge ?? '';
+                if (d.ddd_telefone_1) document.getElementById('cl-telefone').value = d.ddd_telefone_1;
+                if (d.email) document.getElementById('cl-email').value = d.email;
+                msg.className = 'msg ok';
+                msg.textContent = 'Dados do CNPJ preenchidos - confira a Inscrição Estadual manualmente.';
+            } catch (e) {
+                msg.className = 'msg erro'; msg.textContent = e.message;
+            }
+        }
+
+        async function buscarCepCliente() {
+            try {
+                const d = await consultarCepEmViaCep(document.getElementById('cl-cep').value);
+                if (!d) return;
+                document.getElementById('cl-logradouro').value = d.logradouro || document.getElementById('cl-logradouro').value;
+                document.getElementById('cl-bairro').value = d.bairro || document.getElementById('cl-bairro').value;
+                document.getElementById('cl-municipio').value = d.localidade || document.getElementById('cl-municipio').value;
+                document.getElementById('cl-uf').value = d.uf || document.getElementById('cl-uf').value;
+                document.getElementById('cl-ibge').value = d.ibge || document.getElementById('cl-ibge').value;
+            } catch (e) {
+                document.getElementById('msg-clientes').className = 'msg erro';
+                document.getElementById('msg-clientes').textContent = e.message;
+            }
+        }
+
+        async function buscarCnpjFornecedor() {
+            const msg = document.getElementById('msg-fornecedores');
+            try {
+                const d = await consultarCnpjEmBrasilApi(document.getElementById('fo-cnpj').value);
+                if (d.razao_social) document.getElementById('fo-razao').value = d.razao_social;
+                if (d.nome_fantasia) document.getElementById('fo-fantasia').value = d.nome_fantasia;
+                if (d.ddd_telefone_1) document.getElementById('fo-telefone').value = d.ddd_telefone_1;
+                if (d.email) document.getElementById('fo-email').value = d.email;
+                document.getElementById('fo-cep').value = d.cep ?? '';
+                document.getElementById('fo-endereco').value = [d.logradouro, d.numero, d.bairro, d.municipio, d.uf, d.cep]
+                    .filter(Boolean).join(', ');
+                msg.className = 'msg ok';
+                msg.textContent = 'Dados do CNPJ preenchidos - confira a Inscrição Estadual manualmente.';
+            } catch (e) {
+                msg.className = 'msg erro'; msg.textContent = e.message;
+            }
+        }
+
+        async function buscarCepFornecedor() {
+            try {
+                const d = await consultarCepEmViaCep(document.getElementById('fo-cep').value);
+                if (!d) return;
+                document.getElementById('fo-endereco').value = [d.logradouro, d.bairro, d.localidade, d.uf, document.getElementById('fo-cep').value]
+                    .filter(Boolean).join(', ');
+            } catch (e) {
+                document.getElementById('msg-fornecedores').className = 'msg erro';
+                document.getElementById('msg-fornecedores').textContent = e.message;
+            }
+        }
+
         let clientesCache = [];
 
         async function carregarClientes() {
@@ -688,7 +790,7 @@
 
         function limparFormularioFornecedor() {
             document.getElementById('fo-id').value = '';
-            ['fo-razao', 'fo-fantasia', 'fo-cnpj', 'fo-ie', 'fo-contato', 'fo-telefone', 'fo-email', 'fo-endereco']
+            ['fo-razao', 'fo-fantasia', 'fo-cnpj', 'fo-ie', 'fo-contato', 'fo-telefone', 'fo-email', 'fo-cep', 'fo-endereco']
                 .forEach(id => document.getElementById(id).value = '');
             document.getElementById('fo-botao').textContent = 'Cadastrar';
             document.getElementById('fo-cancelar').style.display = 'none';
@@ -837,6 +939,21 @@
         async function alternarUsuario(id, ativo) {
             await fetch(`${base}/usuarios/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ ativo }) });
             carregarUsuarios();
+        }
+
+        async function buscarCepEmitente() {
+            try {
+                const d = await consultarCepEmViaCep(document.getElementById('cf-cep').value);
+                if (!d) return;
+                document.getElementById('cf-logradouro').value = d.logradouro || document.getElementById('cf-logradouro').value;
+                document.getElementById('cf-bairro').value = d.bairro || document.getElementById('cf-bairro').value;
+                document.getElementById('cf-municipio').value = d.localidade || document.getElementById('cf-municipio').value;
+                document.getElementById('cf-uf').value = d.uf || document.getElementById('cf-uf').value;
+                document.getElementById('cf-ibge').value = d.ibge || document.getElementById('cf-ibge').value;
+            } catch (e) {
+                document.getElementById('msg-config-fiscal').className = 'msg erro';
+                document.getElementById('msg-config-fiscal').textContent = e.message;
+            }
         }
 
         async function carregarConfigFiscal() {
