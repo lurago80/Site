@@ -3,6 +3,7 @@
 namespace App\Services\Pdv;
 
 use App\Models\AgendaVisitacao;
+use App\Models\Atendente;
 use App\Models\Cliente;
 use App\Models\Empresa;
 use App\Models\Produto;
@@ -33,6 +34,10 @@ class VendaPdvService
                 ? Vendedor::findOrFail($dados['vendedor_id'])
                 : null;
 
+            $atendente = ! empty($dados['atendente_id'])
+                ? Atendente::findOrFail($dados['atendente_id'])
+                : null;
+
             $cliente = ! empty($dados['cliente']['nome'] ?? null)
                 ? $this->localizarOuCriarCliente($empresa->id, $dados['cliente'])
                 : null;
@@ -41,6 +46,7 @@ class VendaPdvService
                 'empresa_id' => $empresa->id,
                 'cliente_id' => $cliente?->id,
                 'vendedor_id' => $vendedor?->id,
+                'atendente_id' => $atendente?->id,
                 'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
                 'canal' => 'pdv',
                 'tipo_doc' => $dados['tipo_doc'],
@@ -79,7 +85,7 @@ class VendaPdvService
                 $this->emissaoFiscalService->emitir($venda->fresh('itens'), 65);
             }
 
-            return $venda->fresh(['itens', 'cliente', 'vendedor']);
+            return $venda->fresh(['itens', 'cliente', 'vendedor', 'atendente']);
         });
     }
 

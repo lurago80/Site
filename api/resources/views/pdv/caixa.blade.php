@@ -80,7 +80,8 @@
                     <option value="nao_fiscal">Não fiscal</option>
                     <option value="fiscal">NFC-e (fiscal)</option>
                 </select>
-                <select id="vendedor"><option value="">Sem vendedor</option></select>
+                <select id="vendedor"><option value="">Sem vendedor (guia)</option></select>
+                <select id="atendente"><option value="">Sem atendente</option></select>
             </div>
 
             <div class="linha">
@@ -130,8 +131,15 @@
         async function carregarVendedores() {
             const resp = await fetch(`${base}/vendedores`);
             const vendedores = await resp.json();
-            document.getElementById('vendedor').innerHTML = '<option value="">Sem vendedor</option>' +
+            document.getElementById('vendedor').innerHTML = '<option value="">Sem vendedor (guia)</option>' +
                 vendedores.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('');
+        }
+
+        async function carregarAtendentes() {
+            const resp = await fetch(`${base}/atendentes`);
+            const atendentes = await resp.json();
+            document.getElementById('atendente').innerHTML = '<option value="">Sem atendente</option>' +
+                atendentes.map(a => `<option value="${a.id}">${a.nome}</option>`).join('');
         }
 
         async function carregarFormasPagamento() {
@@ -182,6 +190,7 @@
             const dados = {
                 tipo_doc: document.getElementById('tipo-doc').value,
                 vendedor_id: document.getElementById('vendedor').value || null,
+                atendente_id: document.getElementById('atendente').value || null,
                 forma_pagamento_id: document.getElementById('forma-pagamento').value || null,
                 cliente: {
                     nome: document.getElementById('cliente-nome').value || null,
@@ -252,6 +261,7 @@
         carregarProdutos();
         carregarAgenda();
         carregarVendedores();
+        carregarAtendentes();
         carregarFormasPagamento();
         caixaAtualizarStatus();
     </script>

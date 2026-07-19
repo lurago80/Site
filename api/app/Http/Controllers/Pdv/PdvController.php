@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Pdv;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\Atendente;
 use App\Models\FormaPagamento;
 use App\Models\Produto;
 use App\Models\Vendedor;
@@ -66,6 +67,13 @@ class PdvController extends Controller
         );
     }
 
+    public function atendentes(Request $request, string $empresa)
+    {
+        return response()->json(
+            Atendente::where('ativo', true)->orderBy('nome')->get()
+        );
+    }
+
     public function formasPagamento(Request $request, string $empresa)
     {
         return response()->json(
@@ -78,6 +86,7 @@ class PdvController extends Controller
         $dados = $request->validate([
             'tipo_doc' => ['required', 'in:fiscal,nao_fiscal'],
             'vendedor_id' => ['nullable', 'integer'],
+            'atendente_id' => ['nullable', 'integer'],
             'forma_pagamento_id' => ['nullable', 'integer'],
             'cliente.nome' => ['nullable', 'string', 'max:255'],
             'cliente.cpf_cnpj' => ['nullable', 'string', 'max:18'],

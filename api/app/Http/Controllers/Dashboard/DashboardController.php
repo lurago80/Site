@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\Atendente;
 use App\Models\Banco;
 use App\Models\CertificadoDigital;
 use App\Models\Cliente;
@@ -320,6 +321,79 @@ class DashboardController extends Controller
         $vendedor = Vendedor::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
 
         return response()->json($vendedor, 201);
+    }
+
+    // ---- Atendentes (quem opera a venda no PDV - diferente do vendedor/guia) ----
+
+    public function atendentes(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            Atendente::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
+        );
+    }
+
+    public function criarAtendente(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'nome' => ['required', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $atendente = Atendente::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($atendente, 201);
+    }
+
+    public function atualizarAtendente(Request $request, string $empresa, int $atendenteId)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'nome' => ['sometimes', 'string', 'max:255'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $atendente = Atendente::findOrFail($atendenteId);
+        $atendente->update($dados);
+
+        return response()->json($atendente->fresh());
+    }
+
+    /**
+     * Relatório simples: quantidade de vendas e valor total processado
+     * por atendente (quem operou o caixa), dentro de um período opcional.
+     */
+    public function relatorioAtendentes(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $relatorio = Atendente::where('empresa_id', $empresaAtual->id)
+            ->orderBy('nome')
+            ->get()
+            ->map(function (Atendente $atendente) use ($dados) {
+                $query = Venda::where('atendente_id', $atendente->id)
+                    ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', $d))
+                    ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', $d));
+
+                return [
+                    'id' => $atendente->id,
+                    'nome' => $atendente->nome,
+                    'vendas_count' => (clone $query)->count(),
+                    'valor_total' => (clone $query)->sum('valor_total'),
+                ];
+            });
+
+        return response()->json($relatorio);
     }
 
     // ---- Financeiro ----

@@ -146,6 +146,56 @@ class DashboardTest extends TestCase
         $response->assertCreated()->assertJsonPath('nome', 'Vendedor Teste');
     }
 
+    public function test_admin_cadastra_atendente(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/atendentes", [
+            'nome' => 'Atendente Teste',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('nome', 'Atendente Teste');
+    }
+
+    public function test_lista_atendentes_nao_exige_admin(): void
+    {
+        $response = $this->actingAs($this->atendente)->getJson("/dashboard/{$this->empresa->slug}/atendentes");
+
+        $response->assertOk();
+    }
+
+    public function test_atendente_nao_pode_cadastrar_atendente(): void
+    {
+        $response = $this->actingAs($this->atendente)->postJson("/dashboard/{$this->empresa->slug}/atendentes", [
+            'nome' => 'Outro Atendente',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_relatorio_de_atendentes_soma_vendas(): void
+    {
+        $atendenteModel = \App\Models\Atendente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Atendente Relatório', 'ativo' => true,
+        ]);
+
+        \App\Models\Venda::create([
+            'empresa_id' => $this->empresa->id, 'atendente_id' => $atendenteModel->id,
+            'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
+            'valor_total' => 100, 'data_venda' => now(),
+        ]);
+        \App\Models\Venda::create([
+            'empresa_id' => $this->empresa->id, 'atendente_id' => $atendenteModel->id,
+            'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
+            'valor_total' => 50, 'data_venda' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/atendentes-relatorio");
+
+        $response->assertOk();
+        $dados = collect($response->json())->firstWhere('nome', 'Atendente Relatório');
+        $this->assertSame(2, $dados['vendas_count']);
+        $this->assertEquals(150.0, $dados['valor_total']);
+    }
+
     public function test_lanca_conta_a_pagar_e_marca_como_paga(): void
     {
         $criar = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/contas-pagar", [

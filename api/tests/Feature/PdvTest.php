@@ -7,6 +7,7 @@ use App\Models\Empresa;
 use App\Models\Plano;
 use App\Models\Produto;
 use App\Models\User;
+use App\Models\Atendente;
 use App\Models\Vendedor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithTenantContext;
@@ -130,6 +131,37 @@ class PdvTest extends TestCase
         $response->assertCreated();
         $response->assertJsonPath('comissao', '3.60'); // 10% de R$36,00
         $response->assertJsonPath('vendedor.nome', 'João Vendedor');
+    }
+
+    public function test_venda_registra_vendedor_e_atendente_separadamente(): void
+    {
+        $vendedor = Vendedor::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Guia da Visita', 'percentual_comissao' => 10, 'ativo' => true,
+        ]);
+        $atendente = Atendente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Quem Operou o Caixa', 'ativo' => true,
+        ]);
+
+        $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'vendedor_id' => $vendedor->id,
+            'atendente_id' => $atendente->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('vendedor.nome', 'Guia da Visita');
+        $response->assertJsonPath('atendente.nome', 'Quem Operou o Caixa');
+    }
+
+    public function test_lista_atendentes_ativos_para_o_pdv(): void
+    {
+        Atendente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Ativo', 'ativo' => true]);
+        Atendente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Inativo', 'ativo' => false]);
+
+        $response = $this->getJson("/pdv/{$this->empresa->slug}/atendentes");
+
+        $response->assertOk()->assertJsonCount(1)->assertJsonPath('0.nome', 'Ativo');
     }
 
     public function test_venda_de_visita_agendada_reserva_e_confirma_vaga(): void

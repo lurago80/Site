@@ -63,6 +63,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/produtos', [PdvController::class, 'produtos']);
     Route::get('/agenda', [PdvController::class, 'agenda']);
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
+    Route::get('/atendentes', [PdvController::class, 'atendentes']);
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
 
@@ -97,6 +98,11 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
 
     Route::get('/vendedores', [DashboardController::class, 'vendedores']);
     Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);
+
+    Route::get('/atendentes', [DashboardController::class, 'atendentes']);
+    Route::post('/atendentes', [DashboardController::class, 'criarAtendente']);
+    Route::put('/atendentes/{atendenteId}', [DashboardController::class, 'atualizarAtendente']);
+    Route::get('/atendentes-relatorio', [DashboardController::class, 'relatorioAtendentes']);
 
     Route::get('/fornecedores', [DashboardController::class, 'fornecedores']);
     Route::post('/fornecedores', [DashboardController::class, 'criarFornecedor']);

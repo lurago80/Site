@@ -32,6 +32,7 @@
             <button onclick="mostrarSecao('clientes', this)">Clientes</button>
             <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
+            <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
             <button onclick="mostrarSecao('grupos', this)">Grupos</button>
             <button onclick="mostrarSecao('financeiro', this)">Financeiro</button>
             <button onclick="mostrarSecao('plano-contas', this)">Plano de Contas</button>
@@ -205,6 +206,39 @@
                         <tbody id="tbody-vendedores"></tbody>
                     </table>
                     <p class="msg" id="msg-vendedores"></p>
+                </div>
+            </section>
+
+            <section id="secao-atendentes" class="secao">
+                <h1>Atendentes</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Quem opera a venda no PDV - diferente do vendedor/guia, que recebe comissão pela visita.
+                    Uma venda pode ter os dois preenchidos ao mesmo tempo.
+                </p>
+                <div class="card">
+                    <input type="hidden" id="at-id">
+                    <div class="linha-form">
+                        <div><label>Nome</label><input type="text" id="at-nome"></div>
+                        <div><button class="acao" id="at-botao" onclick="salvarAtendente()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioAtendente()" style="display:none;" id="at-cancelar">Cancelar edição</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Nome</th><th>Ativo</th><th></th></tr></thead>
+                        <tbody id="tbody-atendentes"></tbody>
+                    </table>
+                    <p class="msg" id="msg-atendentes"></p>
+                </div>
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Relatório de vendas por atendente</h2>
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="atr-inicio"></div>
+                        <div><label>Até</label><input type="date" id="atr-fim"></div>
+                        <div><button class="secundario" onclick="carregarRelatorioAtendentes()">Consultar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Atendente</th><th>Vendas</th><th>Valor total</th></tr></thead>
+                        <tbody id="tbody-relatorio-atendentes"></tbody>
+                    </table>
                 </div>
             </section>
 
@@ -571,6 +605,7 @@
             clientes: carregarClientes,
             fornecedores: carregarFornecedores,
             vendedores: carregarVendedores,
+            atendentes: carregarAtendentes,
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); },
@@ -971,6 +1006,63 @@
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Vendedor cadastrado.';
             carregarVendedores();
+        }
+
+        let atendentesCache = [];
+
+        async function carregarAtendentes() {
+            const resp = await fetch(`${base}/atendentes`);
+            atendentesCache = await resp.json();
+            document.getElementById('tbody-atendentes').innerHTML = atendentesCache.map(a => `
+                <tr>
+                    <td>${a.nome}</td>
+                    <td>${a.ativo ? 'Sim' : 'Não'}</td>
+                    <td><button class="secundario" onclick="editarAtendente(${a.id})">Editar</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="3">Nenhum atendente cadastrado.</td></tr>';
+        }
+
+        function editarAtendente(id) {
+            const a = atendentesCache.find(x => x.id === id);
+            if (!a) return;
+            document.getElementById('at-id').value = a.id;
+            document.getElementById('at-nome').value = a.nome;
+            document.getElementById('at-botao').textContent = 'Salvar edição';
+            document.getElementById('at-cancelar').style.display = 'inline-block';
+        }
+
+        function limparFormularioAtendente() {
+            document.getElementById('at-id').value = '';
+            document.getElementById('at-nome').value = '';
+            document.getElementById('at-botao').textContent = 'Cadastrar';
+            document.getElementById('at-cancelar').style.display = 'none';
+        }
+
+        async function salvarAtendente() {
+            const id = document.getElementById('at-id').value;
+            const dados = { nome: document.getElementById('at-nome').value };
+            const url = id ? `${base}/atendentes/${id}` : `${base}/atendentes`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-atendentes');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = id ? 'Atendente atualizado.' : 'Atendente cadastrado.';
+            limparFormularioAtendente();
+            carregarAtendentes();
+        }
+
+        async function carregarRelatorioAtendentes() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('atr-inicio').value;
+            const fim = document.getElementById('atr-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const resp = await fetch(`${base}/atendentes-relatorio?${params}`);
+            const lista = await resp.json();
+            document.getElementById('tbody-relatorio-atendentes').innerHTML = lista.map(r => `
+                <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+            `).join('') || '<tr><td colspan="3">Nenhum atendente cadastrado.</td></tr>';
         }
 
         async function carregarContasPagar() {

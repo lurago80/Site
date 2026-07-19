@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'empresa_id', 'cliente_id', 'vendedor_id', 'forma_pagamento_id',
+    'empresa_id', 'cliente_id', 'vendedor_id', 'atendente_id', 'forma_pagamento_id',
     'canal', 'tipo_doc', 'status_pagamento', 'valor_total', 'comissao', 'data_venda',
 ])]
 class Venda extends Model
@@ -35,6 +35,11 @@ class Venda extends Model
     public function vendedor(): BelongsTo
     {
         return $this->belongsTo(Vendedor::class);
+    }
+
+    public function atendente(): BelongsTo
+    {
+        return $this->belongsTo(Atendente::class);
     }
 
     public function formaPagamento(): BelongsTo
