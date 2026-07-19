@@ -133,4 +133,8 @@ Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->grou
     Route::post('/planos', [SuperAdminController::class, 'criarPlano']);
     Route::get('/assinaturas', [SuperAdminController::class, 'assinaturas']);
     Route::post('/assinaturas', [SuperAdminController::class, 'criarAssinatura']);
+    Route::put('/assinaturas/{assinaturaId}', [SuperAdminController::class, 'atualizarStatusAssinatura']);
+    Route::put('/assinaturas/{assinaturaId}/baixar', [SuperAdminController::class, 'baixarAssinaturaManual']);
+    Route::get('/config-assinatura', [SuperAdminController::class, 'configAssinatura']);
+    Route::put('/config-assinatura', [SuperAdminController::class, 'atualizarConfigAssinatura']);
 });

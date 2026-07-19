@@ -3,6 +3,7 @@
 use App\Http\Controllers\Loja\CatalogoController;
 use App\Http\Controllers\Loja\CheckoutController;
 use App\Http\Controllers\Loja\ReservaController;
+use App\Http\Controllers\Webhooks\WebhookAssinaturaController;
 use App\Http\Controllers\Webhooks\WebhookPagamentoController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,3 +27,4 @@ Route::middleware(['tenant'])->prefix('loja/{empresa}')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::post('/webhooks/pagamento/mercadopago', [WebhookPagamentoController::class, 'mercadoPago']);
+Route::post('/webhooks/assinatura/asaas', [WebhookAssinaturaController::class, 'asaas']);

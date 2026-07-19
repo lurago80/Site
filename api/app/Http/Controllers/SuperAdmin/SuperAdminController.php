@@ -4,8 +4,10 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Assinatura;
+use App\Models\ConfigAssinatura;
 use App\Models\Empresa;
 use App\Models\Plano;
+use App\Services\Assinatura\AssinaturaService;
 use Illuminate\Http\Request;
 
 /**
@@ -15,6 +17,8 @@ use Illuminate\Http\Request;
  */
 class SuperAdminController extends Controller
 {
+    public function __construct(private readonly AssinaturaService $assinaturaService) {}
+
     public function painel()
     {
         return view('superadmin.painel');
@@ -92,6 +96,13 @@ class SuperAdminController extends Controller
         );
     }
 
+    /**
+     * Cria a assinatura da empresa cliente. Com o Asaas configurado e
+     * ativo (ver configAssinatura()), cria a cobrança recorrente de
+     * verdade lá e a empresa passa a ser cobrada automaticamente todo
+     * mês; sem Asaas, cai no cadastro manual original (status digitado
+     * à mão pelo super admin).
+     */
     public function criarAssinatura(Request $request)
     {
         $dados = $request->validate([
@@ -99,11 +110,95 @@ class SuperAdminController extends Controller
             'plano_id' => ['required', 'integer', 'exists:planos,id'],
             'status_pagamento' => ['required', 'in:em_dia,atrasado,cancelado'],
             'inicio' => ['required', 'date'],
+        ]);
+
+        $empresa = Empresa::findOrFail($dados['empresa_id']);
+        $plano = Plano::findOrFail($dados['plano_id']);
+
+        $assinatura = $this->assinaturaService->criarAssinatura(
+            $empresa, $plano, $dados['status_pagamento'], $dados['inicio']
+        );
+
+        return response()->json($assinatura->load('empresa', 'plano'), 201);
+    }
+
+    /**
+     * Baixa manual: marca a assinatura como paga "na mão" (transferência,
+     * dinheiro, negociação fora do Asaas etc.), independente de haver
+     * gateway configurado. O super admin sempre pode fazer isso - o
+     * Asaas automatiza o caso comum, mas nunca é a única porta de saída.
+     */
+    public function baixarAssinaturaManual(Request $request, int $assinaturaId)
+    {
+        $dados = $request->validate([
             'proxima_cobranca' => ['nullable', 'date'],
         ]);
 
-        $assinatura = Assinatura::create($dados);
+        $assinatura = Assinatura::findOrFail($assinaturaId);
+        $assinatura->update([
+            'status_pagamento' => 'em_dia',
+            'proxima_cobranca' => $dados['proxima_cobranca'] ?? now()->addMonth()->toDateString(),
+        ]);
 
-        return response()->json($assinatura->load('empresa', 'plano'), 201);
+        // Reativa a empresa se ela tinha sido suspensa por inadimplência.
+        if ($assinatura->empresa->status === 'suspensa') {
+            $assinatura->empresa->update(['status' => 'ativa']);
+        }
+
+        return response()->json($assinatura->fresh()->load('empresa', 'plano'));
+    }
+
+    public function atualizarStatusAssinatura(Request $request, int $assinaturaId)
+    {
+        $dados = $request->validate([
+            'status_pagamento' => ['required', 'in:em_dia,atrasado,cancelado'],
+        ]);
+
+        $assinatura = Assinatura::findOrFail($assinaturaId);
+        $assinatura->update($dados);
+
+        return response()->json($assinatura->fresh()->load('empresa', 'plano'));
+    }
+
+    // ---- Configuração de cobrança de assinatura (Asaas) ----
+
+    /**
+     * Configuração ÚNICA e global (não por empresa) - só o super admin
+     * gerencia, é a plataforma cobrando cada empresa cliente.
+     */
+    public function configAssinatura()
+    {
+        $config = ConfigAssinatura::first();
+
+        return response()->json($config ? [
+            'provider' => $config->provider,
+            'ambiente' => $config->ambiente,
+            'ativo' => $config->ativo,
+            'tem_credenciais' => ! empty($config->api_key),
+        ] : null);
+    }
+
+    public function atualizarConfigAssinatura(Request $request)
+    {
+        $dados = $request->validate([
+            'provider' => ['required', 'in:asaas'],
+            'ambiente' => ['required', 'in:sandbox,producao'],
+            'api_key' => ['nullable', 'string'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        if (empty($dados['api_key'])) {
+            unset($dados['api_key']);
+        }
+
+        $config = ConfigAssinatura::first();
+        $config = $config ? tap($config)->update($dados) : ConfigAssinatura::create($dados);
+
+        return response()->json([
+            'provider' => $config->provider,
+            'ambiente' => $config->ambiente,
+            'ativo' => $config->ativo,
+            'tem_credenciais' => ! empty($config->api_key),
+        ]);
     }
 }

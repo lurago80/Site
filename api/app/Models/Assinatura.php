@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['empresa_id', 'plano_id', 'status_pagamento', 'inicio', 'proxima_cobranca'])]
+#[Fillable(['empresa_id', 'plano_id', 'status_pagamento', 'inicio', 'proxima_cobranca', 'asaas_subscription_id'])]
 class Assinatura extends Model
 {
     protected function casts(): array

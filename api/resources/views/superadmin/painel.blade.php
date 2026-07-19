@@ -43,6 +43,29 @@
     </div>
 
     <div class="card">
+        <h2>Cobrança de assinatura (Asaas)</h2>
+        <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+            Configuração única e global: é a plataforma cobrando cada empresa cliente pela mensalidade
+            (diferente do gateway de pagamento, que é a empresa cliente cobrando o consumidor final dela).
+            Asaas não cobra mensalidade da própria plataforma - só uma taxa quando uma cobrança acontece de
+            fato. Sem configurar aqui, o cadastro de assinatura abaixo fica manual (você define o status à mão).
+        </p>
+        <p id="asa-status" style="font-size:13px;">Carregando...</p>
+        <div class="linha-form">
+            <div><label>Ambiente</label>
+                <select id="asa-ambiente">
+                    <option value="sandbox">Sandbox (testes)</option>
+                    <option value="producao">Produção</option>
+                </select>
+            </div>
+            <div><label><input type="checkbox" id="asa-ativo"> Ativo</label></div>
+            <div style="flex:1"><label>API Key</label><input type="password" id="asa-api-key" placeholder="Deixe em branco para manter a atual"></div>
+            <div><button onclick="salvarConfigAssinatura()">Salvar</button></div>
+        </div>
+        <p class="msg" id="msg-config-assinatura"></p>
+    </div>
+
+    <div class="card">
         <h2>Assinaturas</h2>
         <div class="linha-form">
             <div><label>Empresa</label><select id="a-empresa"></select></div>
@@ -57,9 +80,14 @@
             <div><label>Início</label><input type="date" id="a-inicio"></div>
             <div><button onclick="criarAssinatura()">Registrar assinatura</button></div>
         </div>
+        <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
+            Com o Asaas ativo acima, a cobrança recorrente é criada automaticamente e o status inicial
+            aqui é só o ponto de partida - o Asaas atualiza sozinho depois (webhook). "Dar baixa" marca a
+            assinatura como paga na mão (fora do Asaas) e reativa a empresa se estiver suspensa.
+        </p>
         <table>
-            <thead><tr><th>Empresa</th><th>Plano</th><th>Status</th><th>Início</th></tr></thead>
-            <tbody id="tbody-assinaturas"><tr><td colspan="4">Carregando...</td></tr></tbody>
+            <thead><tr><th>Empresa</th><th>Plano</th><th>Status</th><th>Início</th><th></th></tr></thead>
+            <tbody id="tbody-assinaturas"><tr><td colspan="5">Carregando...</td></tr></tbody>
         </table>
         <p class="msg" id="msg-assinaturas"></p>
     </div>
@@ -153,8 +181,9 @@
                     <td>${a.plano ? a.plano.nome : '-'}</td>
                     <td><span class="status status-${a.status_pagamento}">${a.status_pagamento}</span></td>
                     <td>${a.inicio}</td>
+                    <td>${a.status_pagamento !== 'em_dia' ? `<button class="secundario" onclick="baixarAssinatura(${a.id})">Dar baixa</button>` : ''}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="4">Nenhuma assinatura registrada.</td></tr>';
+            `).join('') || '<tr><td colspan="5">Nenhuma assinatura registrada.</td></tr>';
         }
 
         async function criarAssinatura() {
@@ -172,8 +201,47 @@
             carregarAssinaturas();
         }
 
+        async function baixarAssinatura(assinaturaId) {
+            const resp = await fetch(`/superadmin/assinaturas/${assinaturaId}/baixar`, { method: 'PUT', headers: headersJson, body: '{}' });
+            const msg = document.getElementById('msg-assinaturas');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Erro ao dar baixa na assinatura.'; return; }
+            msg.className = 'msg ok'; msg.textContent = 'Baixa registrada - assinatura marcada como paga.';
+            carregarAssinaturas();
+        }
+
+        async function carregarConfigAssinatura() {
+            const resp = await fetch('/superadmin/config-assinatura');
+            const dados = await resp.json();
+            const status = document.getElementById('asa-status');
+            if (!dados) { status.textContent = 'Asaas não configurado ainda - cadastro de assinatura fica manual.'; return; }
+            document.getElementById('asa-ambiente').value = dados.ambiente;
+            document.getElementById('asa-ativo').checked = dados.ativo;
+            status.textContent = dados.tem_credenciais
+                ? `Asaas configurado (${dados.ambiente}) - ${dados.ativo ? 'ativo' : 'inativo'}.`
+                : 'Asaas selecionado, mas sem chave de API salva ainda.';
+        }
+
+        async function salvarConfigAssinatura() {
+            const dados = {
+                provider: 'asaas',
+                ambiente: document.getElementById('asa-ambiente').value,
+                ativo: document.getElementById('asa-ativo').checked,
+            };
+            const apiKey = document.getElementById('asa-api-key').value;
+            if (apiKey) { dados.api_key = apiKey; }
+
+            const resp = await fetch('/superadmin/config-assinatura', { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-assinatura');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Configuração do Asaas salva.';
+            document.getElementById('asa-api-key').value = '';
+            carregarConfigAssinatura();
+        }
+
         carregarPlanos().then(carregarEmpresas);
         carregarAssinaturas();
+        carregarConfigAssinatura();
     </script>
 </body>
 </html>

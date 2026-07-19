@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Assinatura;
 use App\Models\CertificadoDigital;
 use App\Models\Cliente;
+use App\Models\ConfigAssinatura;
 use App\Models\ConfigPagamento;
 use App\Models\ConfigWhatsapp;
 use App\Models\Empresa;
@@ -46,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
         Assinatura::class,
         ConfigPagamento::class,
         ConfigWhatsapp::class,
+        ConfigAssinatura::class,
     ];
 
     public function register(): void
