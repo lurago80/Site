@@ -63,8 +63,10 @@ Com isso, as três frentes do Sistema Interno previstas no Escopo v1/v2 (PDV, Da
 - Só testado com Simples Nacional (CRT=1); outros regimes tributários não cobertos;
 - Tabela de `cClassTrib` do IBS/CBS usa o código padrão (000001) — precisa revisão quando a SEFAZ consolidar a tabela definitiva por segmento;
 - Sem recuperação de senha ("esqueci minha senha") nem página de erro 403 dedicada para usuário inativo/empresa suspensa (hoje volta pro login com mensagem);
-- Painel Super Admin ainda não tem cobrança de assinatura automática (Asaas/Vindi/Iugu) nem edição de plano/reassociação de empresa depois de criada — só cadastro inicial e mudança de status;
-- O microserviço `whatsapp-service/` (Baileys) precisa estar rodando ao lado do Laravel em produção (`pm2`/`systemd`/container à parte, ver `whatsapp-service/README.md`) - se ele cair, o provedor Baileys passa a registrar as mensagens como "falha" (não trava o resto do sistema, mas para de notificar); pareamento real com um número de WhatsApp de verdade ainda não foi validado (só a geração do QR code e a conexão com os servidores do WhatsApp).
+- Painel Super Admin ainda não tem edição de plano/reassociação de empresa depois de criada — só cadastro inicial e mudança de status (cobrança de assinatura automática já foi implementada, ver item 21 do changelog técnico);
+- O microserviço `whatsapp-service/` (Baileys) precisa estar rodando ao lado do Laravel em produção (`pm2`/`systemd`/container à parte, ver `whatsapp-service/README.md`) - se ele cair, o provedor Baileys passa a registrar as mensagens como "falha" (não trava o resto do sistema, mas para de notificar); pareamento real com um número de WhatsApp de verdade ainda não foi validado (só a geração do QR code e a conexão com os servidores do WhatsApp);
+- O envio de WhatsApp de confirmação (`NotificacaoService::enviarConfirmacaoAgendamento`) roda **de forma síncrona** dentro do próprio `CheckoutController::store()` - se o Z-API/Baileys estiver lento ou fora do ar, o checkout do cliente final fica lento junto (não quebra, o `try` implícito do gateway retorna 'falha' e segue, mas atrasa a resposta). O projeto já tem `QUEUE_CONNECTION=database` configurado, mas nenhuma fila é usada de fato ainda - mover esse envio para um `Job` assíncrono resolveria, mas exige rodar `php artisan queue:work` em produção;
+- Rotas públicas sem usuário logado (`loja/{empresa}/checkout`, `/reservas`, os dois webhooks) não têm `throttle` (limite de requisições) - só o `/login` tem hoje. Vulnerável a abuso (spam de vendas/reservas falsas, inundação dos endpoints de webhook) se ficarem expostas na internet sem alguma limitação na frente (Cloudflare, Nginx, ou `throttle` do próprio Laravel).
 
 **Achados técnicos (2026-07-18, cadastro de emitente/certificado):**
 - `AuditLogObserver` gravava `empresa_id = null` no log ao editar o próprio cadastro da `Empresa` (ela não tem coluna `empresa_id`, só `id`) - violava o RLS de `logs` sempre que um admin comum (não super_admin) editava o endereço fiscal da própria empresa. Corrigido tratando `Empresa` como caso especial (usa o próprio `id` como `empresa_id` do log);
@@ -218,7 +220,7 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~Estruturação do projeto Laravel~~ — feito;
 - ~~Módulo fiscal validado com a SEFAZ real~~ — feito;
 - ~~Login do sistema interno~~ — feito;
-- ~~Painel Super Admin~~ — feito (falta cobrança automática de assinatura, ver changelog técnico);
+- ~~Painel Super Admin~~ — feito, incluindo cobrança automática de assinatura (ver item 21 do changelog técnico);
 - ~~PDV (frente de caixa)~~ — feito;
 - ~~Dashboard administrativo~~ — feito;
 - ~~NFe modelo 55 + NCM/CFOP por produto + importar NFC-e→NFe (CFOP 5929/6929)~~ — feito;
