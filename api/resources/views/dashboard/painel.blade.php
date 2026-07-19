@@ -9,6 +9,9 @@
         .layout { display: flex; min-height: 100vh; }
         .sidebar .logo { padding: 0 16px 12px; }
         .sidebar .logo img { height: 28px; }
+        .sidebar .grupo-label { padding: 14px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.45); }
+        .sidebar .link-pdv { display: block; padding: 10px 16px; font-size: 13px; color: #fff; background: var(--cor-primaria); text-decoration: none; margin: 0 12px; border-radius: 6px; }
+        .sidebar .link-pdv:hover { background: var(--cor-primaria-escura); }
         .conteudo { flex: 1; padding: 24px; }
         .secao { display: none; }
         .secao.ativa { display: block; }
@@ -27,20 +30,34 @@
             <div class="logo"><img src="/images/logo.jpg" alt="Logo"></div>
             <div class="empresa">{{ $empresaSlug }}</div>
             <button class="ativo" onclick="mostrarSecao('dashboard', this)">Dashboard</button>
+
+            <div class="grupo-label">PDV</div>
+            <a class="link-pdv" href="{{ url("/pdv/{$empresaSlug}/caixa") }}" target="_blank">Abrir frente de caixa ↗</a>
+
+            <div class="grupo-label">Cadastros</div>
             <button onclick="mostrarSecao('agenda', this)">Agenda de Visitas</button>
             <button onclick="mostrarSecao('produtos', this)">Produtos</button>
+            <button onclick="mostrarSecao('grupos', this)">Grupos de Produto</button>
             <button onclick="mostrarSecao('clientes', this)">Clientes</button>
             <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
-            <button onclick="mostrarSecao('grupos', this)">Grupos</button>
-            <button onclick="mostrarSecao('financeiro', this)">Financeiro</button>
+
+            <div class="grupo-label">Financeiro</div>
+            <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
             <button onclick="mostrarSecao('plano-contas', this)">Plano de Contas</button>
             <button onclick="mostrarSecao('bancos', this)">Bancos</button>
-            <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
+            <button onclick="mostrarSecao('caixa-consulta', this)">Caixa (consulta)</button>
+
+            <div class="grupo-label">Fiscal</div>
+            <button onclick="mostrarSecao('fiscal', this)">Emissão e Relatórios</button>
             <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
+
+            <div class="grupo-label">Configurações</div>
+            <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
             <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
             <button onclick="mostrarSecao('whatsapp', this)">WhatsApp</button>
+
             <form method="POST" action="/logout" style="padding: 16px;">
                 @csrf
                 <button type="submit" class="secundario" style="width:100%;">Sair</button>
@@ -242,6 +259,21 @@
                 </div>
             </section>
 
+            <section id="secao-caixa-consulta" class="secao">
+                <h1>Caixa (consulta)</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Abertura, fechamento, sangria e suprimento lançados no PDV - aqui é só consulta,
+                    quem opera o caixa físico é a tela do PDV.
+                </p>
+                <div class="card">
+                    <p id="cx-status" style="font-size:14px; font-weight:600;">Carregando...</p>
+                    <table>
+                        <thead><tr><th>Data/hora</th><th>Tipo</th><th>Valor</th><th>Operador</th><th>Observação</th></tr></thead>
+                        <tbody id="tbody-caixa-consulta"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <section id="secao-financeiro" class="secao">
                 <h1>Financeiro</h1>
                 <div class="card">
@@ -402,6 +434,88 @@
                         <tbody id="tbody-usuarios"></tbody>
                     </table>
                     <p class="msg" id="msg-usuarios"></p>
+                </div>
+            </section>
+
+            <section id="secao-fiscal" class="secao">
+                <h1>Fiscal — Emissão e Relatórios</h1>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Documentos fiscais</h2>
+                    <div class="linha-form">
+                        <div><label>Modelo</label>
+                            <select id="f-modelo">
+                                <option value="">Todos</option>
+                                <option value="65">NFC-e</option>
+                                <option value="55">NFe</option>
+                            </select>
+                        </div>
+                        <div><label>Data início</label><input type="date" id="f-data-inicio"></div>
+                        <div><label>Data fim</label><input type="date" id="f-data-fim"></div>
+                        <div>
+                            <label>Status</label>
+                            <select id="f-status">
+                                <option value="">Todos</option>
+                                <option value="autorizada">Autorizada</option>
+                                <option value="cancelada">Cancelada</option>
+                                <option value="rejeitada">Rejeitada</option>
+                                <option value="contingencia">Contingência</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" onclick="carregarRelatorioFiscal()">Filtrar</button></div>
+                        <div><button class="secundario" onclick="exportarFiscal('xmls')">Exportar XMLs (.zip)</button></div>
+                        <div><button class="secundario" onclick="exportarFiscal('relatorio-contador')">Relatório contador (.csv)</button></div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr><th>Nº</th><th>Série</th><th>Modelo</th><th>Status</th><th>Total</th><th>Emitido em</th><th>Ações</th></tr>
+                        </thead>
+                        <tbody id="tbody-documentos-fiscais"><tr><td colspan="7">Carregando...</td></tr></tbody>
+                    </table>
+                    <p class="msg" id="msg-documentos-fiscais"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Importar venda não fiscal → emitir documento</h2>
+                    <div class="linha-form">
+                        <div><label>Emitir como</label>
+                            <select id="imp-modelo"><option value="65">NFC-e (65)</option><option value="55">NFe (55)</option></select>
+                        </div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Venda</th><th>Cliente</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+                        <tbody id="tbody-vendas-nao-fiscais"><tr><td colspan="5">Carregando...</td></tr></tbody>
+                    </table>
+                    <p class="msg" id="msg-importar-fiscal"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Importar NFC-e → NFe (regularização)</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Gera uma NFe formal referenciando uma NFC-e já autorizada, com CFOP 5929 (mesmo estado)
+                        ou 6929 (fora do estado) - útil quando o cliente pessoa jurídica precisa de NFe para a
+                        contabilidade dele. Exige que o cliente da venda tenha endereço completo cadastrado.
+                    </p>
+                    <table>
+                        <thead><tr><th>NFC-e</th><th>Cliente</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+                        <tbody id="tbody-nfces-disponiveis"><tr><td colspan="5">Carregando...</td></tr></tbody>
+                    </table>
+                    <p class="msg" id="msg-importar-nfe"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Inutilizar numeração</h2>
+                    <div class="linha-form">
+                        <div><label>Modelo</label>
+                            <select id="inut-modelo"><option value="65">NFC-e (65)</option><option value="55">NFe (55)</option></select>
+                        </div>
+                        <div><label>Série</label><input type="text" id="inut-serie" value="1" style="width:60px"></div>
+                        <div><label>Nº inicial</label><input type="number" id="inut-inicial" style="width:100px"></div>
+                        <div><label>Nº final</label><input type="number" id="inut-final" style="width:100px"></div>
+                        <div style="flex:1"><label>Justificativa (mín. 15 caracteres)</label><input type="text" id="inut-justificativa" style="width:100%"></div>
+                        <div><button class="perigo" onclick="inutilizarFiscal()">Inutilizar</button></div>
+                    </div>
+                    <p class="msg" id="msg-inutilizar-fiscal"></p>
                 </div>
             </section>
 
@@ -612,6 +726,8 @@
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); carregarConfigLoja(); },
+            fiscal: () => { carregarRelatorioFiscal(); carregarVendasNaoFiscaisFiscal(); carregarNfcesDisponiveisFiscal(); },
+            'caixa-consulta': carregarCaixaConsulta,
             pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
             whatsapp: () => { carregarConfigWhatsapp(); alternarCamposProvedor(); baileysAtualizarStatus(); },
         };
@@ -1397,6 +1513,163 @@
             const msg = document.getElementById('msg-config-loja');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Identidade visual salva.';
+        }
+
+        // ---- Fiscal (emissão, relatório, cancelamento, inutilização) ----
+        // Endpoints vivem sob /fiscal/{empresa}/... (GestaoFiscalController),
+        // não sob /dashboard/{empresa}/... como o resto desta tela.
+        const fiscalBase = `/fiscal/${empresa}`;
+
+        async function carregarRelatorioFiscal() {
+            const params = new URLSearchParams({
+                modelo: document.getElementById('f-modelo').value,
+                data_inicio: document.getElementById('f-data-inicio').value,
+                data_fim: document.getElementById('f-data-fim').value,
+                status: document.getElementById('f-status').value,
+            });
+            const resp = await fetch(`${fiscalBase}/relatorio?${params}`);
+            const docs = await resp.json();
+            const tbody = document.getElementById('tbody-documentos-fiscais');
+            if (!docs.length) { tbody.innerHTML = '<tr><td colspan="7">Nenhum documento encontrado.</td></tr>'; return; }
+            tbody.innerHTML = docs.map(d => `
+                <tr>
+                    <td>${d.numero}</td>
+                    <td>${d.serie}</td>
+                    <td>${d.modelo === 55 ? 'NFe' : 'NFC-e'}</td>
+                    <td><span class="status status-${d.status}">${d.status}</span></td>
+                    <td>R$ ${Number(d.total).toFixed(2)}</td>
+                    <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
+                    <td>
+                        <button class="secundario" onclick="reimprimirFiscal(${d.id})">Reimprimir</button>
+                        ${d.status === 'autorizada' ? `<button class="perigo" onclick="cancelarFiscal(${d.id})">Cancelar</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function reimprimirFiscal(documentoId) {
+            window.open(`${fiscalBase}/documentos/${documentoId}/reimprimir`, '_blank');
+        }
+
+        async function cancelarFiscal(documentoId) {
+            const justificativa = prompt('Justificativa do cancelamento (mín. 15 caracteres):');
+            if (!justificativa) return;
+            const resp = await fetch(`${fiscalBase}/documentos/${documentoId}/cancelar`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ justificativa }),
+            });
+            const dados = await resp.json();
+            const msg = document.getElementById('msg-documentos-fiscais');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
+            msg.className = 'msg ok'; msg.textContent = 'Documento cancelado com sucesso.';
+            carregarRelatorioFiscal();
+        }
+
+        function exportarFiscal(tipo) {
+            const params = new URLSearchParams({
+                modelo: document.getElementById('f-modelo').value,
+                data_inicio: document.getElementById('f-data-inicio').value,
+                data_fim: document.getElementById('f-data-fim').value,
+            });
+            window.location = `${fiscalBase}/exportar/${tipo}?${params}`;
+        }
+
+        async function carregarVendasNaoFiscaisFiscal() {
+            const resp = await fetch(`${fiscalBase}/vendas-nao-fiscais`);
+            const vendas = await resp.json();
+            const tbody = document.getElementById('tbody-vendas-nao-fiscais');
+            if (!vendas.length) { tbody.innerHTML = '<tr><td colspan="5">Nenhuma venda não fiscal pendente.</td></tr>'; return; }
+            tbody.innerHTML = vendas.map(v => `
+                <tr>
+                    <td>#${v.id}</td>
+                    <td>${v.cliente ? v.cliente.nome : 'Consumidor não identificado'}</td>
+                    <td>R$ ${Number(v.valor_total).toFixed(2)}</td>
+                    <td>${new Date(v.data_venda).toLocaleString('pt-BR')}</td>
+                    <td><button onclick="importarFiscal(${v.id})">Emitir NFC-e</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function importarFiscal(vendaId) {
+            const modelo = Number(document.getElementById('imp-modelo').value);
+            const resp = await fetch(`${fiscalBase}/vendas/${vendaId}/importar`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ modelo }),
+            });
+            const dados = await resp.json();
+            const msg = document.getElementById('msg-importar-fiscal');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
+            msg.className = 'msg ok'; msg.textContent = `${modelo === 55 ? 'NFe' : 'NFC-e'} emitida: status ${dados.status}.`;
+            carregarVendasNaoFiscaisFiscal();
+            carregarRelatorioFiscal();
+        }
+
+        async function carregarNfcesDisponiveisFiscal() {
+            const resp = await fetch(`${fiscalBase}/nfces-disponiveis-para-nfe`);
+            const lista = await resp.json();
+            const tbody = document.getElementById('tbody-nfces-disponiveis');
+            if (!lista.length) { tbody.innerHTML = '<tr><td colspan="5">Nenhuma NFC-e disponível para importar.</td></tr>'; return; }
+            tbody.innerHTML = lista.map(d => `
+                <tr>
+                    <td>#${d.numero}</td>
+                    <td>${d.cliente || 'Não identificado'}${d.cliente_completo ? '' : ' <span style="color:#c81e1e;">(endereço incompleto)</span>'}</td>
+                    <td>R$ ${Number(d.total).toFixed(2)}</td>
+                    <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
+                    <td><button onclick="importarNfceFiscal(${d.id})" ${d.cliente_completo ? '' : 'disabled'}>Gerar NFe</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function importarNfceFiscal(documentoNfceId) {
+            const resp = await fetch(`${fiscalBase}/nfces/${documentoNfceId}/importar-para-nfe`, {
+                method: 'POST', headers: headersJson,
+            });
+            const dados = await resp.json();
+            const msg = document.getElementById('msg-importar-nfe');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
+            msg.className = 'msg ok'; msg.textContent = `NFe emitida: status ${dados.status}.`;
+            carregarNfcesDisponiveisFiscal();
+            carregarRelatorioFiscal();
+        }
+
+        async function inutilizarFiscal() {
+            const dados = {
+                modelo: Number(document.getElementById('inut-modelo').value),
+                serie: document.getElementById('inut-serie').value,
+                numero_inicial: Number(document.getElementById('inut-inicial').value),
+                numero_final: Number(document.getElementById('inut-final').value),
+                justificativa: document.getElementById('inut-justificativa').value,
+            };
+            const resp = await fetch(`${fiscalBase}/inutilizacoes`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify(dados),
+            });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-inutilizar-fiscal');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = `Inutilização ${resposta.status}.`;
+        }
+
+        // ---- Caixa (consulta - quem opera é o PDV) ----
+        // Endpoints vivem sob /pdv/{empresa}/... (PdvController).
+
+        async function carregarCaixaConsulta() {
+            const pdvBase = `/pdv/${empresa}`;
+            const [statusResp, extratoResp] = await Promise.all([
+                fetch(`${pdvBase}/caixa-status`).then(r => r.json()),
+                fetch(`${pdvBase}/caixa-extrato`).then(r => r.json()),
+            ]);
+
+            document.getElementById('cx-status').textContent = statusResp.status === 'aberto'
+                ? `Caixa aberto - saldo atual: R$ ${Number(statusResp.saldo).toFixed(2)}`
+                : 'Caixa fechado.';
+
+            document.getElementById('tbody-caixa-consulta').innerHTML = extratoResp.map(m => `
+                <tr>
+                    <td>${new Date(m.data_hora).toLocaleString('pt-BR')}</td>
+                    <td>${m.tipo}</td>
+                    <td>R$ ${Number(m.valor).toFixed(2)}</td>
+                    <td>${m.usuario ? m.usuario.name : '-'}</td>
+                    <td>${m.observacao ?? '-'}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum movimento de caixa registrado.</td></tr>';
         }
 
         async function carregarConfigFiscal() {

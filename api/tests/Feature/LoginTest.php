@@ -50,7 +50,27 @@ class LoginTest extends TestCase
             'password' => 'senha-correta',
         ]);
 
-        $response->assertRedirect('/fiscal/login-teste/painel');
+        $response->assertRedirect('/dashboard/login-teste/painel');
+        $this->assertAuthenticated();
+    }
+
+    public function test_login_de_caixa_redireciona_direto_ao_pdv(): void
+    {
+        User::create([
+            'name' => 'Caixa Teste',
+            'email' => 'caixa@login-teste.com',
+            'password' => bcrypt('senha-correta'),
+            'empresa_id' => $this->empresa->id,
+            'perfil' => 'caixa',
+            'ativo' => true,
+        ]);
+
+        $response = $this->post('/login', [
+            'email' => 'caixa@login-teste.com',
+            'password' => 'senha-correta',
+        ]);
+
+        $response->assertRedirect('/pdv/login-teste/caixa');
         $this->assertAuthenticated();
     }
 

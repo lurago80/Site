@@ -61,6 +61,11 @@ class LoginController extends Controller
         return redirect('/login');
     }
 
+    /**
+     * Cada perfil cai direto na tela que faz sentido pra ele - antes
+     * todo mundo (menos super admin) caía no painel fiscal, mesmo o
+     * caixa, que nem deveria estar ali.
+     */
     private function redirecionarLogado()
     {
         $user = Auth::user();
@@ -69,6 +74,10 @@ class LoginController extends Controller
             return redirect('/superadmin/painel');
         }
 
-        return redirect("/fiscal/{$user->empresa->slug}/painel");
+        if ($user->perfil === 'caixa') {
+            return redirect("/pdv/{$user->empresa->slug}/caixa");
+        }
+
+        return redirect("/dashboard/{$user->empresa->slug}/painel");
     }
 }
