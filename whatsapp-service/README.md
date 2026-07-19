@@ -29,4 +29,28 @@ npm start
 
 ## Produção
 
-Precisa rodar como um processo de longa duração ao lado do Laravel (ex.: `pm2`, `systemd` ou um container à parte) - não é uma função serverless, a conexão WebSocket precisa ficar viva. A pasta `sessoes/` guarda as credenciais da sessão de cada empresa e **nunca deve ser versionada nem exposta publicamente** (equivalente, em sensibilidade, ao certificado digital A1 do módulo fiscal).
+Precisa rodar como um processo de longa duração ao lado do Laravel - não é uma função serverless, a conexão WebSocket precisa ficar viva. A pasta `sessoes/` guarda as credenciais da sessão de cada empresa e **nunca deve ser versionada nem exposta publicamente** (equivalente, em sensibilidade, ao certificado digital A1 do módulo fiscal).
+
+Duas opções prontas neste repositório para manter o processo no ar (escolha uma):
+
+### Opção 1: PM2 (mais simples)
+
+```bash
+npm install -g pm2
+cd whatsapp-service
+pm2 start ecosystem.config.js
+pm2 save && pm2 startup   # PM2 volta a subir sozinho depois de um reboot do servidor
+pm2 logs whatsapp-service
+```
+
+### Opção 2: systemd (se o servidor já gerencia outros serviços assim)
+
+```bash
+sudo cp whatsapp-service.service /etc/systemd/system/
+# edite WorkingDirectory, User e o caminho do node dentro do arquivo antes de ativar
+sudo systemctl daemon-reload
+sudo systemctl enable --now whatsapp-service
+sudo journalctl -u whatsapp-service -f
+```
+
+Em ambos os casos, o Laravel só precisa saber a URL e o token internos (`BAILEYS_SERVICE_URL` e `BAILEYS_INTERNAL_TOKEN` no `.env` da API) - não importa qual dos dois gerencia o processo.

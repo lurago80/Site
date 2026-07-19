@@ -2,6 +2,7 @@
 
 use App\Exceptions\VagasIndisponiveisException;
 use App\Http\Middleware\BootstrapAuthDatabaseContext;
+use App\Http\Middleware\EnsureContaAtiva;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\SetTenantContext;
 use Illuminate\Foundation\Application;
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => SetTenantContext::class,
             'super_admin' => EnsureSuperAdmin::class,
+            'conta_ativa' => EnsureContaAtiva::class,
         ]);
 
         // Precisa rodar antes até do 'auth' padrão do Laravel - ver

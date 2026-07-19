@@ -1,0 +1,28 @@
+[Unit]
+# Unidade systemd alternativa ao PM2, para servidores Linux que já
+# gerenciam outros serviços via systemd (mais consistente que misturar
+# os dois gerenciadores de processo no mesmo servidor).
+#
+# Instalação:
+#   sudo cp whatsapp-service.service /etc/systemd/system/
+#   # edite WorkingDirectory, User e o caminho do node abaixo antes de ativar
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now whatsapp-service
+#   sudo systemctl status whatsapp-service
+#   sudo journalctl -u whatsapp-service -f   # acompanhar logs
+Description=Serviço WhatsApp (Baileys) - notificações da plataforma
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/whatsapp-service
+EnvironmentFile=/var/www/whatsapp-service/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

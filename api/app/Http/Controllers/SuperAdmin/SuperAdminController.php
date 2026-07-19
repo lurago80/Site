@@ -89,6 +89,21 @@ class SuperAdminController extends Controller
         return response()->json(Plano::create($dados), 201);
     }
 
+    public function atualizarPlano(Request $request, int $planoId)
+    {
+        $plano = Plano::findOrFail($planoId);
+
+        $dados = $request->validate([
+            'nome' => ['sometimes', 'string', 'max:255'],
+            'valor_mensal' => ['sometimes', 'numeric', 'min:0'],
+            'limites' => ['nullable', 'array'],
+        ]);
+
+        $plano->update($dados);
+
+        return response()->json($plano->fresh());
+    }
+
     public function assinaturas()
     {
         return response()->json(

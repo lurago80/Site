@@ -38,7 +38,7 @@ Route::middleware('throttle:5,1')->group(function () {
 Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(function () {
     Route::get('/painel', function (string $empresa) {
         return view('fiscal.painel', ['empresaSlug' => $empresa]);
-    });
+    })->middleware('conta_ativa');
 
     Route::get('/relatorio', [GestaoFiscalController::class, 'relatorio']);
     Route::get('/vendas-nao-fiscais', [GestaoFiscalController::class, 'vendasNaoFiscais']);
@@ -59,7 +59,7 @@ Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(functio
 | O tenant vem sempre do usuário autenticado - mesmo padrão do painel fiscal.
 */
 Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function () {
-    Route::get('/caixa', [PdvController::class, 'caixa']);
+    Route::get('/caixa', [PdvController::class, 'caixa'])->middleware('conta_ativa');
     Route::get('/produtos', [PdvController::class, 'produtos']);
     Route::get('/agenda', [PdvController::class, 'agenda']);
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
@@ -81,7 +81,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
 | O tenant vem sempre do usuário autenticado - mesmo padrão dos demais.
 */
 Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(function () {
-    Route::get('/painel', [DashboardController::class, 'painel']);
+    Route::get('/painel', [DashboardController::class, 'painel'])->middleware('conta_ativa');
     Route::get('/indicadores', [DashboardController::class, 'indicadores']);
 
     Route::get('/agenda', [DashboardController::class, 'agenda']);
@@ -162,6 +162,7 @@ Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->grou
     Route::put('/empresas/{empresaId}', [SuperAdminController::class, 'atualizarEmpresa']);
     Route::get('/planos', [SuperAdminController::class, 'planos']);
     Route::post('/planos', [SuperAdminController::class, 'criarPlano']);
+    Route::put('/planos/{planoId}', [SuperAdminController::class, 'atualizarPlano']);
     Route::get('/assinaturas', [SuperAdminController::class, 'assinaturas']);
     Route::post('/assinaturas', [SuperAdminController::class, 'criarAssinatura']);
     Route::put('/assinaturas/{assinaturaId}', [SuperAdminController::class, 'atualizarStatusAssinatura']);

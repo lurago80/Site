@@ -19,6 +19,17 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
+     * O atributo #[Fillable] do Laravel 13 preenche colunas fillable não
+     * informadas com NULL explícito na query, em vez de deixar o banco
+     * aplicar o DEFAULT true da coluna `ativo` - sem isto, User::create()
+     * sem passar 'ativo' cria um usuário NULL (falsy), efetivamente
+     * inativo. Define o valor padrão aqui, no próprio model.
+     */
+    protected $attributes = [
+        'ativo' => true,
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

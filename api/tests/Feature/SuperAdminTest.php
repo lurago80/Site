@@ -146,6 +146,32 @@ class SuperAdminTest extends TestCase
         $response->assertCreated()->assertJsonPath('nome', 'Completo');
     }
 
+    public function test_super_admin_edita_valor_de_um_plano(): void
+    {
+        $planoNovo = Plano::create(['nome' => 'Editável', 'valor_mensal' => 100]);
+
+        $response = $this->actingAs($this->superAdmin)->putJson("/superadmin/planos/{$planoNovo->id}", [
+            'valor_mensal' => 149.90,
+        ]);
+
+        $response->assertOk()->assertJsonPath('valor_mensal', '149.90');
+    }
+
+    public function test_super_admin_reassocia_empresa_a_outro_plano(): void
+    {
+        $empresa = Empresa::create([
+            'razao_social' => 'Empresa Reassociar', 'cnpj' => '77.777.777/0001-77',
+            'slug' => 'empresa-reassociar', 'plano_id' => $this->plano->id, 'status' => 'ativa',
+        ]);
+        $novoPlano = Plano::create(['nome' => 'Plano Novo', 'valor_mensal' => 399]);
+
+        $response = $this->actingAs($this->superAdmin)->putJson("/superadmin/empresas/{$empresa->id}", [
+            'plano_id' => $novoPlano->id,
+        ]);
+
+        $response->assertOk()->assertJsonPath('plano_id', $novoPlano->id);
+    }
+
     public function test_super_admin_registra_assinatura(): void
     {
         $empresa = Empresa::create([
@@ -189,5 +215,48 @@ class SuperAdminTest extends TestCase
 
         $response->assertSessionHasErrors('email');
         $this->assertGuest();
+    }
+
+    public function test_sessao_ja_aberta_e_bloqueada_com_403_se_empresa_for_suspensa_depois(): void
+    {
+        $empresa = Empresa::create([
+            'razao_social' => 'Empresa Sessão Ativa', 'cnpj' => '22.222.222/0001-22',
+            'slug' => 'empresa-sessao-ativa', 'plano_id' => $this->plano->id, 'status' => 'ativa',
+        ]);
+
+        $usuario = User::create([
+            'name' => 'Usuário Sessão', 'email' => 'usuario@empresa-sessao-ativa.com',
+            'password' => bcrypt('senha-teste'), 'empresa_id' => $empresa->id, 'perfil' => 'admin',
+        ]);
+
+        // Empresa fica ativa até aqui - login funciona normalmente.
+        $login = $this->post('/login', ['email' => $usuario->email, 'password' => 'senha-teste']);
+        $login->assertRedirect();
+
+        // Super admin suspende a empresa DEPOIS do login já feito.
+        $this->actingAs($this->superAdmin)->putJson("/superadmin/empresas/{$empresa->id}", ['status' => 'suspensa']);
+
+        // A sessão do usuário continua "logada", mas a página do painel
+        // deve bloquear com 403 em vez de deixá-lo continuar navegando.
+        $response = $this->actingAs($usuario)->get("/dashboard/{$empresa->slug}/painel");
+
+        $response->assertStatus(403);
+    }
+
+    public function test_usuario_inativo_com_sessao_aberta_e_bloqueado(): void
+    {
+        $empresa = Empresa::create([
+            'razao_social' => 'Empresa Usuário Inativo', 'cnpj' => '33.333.333/0001-33',
+            'slug' => 'empresa-usuario-inativo', 'plano_id' => $this->plano->id, 'status' => 'ativa',
+        ]);
+
+        $usuario = User::create([
+            'name' => 'Usuário Que Vai Ser Desativado', 'email' => 'inativo@empresa-usuario-inativo.com',
+            'password' => bcrypt('senha-teste'), 'empresa_id' => $empresa->id, 'perfil' => 'admin', 'ativo' => false,
+        ]);
+
+        $response = $this->actingAs($usuario)->get("/dashboard/{$empresa->slug}/painel");
+
+        $response->assertStatus(403);
     }
 }
