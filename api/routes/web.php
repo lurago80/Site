@@ -140,6 +140,9 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::post('/formas-pagamento', [DashboardController::class, 'criarFormaPagamento']);
     Route::put('/formas-pagamento/{formaId}', [DashboardController::class, 'atualizarFormaPagamento']);
 
+    Route::get('/config-loja', [DashboardController::class, 'configLoja']);
+    Route::put('/config-loja', [DashboardController::class, 'atualizarConfigLoja']);
+
     Route::get('/config-pagamento', [DashboardController::class, 'configPagamento']);
     Route::put('/config-pagamento', [DashboardController::class, 'atualizarConfigPagamento']);
     Route::get('/config-whatsapp', [DashboardController::class, 'configWhatsapp']);

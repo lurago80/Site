@@ -66,6 +66,8 @@ class SuperAdminController extends Controller
             'logradouro' => ['nullable', 'string', 'max:255'],
             'numero' => ['nullable', 'string', 'max:20'],
             'bairro' => ['nullable', 'string', 'max:255'],
+            'logo_url' => ['nullable', 'string', 'max:255'],
+            'cor_primaria' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
         ]);
 
         $empresa->update($dados);

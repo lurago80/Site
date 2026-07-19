@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Route;
 | O tenant vem do slug {empresa} na URL — ver App\Http\Middleware\SetTenantContext.
 */
 Route::middleware(['tenant', 'throttle:60,1'])->prefix('loja/{empresa}')->group(function () {
+    Route::get('/info', [CatalogoController::class, 'info']);
+    Route::get('/config-pagamento-publica', [CatalogoController::class, 'configPagamentoPublica']);
     Route::get('/produtos', [CatalogoController::class, 'produtos']);
     Route::get('/agenda', [CatalogoController::class, 'agenda']);
 });

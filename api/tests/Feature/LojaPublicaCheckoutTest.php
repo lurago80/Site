@@ -69,6 +69,41 @@ class LojaPublicaCheckoutTest extends TestCase
         $this->getJson('/api/loja/loja-que-nao-existe/produtos')->assertNotFound();
     }
 
+    public function test_info_publica_retorna_identidade_visual_sem_dados_sensiveis(): void
+    {
+        $this->empresa->update(['logo_url' => 'https://exemplo.com/logo.png', 'cor_primaria' => '#394285']);
+
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/info");
+
+        $response->assertOk()
+            ->assertJsonPath('razao_social', 'Cervejaria Teste')
+            ->assertJsonPath('logo_url', 'https://exemplo.com/logo.png')
+            ->assertJsonPath('cor_primaria', '#394285')
+            ->assertJsonPath('modulo_agendamento_ativo', true)
+            ->assertJsonMissingPath('cnpj')
+            ->assertJsonMissingPath('logradouro');
+    }
+
+    public function test_config_pagamento_publica_sem_gateway_retorna_nulo(): void
+    {
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/config-pagamento-publica");
+
+        $response->assertOk()->assertJsonPath('gateway', null)->assertJsonPath('public_key', null);
+    }
+
+    public function test_config_pagamento_publica_com_gateway_ativo_retorna_apenas_a_chave_publica(): void
+    {
+        \App\Models\ConfigPagamento::create([
+            'empresa_id' => $this->empresa->id, 'gateway' => 'mercadopago', 'ambiente' => 'sandbox',
+            'access_token' => 'segredo-nao-pode-vazar', 'public_key' => 'chave-publica-123', 'ativo' => true,
+        ]);
+
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/config-pagamento-publica");
+
+        $response->assertOk()->assertJsonPath('gateway', 'mercadopago')->assertJsonPath('public_key', 'chave-publica-123');
+        $this->assertStringNotContainsString('segredo-nao-pode-vazar', $response->getContent());
+    }
+
     public function test_fluxo_completo_reserva_e_checkout_de_visita(): void
     {
         $reservaResponse = $this->postJson("/api/loja/{$this->empresa->slug}/reservas", [

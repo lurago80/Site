@@ -946,6 +946,31 @@ class DashboardController extends Controller
         return response()->json($forma->fresh());
     }
 
+    // ---- Identidade visual da loja pública ----
+
+    public function configLoja(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json($empresaAtual->only(['segmento', 'logo_url', 'cor_primaria']));
+    }
+
+    public function atualizarConfigLoja(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'segmento' => ['nullable', 'string', 'max:255'],
+            'logo_url' => ['nullable', 'string', 'max:255'],
+            'cor_primaria' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $empresaAtual->update($dados);
+
+        return response()->json($empresaAtual->fresh()->only(['segmento', 'logo_url', 'cor_primaria']));
+    }
+
     // ---- Configuração de gateway de pagamento ----
 
     /**

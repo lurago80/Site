@@ -182,6 +182,35 @@ class DashboardTest extends TestCase
         $response->assertCreated()->assertJsonPath('perfil', 'caixa');
     }
 
+    public function test_admin_atualiza_identidade_visual_da_loja(): void
+    {
+        $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-loja", [
+            'logo_url' => 'https://exemplo.com/logo.png',
+            'cor_primaria' => '#ff0000',
+        ]);
+
+        $response->assertOk()->assertJsonPath('logo_url', 'https://exemplo.com/logo.png');
+        $this->assertSame('#ff0000', $this->empresa->fresh()->cor_primaria);
+    }
+
+    public function test_atendente_nao_pode_atualizar_identidade_visual(): void
+    {
+        $response = $this->actingAs($this->atendente)->putJson("/dashboard/{$this->empresa->slug}/config-loja", [
+            'cor_primaria' => '#ff0000',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_cor_primaria_invalida_e_rejeitada(): void
+    {
+        $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-loja", [
+            'cor_primaria' => 'vermelho',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
     public function test_atendente_nao_pode_gerenciar_usuarios(): void
     {
         $response = $this->actingAs($this->atendente)->getJson("/dashboard/{$this->empresa->slug}/usuarios");

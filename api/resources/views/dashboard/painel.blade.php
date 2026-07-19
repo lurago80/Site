@@ -415,6 +415,21 @@
                 </div>
 
                 <div class="card">
+                    <h2>Identidade visual da loja pública</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Logo e cor usados na loja pública desta empresa (a página que o consumidor final vê para
+                        comprar/agendar) - diferente da identidade da plataforma, é a marca da sua empresa.
+                    </p>
+                    <div class="linha-form">
+                        <div><label>Segmento</label><input type="text" id="lj-segmento" placeholder="ex: cervejaria, vinícola"></div>
+                        <div style="flex:1"><label>URL do logo</label><input type="text" id="lj-logo" placeholder="https://..." style="width:100%"></div>
+                        <div><label>Cor primária</label><input type="color" id="lj-cor" style="width:60px; padding:2px;"></div>
+                        <div><button class="acao" onclick="salvarConfigLoja()">Salvar</button></div>
+                    </div>
+                    <p class="msg" id="msg-config-loja"></p>
+                </div>
+
+                <div class="card">
                     <h2>Certificado Digital</h2>
                     <p id="cert-status" style="font-size:13px;">Carregando...</p>
                     <div class="linha-form">
@@ -561,7 +576,7 @@
             'plano-contas': () => { carregarPlanoContas(); },
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
-            'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); },
+            'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); carregarConfigLoja(); },
             pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
             whatsapp: () => { carregarConfigWhatsapp(); alternarCamposProvedor(); baileysAtualizarStatus(); },
         };
@@ -1269,6 +1284,27 @@
                 document.getElementById('msg-config-fiscal').className = 'msg erro';
                 document.getElementById('msg-config-fiscal').textContent = e.message;
             }
+        }
+
+        async function carregarConfigLoja() {
+            const resp = await fetch(`${base}/config-loja`);
+            const dados = await resp.json();
+            document.getElementById('lj-segmento').value = dados.segmento ?? '';
+            document.getElementById('lj-logo').value = dados.logo_url ?? '';
+            document.getElementById('lj-cor').value = dados.cor_primaria ?? '#394285';
+        }
+
+        async function salvarConfigLoja() {
+            const dados = {
+                segmento: document.getElementById('lj-segmento').value || null,
+                logo_url: document.getElementById('lj-logo').value || null,
+                cor_primaria: document.getElementById('lj-cor').value || null,
+            };
+            const resp = await fetch(`${base}/config-loja`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-loja');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Identidade visual salva.';
         }
 
         async function carregarConfigFiscal() {

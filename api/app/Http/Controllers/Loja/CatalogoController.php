@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Loja;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\ConfigPagamento;
 use App\Models\Produto;
 use Illuminate\Http\Request;
 
@@ -16,6 +17,46 @@ use Illuminate\Http\Request;
  */
 class CatalogoController extends Controller
 {
+    /**
+     * Dados públicos da empresa para o front-end da loja montar a
+     * identidade visual (logo/cor) - nunca inclui nada sensível
+     * (endereço fiscal, documentos, etc. ficam de fora de propósito).
+     */
+    public function info(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json([
+            'razao_social' => $empresaAtual->razao_social,
+            'segmento' => $empresaAtual->segmento,
+            'logo_url' => $empresaAtual->logo_url,
+            'cor_primaria' => $empresaAtual->cor_primaria,
+            'modulo_agendamento_ativo' => $empresaAtual->modulo_agendamento_ativo,
+        ]);
+    }
+
+    /**
+     * Chave PÚBLICA do gateway de pagamento configurado (nunca o
+     * access_token/client_secret) - o front-end da loja precisa dela
+     * para inicializar o SDK de tokenização de cartão no navegador do
+     * cliente (ex. Mercado Pago Bricks). Sem gateway ativo, retorna
+     * null - o checkout do front-end deve então só oferecer Pix.
+     */
+    public function configPagamentoPublica(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $config = ConfigPagamento::where('empresa_id', $empresaAtual->id)->where('ativo', true)->first();
+
+        if ($config === null || empty($config->public_key)) {
+            return response()->json(['gateway' => null, 'public_key' => null]);
+        }
+
+        return response()->json([
+            'gateway' => $config->gateway,
+            'public_key' => $config->public_key,
+        ]);
+    }
+
     public function produtos(string $empresa)
     {
         return Produto::query()
