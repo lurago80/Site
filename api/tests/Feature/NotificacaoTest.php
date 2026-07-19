@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\EnviarLembretesVisita;
+use App\Jobs\EnviarConfirmacaoAgendamentoJob;
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\ConfigWhatsapp;
@@ -15,6 +16,7 @@ use App\Models\Venda;
 use App\Services\Notificacao\NotificacaoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\InteractsWithTenantContext;
 use Tests\TestCase;
 
@@ -248,5 +250,54 @@ class NotificacaoTest extends TestCase
         ]);
 
         $response->assertStatus(403);
+    }
+
+    public function test_checkout_com_visita_agendada_despacha_job_de_confirmacao_sem_bloquear_a_resposta(): void
+    {
+        Queue::fake();
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'status' => 'aberta', 'valor_visita' => 60,
+        ]);
+
+        $reserva = app(\App\Services\Agendamento\ReservaVagaService::class)->reservar($agenda->id, 1);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => ['nome' => $this->cliente->nome, 'telefone' => $this->cliente->telefone, 'consentimento_lgpd' => true],
+            'reserva_id' => $reserva->id,
+            'forma_pagamento' => 'pix',
+        ]);
+
+        $response->assertCreated();
+        Queue::assertPushed(EnviarConfirmacaoAgendamentoJob::class);
+        // A notificação em si não é criada na mesma request - só quando o
+        // job for processado (aqui não é, porque a fila está fake).
+        $this->assertSame(0, Notificacao::count());
+    }
+
+    public function test_job_de_confirmacao_processado_cria_a_notificacao(): void
+    {
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'status' => 'aberta', 'valor_visita' => 60,
+        ]);
+
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $this->cliente->id,
+            'canal' => 'site', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
+            'valor_total' => 60, 'data_venda' => now(),
+        ]);
+
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda->id,
+            'agenda_visitacao_id' => $agenda->id, 'quantidade' => 1,
+            'valor_unitario' => 60, 'valor_total' => 60,
+        ]);
+
+        (new EnviarConfirmacaoAgendamentoJob($venda->id))->handle(app(NotificacaoService::class));
+
+        $this->asSuperAdmin();
+        $this->assertSame(1, Notificacao::where('tipo', 'confirmacao_agendamento')->count());
     }
 }

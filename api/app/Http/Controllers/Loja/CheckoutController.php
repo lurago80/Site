@@ -6,10 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\Produto;
+use App\Jobs\EnviarConfirmacaoAgendamentoJob;
 use App\Models\ReservaTemporaria;
 use App\Models\Venda;
 use App\Services\Agendamento\ReservaVagaService;
-use App\Services\Notificacao\NotificacaoService;
 use App\Services\Pagamento\PagamentoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +33,6 @@ class CheckoutController extends Controller
     public function __construct(
         private readonly ReservaVagaService $reservaVagaService,
         private readonly PagamentoService $pagamentoService,
-        private readonly NotificacaoService $notificacaoService,
     ) {}
 
     public function store(Request $request, string $empresa)
@@ -109,7 +108,7 @@ class CheckoutController extends Controller
         }
 
         if ($venda->fresh()->status_pagamento === 'pago') {
-            $this->notificacaoService->enviarConfirmacaoAgendamento($venda);
+            EnviarConfirmacaoAgendamentoJob::dispatch($venda->id);
         }
 
         $vendaFinal = $venda->fresh()->load('itens', 'cliente');

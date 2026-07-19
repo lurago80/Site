@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Entrar — {{ config('app.name') }}</title>
+    <title>Redefinir senha — {{ config('app.name') }}</title>
     <link rel="stylesheet" href="/css/sistema.css">
     <style>
         body { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cor-primaria-escura); }
@@ -14,34 +14,31 @@
         input { width: 100%; margin-bottom: 14px; box-sizing: border-box; }
         button[type="submit"] { width: 100%; padding: 10px; font-size: 14px; }
         .erro { background: var(--cor-perigo-bg); color: var(--cor-perigo-texto); font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 14px; text-align: left; }
-        .status { background: var(--cor-sucesso-bg, #e6f7ec); color: var(--cor-sucesso-texto, #1e7e34); font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 14px; text-align: left; }
-        .link-esqueci { display: block; text-align: right; font-size: 12px; margin: -6px 0 14px; }
     </style>
 </head>
 <body>
-    <form class="card" method="POST" action="/login">
+    <form class="card" method="POST" action="/redefinir-senha">
         @csrf
         <img src="/images/logo.jpg" alt="Logo">
-        <h1>Acessar sistema</h1>
-        <p class="sub">{{ config('app.name') }} — o e-mail identifica automaticamente a empresa e o nível de acesso.</p>
-
-        @if (session('status'))
-            <div class="status">{{ session('status') }}</div>
-        @endif
+        <h1>Redefinir senha</h1>
+        <p class="sub">Escolha uma nova senha (mínimo 8 caracteres).</p>
 
         @if ($errors->any())
             <div class="erro">{{ $errors->first() }}</div>
         @endif
 
+        <input type="hidden" name="token" value="{{ $token }}">
+
         <label for="email">E-mail</label>
-        <input type="email" id="email" name="email" value="{{ old('email') }}" required autofocus>
+        <input type="email" id="email" name="email" value="{{ old('email', $email) }}" required autofocus>
 
-        <label for="password">Senha</label>
-        <input type="password" id="password" name="password" required>
+        <label for="password">Nova senha</label>
+        <input type="password" id="password" name="password" required minlength="8">
 
-        <a class="link-esqueci" href="/esqueci-senha">Esqueci minha senha</a>
+        <label for="password_confirmation">Confirmar nova senha</label>
+        <input type="password" id="password_confirmation" name="password_confirmation" required minlength="8">
 
-        <button type="submit">Entrar</button>
+        <button type="submit">Redefinir senha</button>
     </form>
 </body>
 </html>

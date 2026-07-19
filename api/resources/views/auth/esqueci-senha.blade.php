@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Entrar — {{ config('app.name') }}</title>
+    <title>Esqueci minha senha — {{ config('app.name') }}</title>
     <link rel="stylesheet" href="/css/sistema.css">
     <style>
         body { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cor-primaria-escura); }
@@ -15,15 +15,15 @@
         button[type="submit"] { width: 100%; padding: 10px; font-size: 14px; }
         .erro { background: var(--cor-perigo-bg); color: var(--cor-perigo-texto); font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 14px; text-align: left; }
         .status { background: var(--cor-sucesso-bg, #e6f7ec); color: var(--cor-sucesso-texto, #1e7e34); font-size: 12px; padding: 8px 10px; border-radius: 4px; margin-bottom: 14px; text-align: left; }
-        .link-esqueci { display: block; text-align: right; font-size: 12px; margin: -6px 0 14px; }
+        .voltar { display: block; text-align: center; font-size: 12px; margin-top: 14px; }
     </style>
 </head>
 <body>
-    <form class="card" method="POST" action="/login">
+    <form class="card" method="POST" action="/esqueci-senha">
         @csrf
         <img src="/images/logo.jpg" alt="Logo">
-        <h1>Acessar sistema</h1>
-        <p class="sub">{{ config('app.name') }} — o e-mail identifica automaticamente a empresa e o nível de acesso.</p>
+        <h1>Esqueci minha senha</h1>
+        <p class="sub">Informe o e-mail cadastrado - se ele existir no sistema, enviamos um link para redefinir a senha.</p>
 
         @if (session('status'))
             <div class="status">{{ session('status') }}</div>
@@ -36,12 +36,8 @@
         <label for="email">E-mail</label>
         <input type="email" id="email" name="email" value="{{ old('email') }}" required autofocus>
 
-        <label for="password">Senha</label>
-        <input type="password" id="password" name="password" required>
-
-        <a class="link-esqueci" href="/esqueci-senha">Esqueci minha senha</a>
-
-        <button type="submit">Entrar</button>
+        <button type="submit">Enviar link de redefinição</button>
+        <a class="voltar" href="/login">Voltar ao login</a>
     </form>
 </body>
 </html>

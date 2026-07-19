@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Fiscal\GestaoFiscalController;
 use App\Http\Controllers\Pdv\PdvController;
@@ -19,6 +20,13 @@ Route::get('/', function () {
 Route::get('/login', [LoginController::class, 'mostrarFormulario'])->name('login');
 Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/logout', [LoginController::class, 'logout']);
+
+Route::middleware('throttle:5,1')->group(function () {
+    Route::get('/esqueci-senha', [PasswordResetController::class, 'mostrarFormularioEsqueci'])->name('password.request');
+    Route::post('/esqueci-senha', [PasswordResetController::class, 'enviarLink'])->name('password.email');
+    Route::get('/redefinir-senha/{token}', [PasswordResetController::class, 'mostrarFormularioRedefinir'])->name('password.reset');
+    Route::post('/redefinir-senha', [PasswordResetController::class, 'redefinir'])->name('password.update');
+});
 
 /*
 |--------------------------------------------------------------------------
