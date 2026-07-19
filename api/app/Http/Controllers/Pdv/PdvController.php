@@ -7,6 +7,7 @@ use App\Models\AgendaVisitacao;
 use App\Models\FormaPagamento;
 use App\Models\Produto;
 use App\Models\Vendedor;
+use App\Services\Pdv\CaixaService;
 use App\Services\Pdv\VendaPdvService;
 use Illuminate\Http\Request;
 
@@ -18,7 +19,10 @@ use Illuminate\Http\Request;
  */
 class PdvController extends Controller
 {
-    public function __construct(private readonly VendaPdvService $vendaPdvService) {}
+    public function __construct(
+        private readonly VendaPdvService $vendaPdvService,
+        private readonly CaixaService $caixaService,
+    ) {}
 
     public function caixa(string $empresa)
     {
@@ -100,5 +104,93 @@ class PdvController extends Controller
         }
 
         return response()->json($venda, 201);
+    }
+
+    // ---- Controle de caixa (abertura, fechamento, sangria, suprimento) ----
+
+    public function caixaStatus(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json($this->caixaService->statusAtual($empresaAtual->id));
+    }
+
+    public function caixaAbrir(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'valor' => ['required', 'numeric', 'min:0'],
+            'observacao' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        try {
+            $caixa = $this->caixaService->abrir($empresaAtual, $request->user()->id, $dados['valor'], $dados['observacao'] ?? null);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($caixa, 201);
+    }
+
+    public function caixaFechar(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'valor' => ['required', 'numeric', 'min:0'],
+            'observacao' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        try {
+            $caixa = $this->caixaService->fechar($empresaAtual, $request->user()->id, $dados['valor'], $dados['observacao'] ?? null);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($caixa, 201);
+    }
+
+    public function caixaSangria(Request $request, string $empresa)
+    {
+        return $this->caixaMovimento($request, 'sangria');
+    }
+
+    public function caixaSuprimento(Request $request, string $empresa)
+    {
+        return $this->caixaMovimento($request, 'suprimento');
+    }
+
+    private function caixaMovimento(Request $request, string $tipo)
+    {
+        $dados = $request->validate([
+            'valor' => ['required', 'numeric', 'min:0.01'],
+            'observacao' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        try {
+            $caixa = $this->caixaService->registrarMovimento(
+                $empresaAtual, $request->user()->id, $tipo, $dados['valor'], $dados['observacao'] ?? null
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($caixa, 201);
+    }
+
+    public function caixaExtrato(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            \App\Models\Caixa::where('empresa_id', $empresaAtual->id)
+                ->with('usuario:id,name')
+                ->orderByDesc('data_hora')
+                ->limit(200)
+                ->get()
+        );
     }
 }

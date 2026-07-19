@@ -65,6 +65,13 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
+
+    Route::get('/caixa-status', [PdvController::class, 'caixaStatus']);
+    Route::post('/caixa-abrir', [PdvController::class, 'caixaAbrir']);
+    Route::post('/caixa-fechar', [PdvController::class, 'caixaFechar']);
+    Route::post('/caixa-sangria', [PdvController::class, 'caixaSangria']);
+    Route::post('/caixa-suprimento', [PdvController::class, 'caixaSuprimento']);
+    Route::get('/caixa-extrato', [PdvController::class, 'caixaExtrato']);
 });
 
 /*
@@ -102,6 +109,22 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::get('/contas-receber', [DashboardController::class, 'contasReceber']);
     Route::post('/contas-receber', [DashboardController::class, 'criarContaReceber']);
     Route::put('/contas-receber/{contaId}/pagar', [DashboardController::class, 'marcarContaReceberPaga']);
+
+    Route::get('/grupos', [DashboardController::class, 'grupos']);
+    Route::post('/grupos', [DashboardController::class, 'criarGrupo']);
+    Route::put('/grupos/{grupoId}', [DashboardController::class, 'atualizarGrupo']);
+    Route::get('/grupos-relatorio', [DashboardController::class, 'relatorioGrupos']);
+
+    Route::get('/plano-contas', [DashboardController::class, 'planoContas']);
+    Route::post('/plano-contas', [DashboardController::class, 'criarPlanoContas']);
+    Route::put('/plano-contas/{planoContaId}', [DashboardController::class, 'atualizarPlanoContas']);
+    Route::get('/plano-contas-relatorio', [DashboardController::class, 'relatorioPlanoContas']);
+
+    Route::get('/bancos', [DashboardController::class, 'bancos']);
+    Route::post('/bancos', [DashboardController::class, 'criarBanco']);
+    Route::put('/bancos/{bancoId}', [DashboardController::class, 'atualizarBanco']);
+    Route::post('/bancos/{bancoId}/movimentos', [DashboardController::class, 'lancarMovimentoBancario']);
+    Route::get('/bancos/{bancoId}/extrato', [DashboardController::class, 'extratoBanco']);
 
     Route::get('/usuarios', [DashboardController::class, 'usuarios']);
     Route::post('/usuarios', [DashboardController::class, 'criarUsuario']);

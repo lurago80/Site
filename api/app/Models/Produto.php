@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'empresa_id', 'fornecedor_id', 'nome', 'codigo', 'descricao', 'categoria', 'tipo', 'unidade',
+    'empresa_id', 'fornecedor_id', 'grupo_id', 'nome', 'codigo', 'descricao', 'categoria', 'tipo', 'unidade',
     'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'ncm', 'cfop_padrao',
 ])]
 class Produto extends Model
@@ -29,5 +29,10 @@ class Produto extends Model
     public function fornecedor(): BelongsTo
     {
         return $this->belongsTo(Fornecedor::class);
+    }
+
+    public function grupo(): BelongsTo
+    {
+        return $this->belongsTo(Grupo::class);
     }
 }

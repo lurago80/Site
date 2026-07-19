@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\Banco;
 use App\Models\CertificadoDigital;
 use App\Models\Cliente;
 use App\Models\ConfigFiscal;
@@ -13,11 +14,15 @@ use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
+use App\Models\GravaBanco;
+use App\Models\Grupo;
+use App\Models\PlanoContas;
 use App\Models\Produto;
 use App\Models\User;
 use App\Models\Venda;
 use App\Models\Vendedor;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -123,6 +128,7 @@ class DashboardController extends Controller
             'codigo' => ['nullable', 'string', 'max:255'],
             'descricao' => ['nullable', 'string'],
             'categoria' => ['nullable', 'string', 'max:255'],
+            'grupo_id' => ['nullable', 'integer'],
             'tipo' => ['required', 'in:fisico,agendamento'],
             'unidade' => ['nullable', 'string', 'max:6'],
             'preco_venda' => ['required', 'numeric', 'min:0'],
@@ -154,6 +160,7 @@ class DashboardController extends Controller
             'codigo' => ['nullable', 'string', 'max:255'],
             'descricao' => ['nullable', 'string'],
             'categoria' => ['nullable', 'string', 'max:255'],
+            'grupo_id' => ['nullable', 'integer'],
             'unidade' => ['nullable', 'string', 'max:6'],
             'preco_venda' => ['sometimes', 'numeric', 'min:0'],
             'preco_custo' => ['nullable', 'numeric', 'min:0'],
@@ -322,7 +329,7 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            ContaPagar::where('empresa_id', $empresaAtual->id)->with('fornecedor')->orderBy('vencimento')->get()
+            ContaPagar::where('empresa_id', $empresaAtual->id)->with(['fornecedor', 'planoContas', 'banco'])->orderBy('vencimento')->get()
         );
     }
 
@@ -330,6 +337,7 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'fornecedor_id' => ['nullable', 'integer'],
+            'plano_conta_id' => ['nullable', 'integer'],
             'valor' => ['required', 'numeric', 'min:0'],
             'vencimento' => ['required', 'date'],
         ]);
@@ -341,10 +349,35 @@ class DashboardController extends Controller
         return response()->json($conta, 201);
     }
 
+    /**
+     * Ao informar um banco, lança automaticamente o movimento de débito
+     * correspondente em `grava_banco` (Escopo v2, decisão de 2026-07-21) -
+     * evita ter que lançar a mesma saída duas vezes (aqui e no extrato
+     * bancário).
+     */
     public function marcarContaPagarPaga(Request $request, string $empresa, int $contaId)
     {
+        $dados = $request->validate(['banco_id' => ['nullable', 'integer']]);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
         $conta = ContaPagar::findOrFail($contaId);
-        $conta->update(['status' => 'pago']);
+
+        DB::transaction(function () use ($conta, $dados, $empresaAtual) {
+            $conta->update(['status' => 'pago', 'banco_id' => $dados['banco_id'] ?? $conta->banco_id]);
+
+            if (! empty($dados['banco_id'])) {
+                GravaBanco::create([
+                    'empresa_id' => $empresaAtual->id,
+                    'banco_id' => $dados['banco_id'],
+                    'conta_pagar_id' => $conta->id,
+                    'data_movimento' => now()->toDateString(),
+                    'tipo' => 'debito',
+                    'valor' => $conta->valor,
+                    'descricao' => "Pagamento conta a pagar #{$conta->id}",
+                    'origem' => 'conta_pagar',
+                ]);
+            }
+        });
 
         return response()->json($conta->fresh());
     }
@@ -354,7 +387,7 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            ContaReceber::where('empresa_id', $empresaAtual->id)->with('cliente')->orderBy('vencimento')->get()
+            ContaReceber::where('empresa_id', $empresaAtual->id)->with(['cliente', 'planoContas', 'banco'])->orderBy('vencimento')->get()
         );
     }
 
@@ -362,6 +395,7 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'cliente_id' => ['nullable', 'integer'],
+            'plano_conta_id' => ['nullable', 'integer'],
             'valor' => ['required', 'numeric', 'min:0'],
             'vencimento' => ['required', 'date'],
         ]);
@@ -375,10 +409,302 @@ class DashboardController extends Controller
 
     public function marcarContaReceberPaga(Request $request, string $empresa, int $contaId)
     {
+        $dados = $request->validate(['banco_id' => ['nullable', 'integer']]);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
         $conta = ContaReceber::findOrFail($contaId);
-        $conta->update(['status' => 'pago']);
+
+        DB::transaction(function () use ($conta, $dados, $empresaAtual) {
+            $conta->update(['status' => 'pago', 'banco_id' => $dados['banco_id'] ?? $conta->banco_id]);
+
+            if (! empty($dados['banco_id'])) {
+                GravaBanco::create([
+                    'empresa_id' => $empresaAtual->id,
+                    'banco_id' => $dados['banco_id'],
+                    'conta_receber_id' => $conta->id,
+                    'data_movimento' => now()->toDateString(),
+                    'tipo' => 'credito',
+                    'valor' => $conta->valor,
+                    'descricao' => "Recebimento conta a receber #{$conta->id}",
+                    'origem' => 'conta_receber',
+                ]);
+            }
+        });
 
         return response()->json($conta->fresh());
+    }
+
+    // ---- Grupos de produto ----
+
+    public function grupos(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            Grupo::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
+        );
+    }
+
+    public function criarGrupo(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'nome' => ['required', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $grupo = Grupo::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($grupo, 201);
+    }
+
+    public function atualizarGrupo(Request $request, string $empresa, int $grupoId)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'nome' => ['sometimes', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string', 'max:255'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $grupo = Grupo::findOrFail($grupoId);
+        $grupo->update($dados);
+
+        return response()->json($grupo->fresh());
+    }
+
+    /**
+     * Relatório simples de grupo: quantidade de produtos e valor de
+     * estoque (preço de custo x estoque atual) por grupo.
+     */
+    public function relatorioGrupos(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $grupos = Grupo::where('empresa_id', $empresaAtual->id)
+            ->withCount('produtos')
+            ->with(['produtos' => fn ($q) => $q->select('id', 'grupo_id', 'preco_custo', 'estoque_atual')])
+            ->orderBy('nome')
+            ->get()
+            ->map(fn (Grupo $g) => [
+                'id' => $g->id,
+                'nome' => $g->nome,
+                'produtos_count' => $g->produtos_count,
+                'valor_estoque' => $g->produtos->sum(fn ($p) => (float) $p->preco_custo * (int) ($p->estoque_atual ?? 0)),
+            ]);
+
+        return response()->json($grupos);
+    }
+
+    // ---- Plano de contas ----
+
+    public function planoContas(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            PlanoContas::where('empresa_id', $empresaAtual->id)->orderBy('codigo')->get()
+        );
+    }
+
+    public function criarPlanoContas(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'codigo' => ['nullable', 'string', 'max:50'],
+            'nome' => ['required', 'string', 'max:255'],
+            'tipo' => ['required', 'in:receita,despesa'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $plano = PlanoContas::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($plano, 201);
+    }
+
+    public function atualizarPlanoContas(Request $request, string $empresa, int $planoContaId)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'codigo' => ['nullable', 'string', 'max:50'],
+            'nome' => ['sometimes', 'string', 'max:255'],
+            'tipo' => ['sometimes', 'in:receita,despesa'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $plano = PlanoContas::findOrFail($planoContaId);
+        $plano->update($dados);
+
+        return response()->json($plano->fresh());
+    }
+
+    /**
+     * Relatório por categoria: soma de contas a pagar/receber lançadas
+     * em cada conta do plano, dentro de um período opcional
+     * (filtra por vencimento).
+     */
+    public function relatorioPlanoContas(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $periodo = fn ($query) => $query
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('vencimento', '>=', $d))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('vencimento', '<=', $d));
+
+        $planos = PlanoContas::where('empresa_id', $empresaAtual->id)->orderBy('codigo')->get();
+
+        $relatorio = $planos->map(function (PlanoContas $plano) use ($periodo) {
+            $query = $plano->tipo === 'despesa'
+                ? ContaPagar::where('plano_conta_id', $plano->id)
+                : ContaReceber::where('plano_conta_id', $plano->id);
+
+            $query = $periodo($query);
+
+            return [
+                'id' => $plano->id,
+                'codigo' => $plano->codigo,
+                'nome' => $plano->nome,
+                'tipo' => $plano->tipo,
+                'total' => (clone $query)->sum('valor'),
+                'total_pago' => (clone $query)->where('status', 'pago')->sum('valor'),
+                'total_em_aberto' => (clone $query)->where('status', 'em_aberto')->sum('valor'),
+            ];
+        });
+
+        return response()->json($relatorio);
+    }
+
+    // ---- Bancos ----
+
+    public function bancos(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            Banco::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
+        );
+    }
+
+    public function criarBanco(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'nome' => ['required', 'string', 'max:255'],
+            'codigo_banco' => ['nullable', 'string', 'max:20'],
+            'agencia' => ['nullable', 'string', 'max:20'],
+            'numero_conta' => ['nullable', 'string', 'max:30'],
+            'tipo_conta' => ['required', 'in:corrente,poupanca'],
+            'saldo_inicial' => ['nullable', 'numeric'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $banco = Banco::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($banco, 201);
+    }
+
+    public function atualizarBanco(Request $request, string $empresa, int $bancoId)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'nome' => ['sometimes', 'string', 'max:255'],
+            'codigo_banco' => ['nullable', 'string', 'max:20'],
+            'agencia' => ['nullable', 'string', 'max:20'],
+            'numero_conta' => ['nullable', 'string', 'max:30'],
+            'tipo_conta' => ['sometimes', 'in:corrente,poupanca'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $banco = Banco::findOrFail($bancoId);
+        $banco->update($dados);
+
+        return response()->json($banco->fresh());
+    }
+
+    public function lancarMovimentoBancario(Request $request, string $empresa, int $bancoId)
+    {
+        $dados = $request->validate([
+            'data_movimento' => ['required', 'date'],
+            'tipo' => ['required', 'in:credito,debito'],
+            'valor' => ['required', 'numeric', 'min:0.01'],
+            'descricao' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        Banco::findOrFail($bancoId);
+
+        $movimento = GravaBanco::create($dados + [
+            'empresa_id' => $empresaAtual->id,
+            'banco_id' => $bancoId,
+            'origem' => 'manual',
+        ]);
+
+        return response()->json($movimento, 201);
+    }
+
+    /**
+     * Extrato: movimentos do banco no período, com saldo corrente
+     * (saldo inicial da conta + acumulado até cada linha).
+     */
+    public function extratoBanco(Request $request, string $empresa, int $bancoId)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $banco = Banco::findOrFail($bancoId);
+
+        $somaAnterior = 0;
+        if (! empty($dados['data_inicio'])) {
+            $somaAnterior = GravaBanco::where('banco_id', $bancoId)
+                ->where('data_movimento', '<', $dados['data_inicio'])
+                ->selectRaw("COALESCE(SUM(CASE WHEN tipo = 'credito' THEN valor ELSE -valor END), 0) as total")
+                ->value('total') ?? 0;
+        }
+
+        $saldoAnterior = (float) $banco->saldo_inicial + (float) $somaAnterior;
+
+        $movimentos = GravaBanco::where('banco_id', $bancoId)
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_movimento', '>=', $d))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_movimento', '<=', $d))
+            ->orderBy('data_movimento')
+            ->orderBy('id')
+            ->get();
+
+        $saldo = $saldoAnterior;
+        $linhas = $movimentos->map(function (GravaBanco $m) use (&$saldo) {
+            $saldo += $m->tipo === 'credito' ? (float) $m->valor : -(float) $m->valor;
+
+            return [
+                'id' => $m->id,
+                'data_movimento' => $m->data_movimento,
+                'tipo' => $m->tipo,
+                'valor' => $m->valor,
+                'descricao' => $m->descricao,
+                'origem' => $m->origem,
+                'saldo_apos' => $saldo,
+            ];
+        });
+
+        return response()->json([
+            'banco' => $banco->only(['id', 'nome', 'agencia', 'numero_conta']),
+            'saldo_anterior' => $saldoAnterior,
+            'saldo_atual' => $saldo,
+            'movimentos' => $linhas,
+        ]);
     }
 
     // ---- Usuários (apenas admin) ----

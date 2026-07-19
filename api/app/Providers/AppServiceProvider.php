@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\Assinatura;
+use App\Models\Banco;
+use App\Models\Caixa;
 use App\Models\CertificadoDigital;
 use App\Models\Cliente;
 use App\Models\ConfigAssinatura;
@@ -14,7 +16,9 @@ use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\DocumentoFiscal;
 use App\Models\DocumentoFiscalItem;
+use App\Models\GravaBanco;
 use App\Models\NumeracaoInutilizada;
+use App\Models\PlanoContas;
 use App\Models\User;
 use App\Models\Venda;
 use App\Observers\AuditLogObserver;
@@ -48,6 +52,10 @@ class AppServiceProvider extends ServiceProvider
         ConfigPagamento::class,
         ConfigWhatsapp::class,
         ConfigAssinatura::class,
+        Banco::class,
+        GravaBanco::class,
+        Caixa::class,
+        PlanoContas::class,
     ];
 
     public function register(): void

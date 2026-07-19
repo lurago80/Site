@@ -47,6 +47,17 @@
         </form>
     </div>
 
+    <div class="card" id="card-caixa" style="margin-bottom:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <strong id="caixa-status-texto" style="font-size:13px;">Carregando status do caixa...</strong>
+        <input type="number" step="0.01" id="caixa-valor" placeholder="Valor (R$)" style="width:110px;">
+        <input type="text" id="caixa-obs" placeholder="Observação (opcional)" style="width:180px;">
+        <button class="secundario" onclick="caixaAbrir()" id="btn-caixa-abrir">Abrir caixa</button>
+        <button class="secundario" onclick="caixaFechar()" id="btn-caixa-fechar" style="display:none;">Fechar caixa</button>
+        <button class="secundario" onclick="caixaSuprimento()" id="btn-caixa-suprimento" style="display:none;">Suprimento</button>
+        <button class="secundario" onclick="caixaSangria()" id="btn-caixa-sangria" style="display:none;">Sangria</button>
+        <span class="msg" id="msg-caixa"></span>
+    </div>
+
     <div class="layout">
         <div class="card">
             <input class="busca" type="text" id="busca" placeholder="Buscar produto...">
@@ -196,6 +207,45 @@
             carregarAgenda();
         }
 
+        async function caixaAtualizarStatus() {
+            const resp = await fetch(`${base}/caixa-status`);
+            const dados = await resp.json();
+            const texto = document.getElementById('caixa-status-texto');
+            const aberto = dados.status === 'aberto';
+
+            texto.textContent = aberto
+                ? `Caixa aberto - saldo atual: R$ ${Number(dados.saldo).toFixed(2)}`
+                : 'Caixa fechado - abra o caixa antes de vender.';
+
+            document.getElementById('btn-caixa-abrir').style.display = aberto ? 'none' : 'inline-block';
+            document.getElementById('btn-caixa-fechar').style.display = aberto ? 'inline-block' : 'none';
+            document.getElementById('btn-caixa-suprimento').style.display = aberto ? 'inline-block' : 'none';
+            document.getElementById('btn-caixa-sangria').style.display = aberto ? 'inline-block' : 'none';
+        }
+
+        async function caixaAcao(endpoint, exigeObservacao) {
+            const valor = Number(document.getElementById('caixa-valor').value);
+            const observacao = document.getElementById('caixa-obs').value || null;
+            const msg = document.getElementById('msg-caixa');
+
+            const resp = await fetch(`${base}/${endpoint}`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ valor, observacao }),
+            });
+            const resposta = await resp.json();
+
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || 'Erro na operação de caixa.'; return; }
+
+            msg.className = 'msg ok'; msg.textContent = 'Operação registrada.';
+            document.getElementById('caixa-valor').value = '';
+            document.getElementById('caixa-obs').value = '';
+            caixaAtualizarStatus();
+        }
+
+        function caixaAbrir() { caixaAcao('caixa-abrir'); }
+        function caixaFechar() { caixaAcao('caixa-fechar'); }
+        function caixaSuprimento() { caixaAcao('caixa-suprimento'); }
+        function caixaSangria() { caixaAcao('caixa-sangria'); }
+
         document.getElementById('busca').addEventListener('input', (e) => carregarProdutos(e.target.value));
         document.addEventListener('keydown', (e) => { if (e.key === 'F10') { e.preventDefault(); finalizarVenda(); } });
 
@@ -203,6 +253,7 @@
         carregarAgenda();
         carregarVendedores();
         carregarFormasPagamento();
+        caixaAtualizarStatus();
     </script>
 </body>
 </html>

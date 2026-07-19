@@ -32,7 +32,10 @@
             <button onclick="mostrarSecao('clientes', this)">Clientes</button>
             <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
+            <button onclick="mostrarSecao('grupos', this)">Grupos</button>
             <button onclick="mostrarSecao('financeiro', this)">Financeiro</button>
+            <button onclick="mostrarSecao('plano-contas', this)">Plano de Contas</button>
+            <button onclick="mostrarSecao('bancos', this)">Bancos</button>
             <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
             <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
             <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
@@ -86,6 +89,7 @@
                         <div><label>Código/SKU</label><input type="text" id="pr-codigo" style="width:100px"></div>
                         <div><label>Nome</label><input type="text" id="pr-nome"></div>
                         <div><label>Categoria</label><input type="text" id="pr-categoria" style="width:120px"></div>
+                        <div><label>Grupo</label><select id="pr-grupo"><option value="">Sem grupo</option></select></div>
                         <div><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
                         <div><label>Unidade</label><input type="text" id="pr-unidade" value="UN" style="width:60px"></div>
                     </div>
@@ -211,10 +215,11 @@
                     <div class="linha-form">
                         <div><label>Valor (R$)</label><input type="number" step="0.01" id="cp-valor" style="width:100px"></div>
                         <div><label>Vencimento</label><input type="date" id="cp-vencimento"></div>
+                        <div><label>Categoria (plano de contas)</label><select id="cp-plano-conta"><option value="">Sem categoria</option></select></div>
                         <div><button class="acao" onclick="criarContaPagar()">Lançar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Fornecedor</th><th>Valor</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Fornecedor</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-contas-pagar"></tbody>
                     </table>
                     <p class="msg" id="msg-contas-pagar"></p>
@@ -224,13 +229,121 @@
                     <div class="linha-form">
                         <div><label>Valor (R$)</label><input type="number" step="0.01" id="cr-valor" style="width:100px"></div>
                         <div><label>Vencimento</label><input type="date" id="cr-vencimento"></div>
+                        <div><label>Categoria (plano de contas)</label><select id="cr-plano-conta"><option value="">Sem categoria</option></select></div>
                         <div><button class="acao" onclick="criarContaReceber()">Lançar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Cliente</th><th>Valor</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Cliente</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-contas-receber"></tbody>
                     </table>
                     <p class="msg" id="msg-contas-receber"></p>
+                </div>
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Banco usado ao marcar como pago</h2>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
+                        Opcional - se escolher um banco aqui antes de clicar em "Marcar pago" em qualquer conta acima,
+                        o movimento bancário correspondente é lançado automaticamente no extrato desse banco.
+                    </p>
+                    <select id="fin-banco-pagamento"><option value="">Nenhum (não lança no banco)</option></select>
+                </div>
+            </section>
+
+            <section id="secao-grupos" class="secao">
+                <h1>Grupos de produto</h1>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>Nome</label><input type="text" id="gr-nome"></div>
+                        <div><label>Descrição</label><input type="text" id="gr-descricao"></div>
+                        <div><button class="acao" onclick="criarGrupo()">Cadastrar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Nome</th><th>Descrição</th><th>Produtos</th><th>Valor em estoque</th></tr></thead>
+                        <tbody id="tbody-grupos"></tbody>
+                    </table>
+                    <p class="msg" id="msg-grupos"></p>
+                </div>
+            </section>
+
+            <section id="secao-plano-contas" class="secao">
+                <h1>Plano de Contas</h1>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>Código</label><input type="text" id="pc-codigo" style="width:90px"></div>
+                        <div><label>Nome</label><input type="text" id="pc-nome"></div>
+                        <div><label>Tipo</label>
+                            <select id="pc-tipo">
+                                <option value="despesa">Despesa (contas a pagar)</option>
+                                <option value="receita">Receita (contas a receber)</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" onclick="criarPlanoContas()">Cadastrar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Código</th><th>Nome</th><th>Tipo</th></tr></thead>
+                        <tbody id="tbody-plano-contas"></tbody>
+                    </table>
+                    <p class="msg" id="msg-plano-contas"></p>
+                </div>
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Relatório por categoria</h2>
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="pcr-inicio"></div>
+                        <div><label>Até</label><input type="date" id="pcr-fim"></div>
+                        <div><button class="secundario" onclick="carregarRelatorioPlanoContas()">Consultar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Categoria</th><th>Tipo</th><th>Total</th><th>Pago</th><th>Em aberto</th></tr></thead>
+                        <tbody id="tbody-relatorio-plano-contas"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="secao-bancos" class="secao">
+                <h1>Bancos</h1>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>Nome</label><input type="text" id="bc-nome"></div>
+                        <div><label>Agência</label><input type="text" id="bc-agencia" style="width:90px"></div>
+                        <div><label>Conta</label><input type="text" id="bc-conta" style="width:110px"></div>
+                        <div><label>Tipo</label>
+                            <select id="bc-tipo">
+                                <option value="corrente">Corrente</option>
+                                <option value="poupanca">Poupança</option>
+                            </select>
+                        </div>
+                        <div><label>Saldo inicial (R$)</label><input type="number" step="0.01" id="bc-saldo" style="width:110px"></div>
+                        <div><button class="acao" onclick="criarBanco()">Cadastrar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Nome</th><th>Agência/Conta</th><th>Tipo</th><th></th></tr></thead>
+                        <tbody id="tbody-bancos"></tbody>
+                    </table>
+                    <p class="msg" id="msg-bancos"></p>
+                </div>
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Extrato</h2>
+                    <div class="linha-form">
+                        <div><label>Banco</label><select id="ex-banco"></select></div>
+                        <div><label>De</label><input type="date" id="ex-inicio"></div>
+                        <div><label>Até</label><input type="date" id="ex-fim"></div>
+                        <div><button class="secundario" onclick="carregarExtratoBanco()">Consultar</button></div>
+                    </div>
+                    <p style="font-size:13px;" id="ex-saldo"></p>
+                    <table>
+                        <thead><tr><th>Data</th><th>Tipo</th><th>Valor</th><th>Descrição</th><th>Origem</th><th>Saldo após</th></tr></thead>
+                        <tbody id="tbody-extrato-banco"></tbody>
+                    </table>
+                    <h3 style="font-size:13px;">Lançamento manual</h3>
+                    <div class="linha-form">
+                        <div><label>Data</label><input type="date" id="mv-data"></div>
+                        <div><label>Tipo</label>
+                            <select id="mv-tipo"><option value="credito">Crédito</option><option value="debito">Débito</option></select>
+                        </div>
+                        <div><label>Valor (R$)</label><input type="number" step="0.01" id="mv-valor" style="width:110px"></div>
+                        <div><label>Descrição</label><input type="text" id="mv-descricao"></div>
+                        <div><button class="acao" onclick="lancarMovimentoBancario()">Lançar</button></div>
+                    </div>
+                    <p class="msg" id="msg-extrato-banco"></p>
                 </div>
             </section>
 
@@ -439,11 +552,14 @@
         const carregadores = {
             dashboard: carregarIndicadores,
             agenda: carregarAgenda,
-            produtos: carregarProdutos,
+            produtos: () => { carregarProdutos(); carregarGrupos(); },
             clientes: carregarClientes,
             fornecedores: carregarFornecedores,
             vendedores: carregarVendedores,
-            financeiro: () => { carregarContasPagar(); carregarContasReceber(); },
+            grupos: carregarGrupos,
+            financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
+            'plano-contas': () => { carregarPlanoContas(); },
+            bancos: carregarBancos,
             usuarios: carregarUsuarios,
             'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); },
             pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
@@ -539,6 +655,7 @@
             document.getElementById('pr-codigo').value = p.codigo ?? '';
             document.getElementById('pr-nome').value = p.nome;
             document.getElementById('pr-categoria').value = p.categoria ?? '';
+            document.getElementById('pr-grupo').value = p.grupo_id ?? '';
             document.getElementById('pr-tipo').value = p.tipo;
             document.getElementById('pr-unidade').value = p.unidade ?? 'UN';
             document.getElementById('pr-preco').value = p.preco_venda;
@@ -560,6 +677,7 @@
             document.getElementById('pr-preco').value = '';
             document.getElementById('pr-unidade').value = 'UN';
             document.getElementById('pr-fornecedor').value = '';
+            document.getElementById('pr-grupo').value = '';
             document.getElementById('pr-botao').textContent = 'Cadastrar';
             document.getElementById('pr-cancelar').style.display = 'none';
         }
@@ -570,6 +688,7 @@
                 codigo: document.getElementById('pr-codigo').value || null,
                 nome: document.getElementById('pr-nome').value,
                 categoria: document.getElementById('pr-categoria').value || null,
+                grupo_id: document.getElementById('pr-grupo').value || null,
                 tipo: document.getElementById('pr-tipo').value,
                 unidade: document.getElementById('pr-unidade').value || 'UN',
                 preco_venda: Number(document.getElementById('pr-preco').value),
@@ -847,16 +966,18 @@
                     <td>${c.fornecedor ? c.fornecedor.razao_social : '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
                     <td>${c.vencimento}</td>
+                    <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
                     <td>${c.status !== 'pago' ? `<button class="secundario" onclick="pagarContaPagar(${c.id})">Marcar pago</button>` : ''}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="5">Nenhuma conta a pagar.</td></tr>';
+            `).join('') || '<tr><td colspan="6">Nenhuma conta a pagar.</td></tr>';
         }
 
         async function criarContaPagar() {
             const dados = {
                 valor: Number(document.getElementById('cp-valor').value),
                 vencimento: document.getElementById('cp-vencimento').value,
+                plano_conta_id: document.getElementById('cp-plano-conta').value || null,
             };
             const resp = await fetch(`${base}/contas-pagar`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
@@ -867,7 +988,8 @@
         }
 
         async function pagarContaPagar(id) {
-            await fetch(`${base}/contas-pagar/${id}/pagar`, { method: 'PUT', headers: headersJson });
+            const bancoId = document.getElementById('fin-banco-pagamento').value || null;
+            await fetch(`${base}/contas-pagar/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId }) });
             carregarContasPagar();
         }
 
@@ -879,16 +1001,18 @@
                     <td>${c.cliente ? c.cliente.nome : '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
                     <td>${c.vencimento}</td>
+                    <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
                     <td>${c.status !== 'pago' ? `<button class="secundario" onclick="pagarContaReceber(${c.id})">Marcar pago</button>` : ''}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="5">Nenhuma conta a receber.</td></tr>';
+            `).join('') || '<tr><td colspan="6">Nenhuma conta a receber.</td></tr>';
         }
 
         async function criarContaReceber() {
             const dados = {
                 valor: Number(document.getElementById('cr-valor').value),
                 vencimento: document.getElementById('cr-vencimento').value,
+                plano_conta_id: document.getElementById('cr-plano-conta').value || null,
             };
             const resp = await fetch(`${base}/contas-receber`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
@@ -899,8 +1023,199 @@
         }
 
         async function pagarContaReceber(id) {
-            await fetch(`${base}/contas-receber/${id}/pagar`, { method: 'PUT', headers: headersJson });
+            const bancoId = document.getElementById('fin-banco-pagamento').value || null;
+            await fetch(`${base}/contas-receber/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId }) });
             carregarContasReceber();
+        }
+
+        async function carregarSelectsFinanceiro() {
+            const [planos, bancosLista] = await Promise.all([
+                fetch(`${base}/plano-contas`).then(r => r.json()),
+                fetch(`${base}/bancos`).then(r => r.json()),
+            ]);
+            const opcoesPlanos = '<option value="">Sem categoria</option>' + planos.map(p => `<option value="${p.id}">${p.codigo ? p.codigo + ' - ' : ''}${p.nome}</option>`).join('');
+            document.getElementById('cp-plano-conta').innerHTML = opcoesPlanos;
+            document.getElementById('cr-plano-conta').innerHTML = opcoesPlanos;
+            document.getElementById('fin-banco-pagamento').innerHTML = '<option value="">Nenhum (não lança no banco)</option>' +
+                bancosLista.map(b => `<option value="${b.id}">${b.nome}</option>`).join('');
+        }
+
+        // ---- Grupos de produto ----
+
+        let gruposCache = [];
+
+        async function carregarGrupos() {
+            const [grupos, relatorio] = await Promise.all([
+                fetch(`${base}/grupos`).then(r => r.json()),
+                fetch(`${base}/grupos-relatorio`).then(r => r.json()),
+            ]);
+            gruposCache = grupos;
+            const porId = Object.fromEntries(relatorio.map(r => [r.id, r]));
+            document.getElementById('tbody-grupos').innerHTML = grupos.map(g => `
+                <tr>
+                    <td>${g.nome}</td>
+                    <td>${g.descricao ?? '-'}</td>
+                    <td>${porId[g.id]?.produtos_count ?? 0}</td>
+                    <td>R$ ${Number(porId[g.id]?.valor_estoque ?? 0).toFixed(2)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="4">Nenhum grupo cadastrado.</td></tr>';
+
+            const opcoes = '<option value="">Sem grupo</option>' + grupos.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+            const selectGrupoProduto = document.getElementById('pr-grupo');
+            if (selectGrupoProduto) selectGrupoProduto.innerHTML = opcoes;
+        }
+
+        async function criarGrupo() {
+            const dados = {
+                nome: document.getElementById('gr-nome').value,
+                descricao: document.getElementById('gr-descricao').value || null,
+            };
+            const resp = await fetch(`${base}/grupos`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-grupos');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Grupo cadastrado.';
+            document.getElementById('gr-nome').value = '';
+            document.getElementById('gr-descricao').value = '';
+            carregarGrupos();
+        }
+
+        // ---- Plano de contas ----
+
+        async function carregarPlanoContas() {
+            const resp = await fetch(`${base}/plano-contas`);
+            const lista = await resp.json();
+            document.getElementById('tbody-plano-contas').innerHTML = lista.map(p => `
+                <tr><td>${p.codigo ?? '-'}</td><td>${p.nome}</td><td>${p.tipo}</td></tr>
+            `).join('') || '<tr><td colspan="3">Nenhuma categoria cadastrada.</td></tr>';
+        }
+
+        async function criarPlanoContas() {
+            const dados = {
+                codigo: document.getElementById('pc-codigo').value || null,
+                nome: document.getElementById('pc-nome').value,
+                tipo: document.getElementById('pc-tipo').value,
+            };
+            const resp = await fetch(`${base}/plano-contas`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-plano-contas');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Categoria cadastrada.';
+            document.getElementById('pc-codigo').value = '';
+            document.getElementById('pc-nome').value = '';
+            carregarPlanoContas();
+            carregarSelectsFinanceiro();
+        }
+
+        async function carregarRelatorioPlanoContas() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('pcr-inicio').value;
+            const fim = document.getElementById('pcr-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const resp = await fetch(`${base}/plano-contas-relatorio?${params}`);
+            const lista = await resp.json();
+            document.getElementById('tbody-relatorio-plano-contas').innerHTML = lista.map(r => `
+                <tr>
+                    <td>${r.codigo ? r.codigo + ' - ' : ''}${r.nome}</td>
+                    <td>${r.tipo}</td>
+                    <td>R$ ${Number(r.total).toFixed(2)}</td>
+                    <td>R$ ${Number(r.total_pago).toFixed(2)}</td>
+                    <td>R$ ${Number(r.total_em_aberto).toFixed(2)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhuma categoria cadastrada.</td></tr>';
+        }
+
+        // ---- Bancos ----
+
+        async function carregarBancos() {
+            const resp = await fetch(`${base}/bancos`);
+            const lista = await resp.json();
+            document.getElementById('tbody-bancos').innerHTML = lista.map(b => `
+                <tr>
+                    <td>${b.nome}</td>
+                    <td>${b.agencia ?? '-'} / ${b.numero_conta ?? '-'}</td>
+                    <td>${b.tipo_conta}</td>
+                    <td><button class="secundario" onclick="selecionarBancoExtrato(${b.id})">Ver extrato</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="4">Nenhum banco cadastrado.</td></tr>';
+
+            document.getElementById('ex-banco').innerHTML = lista.map(b => `<option value="${b.id}">${b.nome}</option>`).join('');
+            carregarSelectsFinanceiro();
+        }
+
+        async function criarBanco() {
+            const dados = {
+                nome: document.getElementById('bc-nome').value,
+                agencia: document.getElementById('bc-agencia').value || null,
+                numero_conta: document.getElementById('bc-conta').value || null,
+                tipo_conta: document.getElementById('bc-tipo').value,
+                saldo_inicial: Number(document.getElementById('bc-saldo').value || 0),
+            };
+            const resp = await fetch(`${base}/bancos`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-bancos');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Banco cadastrado.';
+            document.getElementById('bc-nome').value = '';
+            document.getElementById('bc-agencia').value = '';
+            document.getElementById('bc-conta').value = '';
+            document.getElementById('bc-saldo').value = '';
+            carregarBancos();
+        }
+
+        function selecionarBancoExtrato(bancoId) {
+            document.getElementById('ex-banco').value = bancoId;
+            carregarExtratoBanco();
+        }
+
+        async function carregarExtratoBanco() {
+            const bancoId = document.getElementById('ex-banco').value;
+            if (!bancoId) return;
+
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('ex-inicio').value;
+            const fim = document.getElementById('ex-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const resp = await fetch(`${base}/bancos/${bancoId}/extrato?${params}`);
+            const dados = await resp.json();
+
+            document.getElementById('ex-saldo').textContent =
+                `Saldo anterior: R$ ${Number(dados.saldo_anterior).toFixed(2)} — Saldo atual: R$ ${Number(dados.saldo_atual).toFixed(2)}`;
+
+            document.getElementById('tbody-extrato-banco').innerHTML = dados.movimentos.map(m => `
+                <tr>
+                    <td>${m.data_movimento}</td>
+                    <td>${m.tipo}</td>
+                    <td>R$ ${Number(m.valor).toFixed(2)}</td>
+                    <td>${m.descricao ?? '-'}</td>
+                    <td>${m.origem}</td>
+                    <td>R$ ${Number(m.saldo_apos).toFixed(2)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="6">Nenhum movimento no período.</td></tr>';
+        }
+
+        async function lancarMovimentoBancario() {
+            const bancoId = document.getElementById('ex-banco').value;
+            const msg = document.getElementById('msg-extrato-banco');
+            if (!bancoId) { msg.className = 'msg erro'; msg.textContent = 'Selecione um banco.'; return; }
+
+            const dados = {
+                data_movimento: document.getElementById('mv-data').value,
+                tipo: document.getElementById('mv-tipo').value,
+                valor: Number(document.getElementById('mv-valor').value),
+                descricao: document.getElementById('mv-descricao').value || null,
+            };
+            const resp = await fetch(`${base}/bancos/${bancoId}/movimentos`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Movimento lançado.';
+            document.getElementById('mv-valor').value = '';
+            document.getElementById('mv-descricao').value = '';
+            carregarExtratoBanco();
         }
 
         async function carregarUsuarios() {
