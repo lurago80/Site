@@ -245,4 +245,5 @@ CREATE POLICY empresa_isolation ON <tabela>
 - ~~Pagamento online real na loja pública (Pix + cartão, PDV com forma de pagamento)~~ — feito (cartão depende do front-end de loja pública, que é um projeto à parte, integrar o SDK do gateway e enviar o token);
 - ~~Integração de cobrança de assinatura (Asaas) no painel Super Admin, com suspensão automática por inadimplência e baixa manual~~ — feito;
 - ~~Notificações via WhatsApp (confirmação/lembrete de visita, Z-API e Baileys)~~ — feito, incluindo o microserviço `whatsapp-service/` do Baileys e o pareamento por QR code no dashboard (falta validar o pareamento com um número real do cliente e colocar o serviço rodando em produção);
+- ~~Módulo financeiro expandido (Grupo, PlanoContas, Banco, GravaBanco, Caixa)~~ — feito (ver item 24 do changelog técnico);
 - Identidade visual por empresa na loja pública (logo/cor própria de cada cliente da plataforma) - hoje só a plataforma tem marca própria, a loja pública ainda não é personalizável por tenant.
