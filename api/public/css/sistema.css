@@ -87,11 +87,27 @@ th { color: var(--cor-texto-suave); font-weight: 600; }
 
 button, input, select {
     font-size: 13px;
-    padding: 6px 10px;
-    border-radius: 4px;
+    padding: 8px 10px;
+    border-radius: 6px;
     border: 1px solid var(--cor-borda);
     font-family: inherit;
 }
+
+input, select {
+    background: var(--cor-superficie);
+    color: var(--cor-texto);
+    transition: border-color .15s, box-shadow .15s;
+}
+
+input:hover, select:hover { border-color: #9aa5b1; }
+
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--cor-primaria);
+    box-shadow: 0 0 0 3px rgba(57, 66, 133, .12);
+}
+
+input[type="checkbox"] { width: auto; padding: 0; }
 
 button { cursor: pointer; }
 
@@ -116,8 +132,65 @@ button.perigo {
 
 button:disabled { background: var(--cor-borda); color: #fff; cursor: not-allowed; }
 
-.linha-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
-.linha-form label { display: block; font-size: 11px; color: var(--cor-texto-suave); margin-bottom: 2px; }
+/* ---- Linhas de formulário: cada campo é um flex-item com respiro real ---- */
+.linha-form {
+    display: flex;
+    gap: 16px 20px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 18px;
+}
+.linha-form > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.linha-form > div > input,
+.linha-form > div > select { width: 100%; }
+.linha-form label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cor-texto-suave);
+    letter-spacing: .01em;
+}
+
+/* Campo do tipo checkbox ("Ativo", "Pesável" etc.) alinhado com os demais */
+.campo-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: center;
+    padding-top: 18px;
+    font-size: 13px;
+    color: var(--cor-texto);
+    white-space: nowrap;
+}
+.campo-check input[type="checkbox"] { width: auto; margin: 0; }
+
+/* Agrupamento visual dentro de formulários longos (ex.: abas fiscais do produto) */
+.grupo-campos {
+    background: var(--cor-fundo);
+    border: 1px solid var(--cor-borda-suave);
+    border-radius: var(--raio);
+    padding: 16px 18px 4px;
+    margin-bottom: 18px;
+}
+.grupo-campos h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--cor-primaria);
+    font-weight: 700;
+    margin: 0 0 14px;
+}
+.grupo-campos .linha-form:last-child { margin-bottom: 4px; }
+.grupo-campos + .grupo-campos { margin-top: -6px; }
+
+.form-acoes {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+    margin-bottom: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--cor-borda-suave);
+}
 
 .status { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .status-autorizada, .status-ativa, .status-em_dia, .status-pago, .status-homologada, .status-aberta {

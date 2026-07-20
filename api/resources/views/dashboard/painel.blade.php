@@ -12,22 +12,26 @@
         .sidebar .grupo-label { padding: 14px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.45); }
         .sidebar .link-pdv { display: block; padding: 10px 16px; font-size: 13px; color: #fff; background: var(--cor-primaria); text-decoration: none; margin: 0 12px; border-radius: 6px; }
         .sidebar .link-pdv:hover { background: var(--cor-primaria-escura); }
-        .abas-produto { display: flex; gap: 4px; border-bottom: 1px solid var(--cor-borda); margin-bottom: 16px; flex-wrap: wrap; }
-        .abas-produto button { background: none; border: none; padding: 10px 14px; font-size: 12px; color: var(--cor-texto-suave); cursor: pointer; border-bottom: 2px solid transparent; }
-        .abas-produto button.ativa { color: var(--cor-primaria); border-bottom-color: var(--cor-primaria); font-weight: 600; }
+        .abas-produto { display: flex; gap: 2px; border-bottom: 1px solid var(--cor-borda); margin-bottom: 24px; flex-wrap: wrap; }
+        .abas-produto button { background: none; border: none; padding: 12px 16px; font-size: 12.5px; font-weight: 500; color: var(--cor-texto-suave); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
+        .abas-produto button:hover { color: var(--cor-primaria); }
+        .abas-produto button.ativa { color: var(--cor-primaria); border-bottom-color: var(--cor-primaria); font-weight: 700; }
         .aba-conteudo-produto { display: none; }
-        .aba-conteudo-produto.ativa { display: block; }
-        .aba-conteudo-produto h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--cor-texto-suave); margin: 0 0 10px; }
-        .conteudo { flex: 1; padding: 24px; }
+        .aba-conteudo-produto.ativa { display: block; animation: aba-fade .12s ease-out; }
+        @keyframes aba-fade { from { opacity: 0; } to { opacity: 1; } }
+        .conteudo { flex: 1; padding: 28px; max-width: 1400px; }
         .secao { display: none; }
         .secao.ativa { display: block; }
+        .secao > h1 { margin-bottom: 18px; }
         .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .stat { background: var(--cor-superficie); border-radius: var(--raio); padding: 14px; box-shadow: var(--sombra); }
         .stat .label { font-size: 11px; color: var(--cor-texto-suave); }
         .stat .valor { font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--cor-primaria); }
-        button.acao { background: var(--cor-primaria); color: #fff; border: none; }
+        button.acao { background: var(--cor-primaria); color: #fff; border: none; padding: 9px 18px; font-weight: 600; }
         button.acao:hover { background: var(--cor-primaria-escura); }
         button.secundario { color: #fff; }
+        .card > h1:first-child, .card > .abas-produto:first-child { margin-top: 0; }
+        .card table { margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -119,54 +123,68 @@
                     </div>
 
                     <div class="aba-conteudo-produto ativa" id="aba-produto-geral">
-                        <div class="linha-form">
-                            <div><label>Código/SKU</label><input type="text" id="pr-codigo" style="width:100px"></div>
-                            <div><label>Código de barras</label><input type="text" id="pr-codigo-barras" style="width:130px"></div>
-                            <div style="flex:1"><label>Nome</label><input type="text" id="pr-nome"></div>
-                            <div><label>Categoria</label><input type="text" id="pr-categoria" style="width:120px"></div>
-                            <div><label>Grupo</label><select id="pr-grupo"><option value="">Sem grupo</option></select></div>
-                        </div>
-                        <div class="linha-form">
-                            <div><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
-                            <div><label>Tipo de produto (fiscal)</label>
-                                <select id="pr-tipo-fiscal">
-                                    <option value="produto">Produto</option>
-                                    <option value="consumo">Consumo</option>
-                                    <option value="materia_prima">Matéria-prima</option>
-                                    <option value="servico">Serviço</option>
-                                    <option value="brinde">Brinde</option>
-                                </select>
+                        <div class="grupo-campos">
+                            <h3>Identificação</h3>
+                            <div class="linha-form">
+                                <div><label>Código/SKU</label><input type="text" id="pr-codigo" style="width:110px"></div>
+                                <div><label>Código de barras</label><input type="text" id="pr-codigo-barras" style="width:140px"></div>
+                                <div style="flex:2; min-width:220px"><label>Nome</label><input type="text" id="pr-nome"></div>
+                                <div style="flex:1; min-width:140px"><label>Categoria</label><input type="text" id="pr-categoria"></div>
+                                <div style="flex:1; min-width:140px"><label>Grupo</label><select id="pr-grupo"><option value="">Sem grupo</option></select></div>
                             </div>
-                            <div><label>Unidade</label><input type="text" id="pr-unidade" value="UN" style="width:60px"></div>
-                            <div><label>Fornecedor</label><select id="pr-fornecedor"><option value="">Nenhum</option></select></div>
-                            <div style="align-self:center;"><label style="visibility:hidden;">Pesável</label><label style="font-size:12px;"><input type="checkbox" id="pr-pesavel" style="width:auto;"> Pesável</label></div>
-                            <div style="align-self:center;"><label style="visibility:hidden;">Ativo</label><label style="font-size:12px;"><input type="checkbox" id="pr-ativo" checked style="width:auto;"> Ativo</label></div>
+                            <div class="linha-form">
+                                <div style="min-width:140px"><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
+                                <div style="min-width:180px"><label>Tipo de produto (fiscal)</label>
+                                    <select id="pr-tipo-fiscal">
+                                        <option value="produto">Produto</option>
+                                        <option value="consumo">Consumo</option>
+                                        <option value="materia_prima">Matéria-prima</option>
+                                        <option value="servico">Serviço</option>
+                                        <option value="brinde">Brinde</option>
+                                    </select>
+                                </div>
+                                <div><label>Unidade</label><input type="text" id="pr-unidade" value="UN" style="width:70px"></div>
+                                <div style="flex:1; min-width:160px"><label>Fornecedor</label><select id="pr-fornecedor"><option value="">Nenhum</option></select></div>
+                                <label class="campo-check"><input type="checkbox" id="pr-pesavel"> Pesável</label>
+                                <label class="campo-check"><input type="checkbox" id="pr-ativo" checked> Ativo</label>
+                            </div>
                         </div>
-                        <div class="linha-form">
-                            <div><label>Preço de venda (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:110px"></div>
-                            <div><label>Preço de custo (R$)</label><input type="number" step="0.01" id="pr-custo" style="width:110px"></div>
-                            <div><label>Valor atacado (R$)</label><input type="number" step="0.01" id="pr-valor-atacado" style="width:110px"></div>
-                            <div><label>Estoque atual</label><input type="number" id="pr-estoque" style="width:90px"></div>
-                            <div><label>Estoque mínimo</label><input type="number" id="pr-estoque-minimo" style="width:90px"></div>
+
+                        <div class="grupo-campos">
+                            <h3>Preços e estoque</h3>
+                            <div class="linha-form">
+                                <div><label>Preço de venda (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:120px"></div>
+                                <div><label>Preço de custo (R$)</label><input type="number" step="0.01" id="pr-custo" style="width:120px"></div>
+                                <div><label>Valor atacado (R$)</label><input type="number" step="0.01" id="pr-valor-atacado" style="width:120px"></div>
+                                <div><label>Estoque atual</label><input type="number" id="pr-estoque" style="width:100px"></div>
+                                <div><label>Estoque mínimo</label><input type="number" id="pr-estoque-minimo" style="width:100px"></div>
+                            </div>
                         </div>
-                        <div class="linha-form">
-                            <div><label>Peso líquido (kg)</label><input type="number" step="0.001" id="pr-peso-liquido" style="width:100px"></div>
-                            <div><label>Peso bruto (kg)</label><input type="number" step="0.001" id="pr-peso-bruto" style="width:100px"></div>
-                            <div style="flex:1"><label>Imagem (URL)</label><input type="text" id="pr-imagem" placeholder="https://..."></div>
-                        </div>
-                        <div class="linha-form">
-                            <div style="flex:1"><label>Descrição</label><input type="text" id="pr-descricao" style="width:100%"></div>
+
+                        <div class="grupo-campos">
+                            <h3>Dimensões e mídia</h3>
+                            <div class="linha-form">
+                                <div><label>Peso líquido (kg)</label><input type="number" step="0.001" id="pr-peso-liquido" style="width:110px"></div>
+                                <div><label>Peso bruto (kg)</label><input type="number" step="0.001" id="pr-peso-bruto" style="width:110px"></div>
+                                <div style="flex:1; min-width:220px"><label>Imagem (URL)</label><input type="text" id="pr-imagem" placeholder="https://..."></div>
+                            </div>
+                            <div class="linha-form">
+                                <div style="flex:1"><label>Descrição</label><input type="text" id="pr-descricao"></div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="aba-conteudo-produto" id="aba-produto-icms">
+                        <div class="grupo-campos">
                         <h3>Classificação fiscal</h3>
                         <div class="linha-form">
-                            <div><label>NCM</label><input type="text" id="pr-ncm" placeholder="8 dígitos" style="width:100px"></div>
-                            <div><label>CEST</label><input type="text" id="pr-cest" style="width:100px"></div>
-                            <div><label>CFOP padrão (interno)</label><input type="text" id="pr-cfop" placeholder="ex: 5102" style="width:100px"></div>
-                            <div><label>CFOP interestadual</label><input type="text" id="pr-cfop-interestadual" placeholder="ex: 6102" style="width:100px"></div>
+                            <div><label>NCM</label><input type="text" id="pr-ncm" placeholder="8 dígitos" style="width:110px"></div>
+                            <div><label>CEST</label><input type="text" id="pr-cest" style="width:110px"></div>
+                            <div><label>CFOP padrão (interno)</label><input type="text" id="pr-cfop" placeholder="ex: 5102" style="width:110px"></div>
+                            <div><label>CFOP interestadual</label><input type="text" id="pr-cfop-interestadual" placeholder="ex: 6102" style="width:130px"></div>
                         </div>
+                        </div>
+                        <div class="grupo-campos">
                         <h3>ICMS</h3>
                         <div class="linha-form">
                             <div><label>CST origem</label>
@@ -205,17 +223,21 @@
                             <div><label>MVA (%)</label><input type="number" step="0.01" id="pr-mva" style="width:80px"></div>
                         </div>
                         <div class="linha-form">
-                            <div><label>Grupo fiscal</label><input type="text" id="pr-grupo-fiscal" style="width:140px"></div>
-                            <div><label>Código benefício fiscal (cBenef)</label><input type="text" id="pr-codigo-beneficio" style="width:160px"></div>
+                            <div><label>Grupo fiscal</label><input type="text" id="pr-grupo-fiscal" style="width:150px"></div>
+                            <div><label>Código benefício fiscal (cBenef)</label><input type="text" id="pr-codigo-beneficio" style="width:170px"></div>
                         </div>
+                        </div>
+                        <div class="grupo-campos">
                         <h3>PIS / COFINS</h3>
                         <div class="linha-form">
-                            <div><label>CST PIS</label><input type="text" id="pr-cst-pis" placeholder="ex: 01" style="width:70px"></div>
-                            <div><label>Alíquota PIS (%)</label><input type="number" step="0.01" id="pr-aliquota-pis" style="width:90px"></div>
-                            <div><label>CST COFINS</label><input type="text" id="pr-cst-cofins" placeholder="ex: 01" style="width:80px"></div>
-                            <div><label>Alíquota COFINS (%)</label><input type="number" step="0.01" id="pr-aliquota-cofins" style="width:100px"></div>
-                            <div style="flex:1"><label>Natureza da receita (monofásica)</label><input type="text" id="pr-natureza-receita"></div>
+                            <div><label>CST PIS</label><input type="text" id="pr-cst-pis" placeholder="ex: 01" style="width:80px"></div>
+                            <div><label>Alíquota PIS (%)</label><input type="number" step="0.01" id="pr-aliquota-pis" style="width:100px"></div>
+                            <div><label>CST COFINS</label><input type="text" id="pr-cst-cofins" placeholder="ex: 01" style="width:90px"></div>
+                            <div><label>Alíquota COFINS (%)</label><input type="number" step="0.01" id="pr-aliquota-cofins" style="width:110px"></div>
+                            <div style="flex:1; min-width:200px"><label>Natureza da receita (monofásica)</label><input type="text" id="pr-natureza-receita"></div>
                         </div>
+                        </div>
+                        <div class="grupo-campos">
                         <h3>IPI</h3>
                         <div class="linha-form">
                             <div><label>CST IPI</label>
@@ -230,16 +252,19 @@
                                     <option value="99">99 - Outras saídas</option>
                                 </select>
                             </div>
-                            <div><label>Alíquota IPI (%)</label><input type="number" step="0.01" id="pr-aliquota-ipi" style="width:90px"></div>
-                            <div><label>Código enquadramento IPI</label><input type="text" id="pr-enquadramento-ipi" style="width:160px"></div>
+                            <div><label>Alíquota IPI (%)</label><input type="number" step="0.01" id="pr-aliquota-ipi" style="width:100px"></div>
+                            <div><label>Código enquadramento IPI</label><input type="text" id="pr-enquadramento-ipi" style="width:170px"></div>
+                        </div>
                         </div>
                     </div>
 
                     <div class="aba-conteudo-produto" id="aba-produto-ibscbs">
                         <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
-                            Reforma Tributária (LC 214/2025) - CST é um código único, compartilhado por IBS e CBS
+                            Reforma Tributária (LC 214/2025) — CST é um código único, compartilhado por IBS e CBS
                             (não existe "CST separado" para cada um).
                         </p>
+                        <div class="grupo-campos">
+                        <h3>Classificação</h3>
                         <div class="linha-form">
                             <div><label>Situação novo regime</label>
                                 <select id="pr-situacao-novo-regime">
@@ -271,24 +296,30 @@
                                     <option value="830">830 - Exclusão da base de cálculo</option>
                                 </select>
                             </div>
-                            <div style="flex:1"><label>cClassTrib</label><select id="pr-cclasstrib"><option value="">Selecione</option></select></div>
+                            <div style="flex:1; min-width:200px"><label>cClassTrib</label><select id="pr-cclasstrib"><option value="">Selecione</option></select></div>
+                        </div>
+                        </div>
+                        <div class="grupo-campos">
+                        <h3>Alíquotas e créditos</h3>
+                        <div class="linha-form">
+                            <div><label>Alíquota IBS (%)</label><input type="number" step="0.01" id="pr-aliquota-ibs" style="width:100px"></div>
+                            <div><label>Alíquota CBS (%)</label><input type="number" step="0.01" id="pr-aliquota-cbs" style="width:100px"></div>
+                            <div><label>Redução BC IBS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-ibs" style="width:110px"></div>
+                            <div><label>Redução BC CBS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-cbs" style="width:110px"></div>
                         </div>
                         <div class="linha-form">
-                            <div><label>Alíquota IBS (%)</label><input type="number" step="0.01" id="pr-aliquota-ibs" style="width:90px"></div>
-                            <div><label>Alíquota CBS (%)</label><input type="number" step="0.01" id="pr-aliquota-cbs" style="width:90px"></div>
-                            <div><label>Redução BC IBS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-ibs" style="width:100px"></div>
-                            <div><label>Redução BC CBS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-cbs" style="width:100px"></div>
+                            <div><label>% Crédito IBS</label><input type="number" step="0.01" id="pr-credito-ibs" style="width:100px"></div>
+                            <div><label>% Crédito CBS</label><input type="number" step="0.01" id="pr-credito-cbs" style="width:100px"></div>
+                            <div style="flex:1; min-width:220px"><label>Código de Crédito Presumido (cCredPres) — opcional</label><select id="pr-ccredpres"><option value="">Nenhum</option></select></div>
                         </div>
-                        <div class="linha-form">
-                            <div><label>% Crédito IBS</label><input type="number" step="0.01" id="pr-credito-ibs" style="width:90px"></div>
-                            <div><label>% Crédito CBS</label><input type="number" step="0.01" id="pr-credito-cbs" style="width:90px"></div>
-                            <div style="flex:1"><label>Código de Crédito Presumido (cCredPres) - opcional</label><select id="pr-ccredpres"><option value="">Nenhum</option></select></div>
                         </div>
                     </div>
 
                     <div class="aba-conteudo-produto" id="aba-produto-is">
+                        <div class="grupo-campos">
+                        <h3>Imposto Seletivo</h3>
                         <div class="linha-form">
-                            <div style="align-self:center;"><label style="font-size:12px;"><input type="checkbox" id="pr-sujeito-is" style="width:auto;"> Sujeito a Imposto Seletivo</label></div>
+                            <label class="campo-check"><input type="checkbox" id="pr-sujeito-is"> Sujeito a Imposto Seletivo</label>
                             <div><label>Tipo</label>
                                 <select id="pr-tipo-is">
                                     <option value="">-</option>
@@ -300,12 +331,15 @@
                                     <option value="bens_minerais">Bens minerais</option>
                                 </select>
                             </div>
-                            <div><label>cClassTrib IS</label><input type="text" id="pr-cclasstrib-is" style="width:110px"></div>
-                            <div><label>Alíquota IS (%)</label><input type="number" step="0.01" id="pr-aliquota-is" style="width:90px"></div>
+                            <div><label>cClassTrib IS</label><input type="text" id="pr-cclasstrib-is" style="width:120px"></div>
+                            <div><label>Alíquota IS (%)</label><input type="number" step="0.01" id="pr-aliquota-is" style="width:100px"></div>
+                        </div>
                         </div>
                     </div>
 
                     <div class="aba-conteudo-produto" id="aba-produto-destino">
+                        <div class="grupo-campos">
+                        <h3>Destinação / Crédito</h3>
                         <div class="linha-form">
                             <div><label>Destinação tributária</label>
                                 <select id="pr-destinacao">
@@ -325,13 +359,15 @@
                                 </select>
                             </div>
                         </div>
+                        </div>
                     </div>
 
-                    <div class="linha-form" style="margin-top:8px; border-top:1px solid var(--cor-borda); padding-top:12px;">
-                        <div><button class="acao" id="pr-botao" onclick="salvarProduto()">Cadastrar</button></div>
-                        <div><button class="secundario" onclick="limparFormularioProduto()" style="display:none;" id="pr-cancelar">Cancelar edição</button></div>
+                    <div class="form-acoes">
+                        <button class="acao" id="pr-botao" onclick="salvarProduto()">Cadastrar</button>
+                        <button class="secundario" onclick="limparFormularioProduto()" style="display:none;" id="pr-cancelar">Cancelar edição</button>
                     </div>
 
+                    <h2>Produtos cadastrados</h2>
                     <table>
                         <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>Fornecedor</th><th>NCM</th><th>CFOP</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-produtos"></tbody>

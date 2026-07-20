@@ -100,6 +100,63 @@
         <p class="msg" id="msg-assinaturas"></p>
     </div>
 
+    <div class="card">
+        <h2>Tabela IBPT (Lei da Transparência Fiscal)</h2>
+        <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+            Alíquotas aproximadas de tributos por NCM (Lei 12.741/2012) - tabela oficial e global, importada
+            em bloco a partir do .csv que o IBPT distribui (ponto-e-vírgula). Fica aqui, não no dashboard de
+            cada empresa, porque é a mesma tabela nacional para todo mundo - importar uma vez atualiza para
+            todas as empresas da plataforma. Cada importação substitui a tabela inteira pela versão enviada.
+        </p>
+        <p id="ibpt-status" style="font-size:13px; font-weight:600;">Carregando...</p>
+        <div class="linha-form">
+            <div><label>Arquivo (.csv)</label><input type="file" id="ibpt-arquivo" accept=".csv,.txt"></div>
+            <div><button onclick="importarIbpt()">Importar</button></div>
+        </div>
+        <p class="msg" id="msg-ibpt"></p>
+        <div class="linha-form">
+            <div><label>Buscar por NCM</label><input type="text" id="ibpt-busca-ncm" placeholder="ex: 22030000" style="width:140px"></div>
+            <div><button class="secundario" onclick="buscarIbpt()">Buscar</button></div>
+        </div>
+        <table>
+            <thead><tr><th>NCM</th><th>Descrição</th><th>Fed. Nacional</th><th>Fed. Importado</th><th>Estadual</th><th>Municipal</th></tr></thead>
+            <tbody id="tbody-ibpt-busca"></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Tabela CFOP (Código Fiscal de Operações e Prestações)</h2>
+        <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+            Tabela oficial e global (Ajuste SINIEF s/nº de 15/12/1970) - fica aqui, não no dashboard de cada
+            empresa, pelo mesmo motivo do IBPT: é a mesma tabela nacional para todo mundo. "Importar/atualizar
+            tabela padrão" faz upsert por código (não apaga cadastros manuais feitos aqui). Depois de importada,
+            dá para editar a descrição ou desativar um código específico sem excluir o registro.
+        </p>
+        <div class="linha-form">
+            <div><button onclick="importarCfopPadrao()">Importar/atualizar tabela padrão</button></div>
+        </div>
+        <p class="msg" id="msg-cfop-importar"></p>
+
+        <input type="hidden" id="c-id">
+        <div class="linha-form">
+            <div><label>Código</label><input type="text" id="c-codigo" placeholder="ex: 5102" maxlength="4" style="width:100px"></div>
+            <div style="flex:1"><label>Descrição</label><input type="text" id="c-descricao"></div>
+            <div><label><input type="checkbox" id="c-ativo" checked> Ativo</label></div>
+            <div><button id="c-botao" onclick="salvarCfop()">Cadastrar CFOP</button></div>
+            <div><button class="secundario" onclick="limparFormularioCfop()" style="display:none;" id="c-cancelar">Cancelar edição</button></div>
+        </div>
+        <p class="msg" id="msg-cfop"></p>
+
+        <div class="linha-form">
+            <div><label>Buscar por código ou descrição</label><input type="text" id="cfop-busca" placeholder="ex: 5102 ou industrialização" style="width:280px"></div>
+            <div><button class="secundario" onclick="carregarCfops()">Buscar</button></div>
+        </div>
+        <table>
+            <thead><tr><th>Código</th><th>Descrição</th><th>Status</th><th>Ação</th></tr></thead>
+            <tbody id="tbody-cfops"><tr><td colspan="4">Carregando...</td></tr></tbody>
+        </table>
+    </div>
+
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const headersJson = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken };
@@ -317,9 +374,127 @@
             carregarConfigAssinatura();
         }
 
+        async function carregarStatusIbpt() {
+            const resp = await fetch('/superadmin/ibpt/status');
+            const dados = await resp.json();
+            const status = document.getElementById('ibpt-status');
+            status.textContent = dados.total > 0
+                ? `${dados.total.toLocaleString('pt-BR')} códigos importados - versão ${dados.versao ?? '-'}, atualizado em ${new Date(dados.atualizado_em).toLocaleString('pt-BR')}`
+                : 'Nenhuma tabela importada ainda.';
+        }
+
+        async function importarIbpt() {
+            const arquivo = document.getElementById('ibpt-arquivo').files[0];
+            const msg = document.getElementById('msg-ibpt');
+            if (!arquivo) { msg.className = 'msg erro'; msg.textContent = 'Selecione um arquivo .csv.'; return; }
+
+            const formData = new FormData();
+            formData.append('arquivo', arquivo);
+
+            msg.className = 'msg'; msg.textContent = 'Importando - pode levar alguns segundos para tabelas grandes...';
+
+            const resp = await fetch('/superadmin/ibpt/importar', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken },
+                body: formData,
+            });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = `${resposta.total_importado.toLocaleString('pt-BR')} códigos importados com sucesso.`;
+            document.getElementById('ibpt-arquivo').value = '';
+            carregarStatusIbpt();
+        }
+
+        async function buscarIbpt() {
+            const ncm = document.getElementById('ibpt-busca-ncm').value;
+            if (!ncm) return;
+            const resp = await fetch(`/superadmin/ibpt/buscar?ncm=${encodeURIComponent(ncm)}`);
+            const lista = await resp.json();
+            document.getElementById('tbody-ibpt-busca').innerHTML = lista.map(i => `
+                <tr>
+                    <td>${i.codigo}${i.ex ? ' (ex ' + i.ex + ')' : ''}</td>
+                    <td>${i.descricao ?? '-'}</td>
+                    <td>${i.aliquota_nacional_federal ?? '-'}%</td>
+                    <td>${i.aliquota_importados_federal ?? '-'}%</td>
+                    <td>${i.aliquota_estadual ?? '-'}%</td>
+                    <td>${i.aliquota_municipal ?? '-'}%</td>
+                </tr>
+            `).join('') || '<tr><td colspan="6">Nenhum código encontrado.</td></tr>';
+        }
+
+        let cfopsCache = [];
+
+        async function carregarCfops() {
+            const busca = document.getElementById('cfop-busca').value.trim();
+            const resp = await fetch(`/superadmin/cfops${busca ? '?busca=' + encodeURIComponent(busca) : ''}`);
+            cfopsCache = await resp.json();
+
+            const tbody = document.getElementById('tbody-cfops');
+            tbody.innerHTML = cfopsCache.map(c => `
+                <tr>
+                    <td>${c.codigo}</td>
+                    <td>${c.descricao}</td>
+                    <td><span class="status status-${c.ativo ? 'ativa' : 'suspensa'}">${c.ativo ? 'ativo' : 'inativo'}</span></td>
+                    <td><button class="secundario" onclick="editarCfop(${c.id})">Editar</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="4">Nenhum CFOP encontrado.</td></tr>';
+        }
+
+        function editarCfop(id) {
+            const c = cfopsCache.find(x => x.id === id);
+            if (!c) return;
+            document.getElementById('c-id').value = c.id;
+            document.getElementById('c-codigo').value = c.codigo;
+            document.getElementById('c-codigo').disabled = true;
+            document.getElementById('c-descricao').value = c.descricao;
+            document.getElementById('c-ativo').checked = c.ativo;
+            document.getElementById('c-botao').textContent = 'Salvar edição';
+            document.getElementById('c-cancelar').style.display = 'inline-block';
+        }
+
+        function limparFormularioCfop() {
+            document.getElementById('c-id').value = '';
+            document.getElementById('c-codigo').value = '';
+            document.getElementById('c-codigo').disabled = false;
+            document.getElementById('c-descricao').value = '';
+            document.getElementById('c-ativo').checked = true;
+            document.getElementById('c-botao').textContent = 'Cadastrar CFOP';
+            document.getElementById('c-cancelar').style.display = 'none';
+        }
+
+        async function salvarCfop() {
+            const id = document.getElementById('c-id').value;
+            const msg = document.getElementById('msg-cfop');
+            const dados = {
+                descricao: document.getElementById('c-descricao').value,
+                ativo: document.getElementById('c-ativo').checked,
+            };
+            if (!id) { dados.codigo = document.getElementById('c-codigo').value; }
+
+            const url = id ? `/superadmin/cfops/${id}` : '/superadmin/cfops';
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = id ? 'CFOP atualizado.' : 'CFOP cadastrado.';
+            limparFormularioCfop();
+            carregarCfops();
+        }
+
+        async function importarCfopPadrao() {
+            const msg = document.getElementById('msg-cfop-importar');
+            msg.className = 'msg'; msg.textContent = 'Importando tabela padrão...';
+            const resp = await fetch('/superadmin/cfops/importar-padrao', { method: 'POST', headers: headersJson, body: '{}' });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = `${resposta.total_importado.toLocaleString('pt-BR')} códigos importados/atualizados com sucesso.`;
+            carregarCfops();
+        }
+
         carregarPlanos().then(carregarEmpresas);
         carregarAssinaturas();
         carregarConfigAssinatura();
+        carregarStatusIbpt();
+        carregarCfops();
     </script>
 </body>
 </html>

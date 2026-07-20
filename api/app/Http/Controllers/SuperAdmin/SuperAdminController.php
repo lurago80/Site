@@ -4,10 +4,14 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Assinatura;
+use App\Models\Cfop;
 use App\Models\ConfigAssinatura;
 use App\Models\Empresa;
+use App\Models\IbptProduto;
 use App\Models\Plano;
 use App\Services\Assinatura\AssinaturaService;
+use App\Services\Fiscal\ImportadorCfopService;
+use App\Services\Ibpt\ImportadorIbptService;
 use Illuminate\Http\Request;
 
 /**
@@ -17,7 +21,11 @@ use Illuminate\Http\Request;
  */
 class SuperAdminController extends Controller
 {
-    public function __construct(private readonly AssinaturaService $assinaturaService) {}
+    public function __construct(
+        private readonly AssinaturaService $assinaturaService,
+        private readonly ImportadorIbptService $importadorIbptService,
+        private readonly ImportadorCfopService $importadorCfopService,
+    ) {}
 
     public function painel()
     {
@@ -217,5 +225,101 @@ class SuperAdminController extends Controller
             'ativo' => $config->ativo,
             'tem_credenciais' => ! empty($config->api_key),
         ]);
+    }
+
+    // ---- Tabela IBPT (Lei da Transparência Fiscal, 12.741/2012) ----
+
+    /**
+     * Tabela oficial e global (mesma lógica de tab_cclasstrib/
+     * tab_ccredpres) - por isso a importação fica no Super Admin, não
+     * no dashboard de cada empresa: evita que 50 empresas importem a
+     * mesma tabela nacional separadamente, com risco de uma sobrescrever
+     * com uma versão desatualizada.
+     */
+    public function ibptStatus()
+    {
+        $total = IbptProduto::count();
+        $ultimo = IbptProduto::orderByDesc('updated_at')->first();
+
+        return response()->json([
+            'total' => $total,
+            'versao' => $ultimo?->versao,
+            'atualizado_em' => $ultimo?->updated_at,
+        ]);
+    }
+
+    public function importarIbpt(Request $request)
+    {
+        $request->validate([
+            'arquivo' => ['required', 'file', 'mimes:csv,txt', 'max:20480'],
+        ]);
+
+        try {
+            $resultado = $this->importadorIbptService->importar($request->file('arquivo')->getRealPath());
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($resultado);
+    }
+
+    public function buscarIbpt(Request $request)
+    {
+        $dados = $request->validate(['ncm' => ['required', 'string', 'max:10']]);
+
+        return response()->json(
+            IbptProduto::where('codigo', 'like', $dados['ncm'].'%')->limit(20)->get()
+        );
+    }
+
+    /**
+     * CFOP (Ajuste SINIEF s/nº de 15/12/1970): tabela oficial e global,
+     * mesma lógica do IBPT acima - fica no Super Admin para não deixar
+     * cada empresa cadastrar/duplicar a mesma tabela nacional.
+     */
+    public function cfops(Request $request)
+    {
+        $busca = $request->query('busca');
+
+        $query = Cfop::query()->orderBy('codigo');
+
+        if ($busca) {
+            $query->where(function ($q) use ($busca) {
+                $q->where('codigo', 'like', $busca.'%')
+                    ->orWhere('descricao', 'like', '%'.$busca.'%');
+            });
+        }
+
+        return response()->json($query->limit(500)->get());
+    }
+
+    public function criarCfop(Request $request)
+    {
+        $dados = $request->validate([
+            'codigo' => ['required', 'string', 'size:4', 'regex:/^[0-9]{4}$/', 'unique:cfops,codigo'],
+            'descricao' => ['required', 'string', 'max:500'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        return response()->json(Cfop::create($dados), 201);
+    }
+
+    public function atualizarCfop(Request $request, int $cfopId)
+    {
+        $cfop = Cfop::findOrFail($cfopId);
+
+        $dados = $request->validate([
+            'descricao' => ['sometimes', 'string', 'max:500'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $cfop->update($dados);
+
+        return response()->json($cfop->fresh());
+    }
+
+    public function importarCfopPadrao()
+    {
+        return response()->json($this->importadorCfopService->importarPadrao());
     }
 }

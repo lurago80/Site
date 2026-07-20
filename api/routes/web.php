@@ -180,4 +180,13 @@ Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->grou
     Route::put('/assinaturas/{assinaturaId}/baixar', [SuperAdminController::class, 'baixarAssinaturaManual']);
     Route::get('/config-assinatura', [SuperAdminController::class, 'configAssinatura']);
     Route::put('/config-assinatura', [SuperAdminController::class, 'atualizarConfigAssinatura']);
+
+    Route::get('/ibpt/status', [SuperAdminController::class, 'ibptStatus']);
+    Route::post('/ibpt/importar', [SuperAdminController::class, 'importarIbpt']);
+    Route::get('/ibpt/buscar', [SuperAdminController::class, 'buscarIbpt']);
+
+    Route::get('/cfops', [SuperAdminController::class, 'cfops']);
+    Route::post('/cfops', [SuperAdminController::class, 'criarCfop']);
+    Route::put('/cfops/{cfopId}', [SuperAdminController::class, 'atualizarCfop']);
+    Route::post('/cfops/importar-padrao', [SuperAdminController::class, 'importarCfopPadrao']);
 });
