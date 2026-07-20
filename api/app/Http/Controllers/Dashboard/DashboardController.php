@@ -118,7 +118,28 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            Produto::where('empresa_id', $empresaAtual->id)->with('fornecedor')->orderBy('nome')->get()
+            Produto::where('empresa_id', $empresaAtual->id)
+                ->with(['fornecedor', 'grupo', 'classTrib', 'creditoPresumido'])
+                ->orderBy('nome')
+                ->get()
+        );
+    }
+
+    /**
+     * Tabelas auxiliares oficiais (globais, sem empresa_id) usadas nos
+     * selects de cClassTrib/cCredPres do cadastro de produto.
+     */
+    public function tabClassTrib(Request $request, string $empresa)
+    {
+        return response()->json(
+            \App\Models\TabClassTrib::where('ativo', true)->orderBy('codigo')->get()
+        );
+    }
+
+    public function tabCredPres(Request $request, string $empresa)
+    {
+        return response()->json(
+            \App\Models\TabCredPres::where('ativo', true)->orderBy('codigo')->get()
         );
     }
 
@@ -126,19 +147,9 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
-            'codigo' => ['nullable', 'string', 'max:255'],
-            'descricao' => ['nullable', 'string'],
-            'categoria' => ['nullable', 'string', 'max:255'],
-            'grupo_id' => ['nullable', 'integer'],
             'tipo' => ['required', 'in:fisico,agendamento'],
-            'unidade' => ['nullable', 'string', 'max:6'],
             'preco_venda' => ['required', 'numeric', 'min:0'],
-            'preco_custo' => ['nullable', 'numeric', 'min:0'],
-            'estoque_atual' => ['nullable', 'integer', 'min:0'],
-            'ativo' => ['sometimes', 'boolean'],
-            'fornecedor_id' => ['nullable', 'integer'],
-            'ncm' => ['nullable', 'string', 'max:8'],
-            'cfop_padrao' => ['nullable', 'string', 'max:4'],
+            ...$this->regrasFiscaisProduto(),
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -158,23 +169,90 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'nome' => ['sometimes', 'string', 'max:255'],
-            'codigo' => ['nullable', 'string', 'max:255'],
-            'descricao' => ['nullable', 'string'],
-            'categoria' => ['nullable', 'string', 'max:255'],
-            'grupo_id' => ['nullable', 'integer'],
-            'unidade' => ['nullable', 'string', 'max:6'],
             'preco_venda' => ['sometimes', 'numeric', 'min:0'],
-            'preco_custo' => ['nullable', 'numeric', 'min:0'],
-            'estoque_atual' => ['nullable', 'integer', 'min:0'],
-            'ativo' => ['sometimes', 'boolean'],
-            'fornecedor_id' => ['nullable', 'integer'],
-            'ncm' => ['nullable', 'string', 'max:8'],
-            'cfop_padrao' => ['nullable', 'string', 'max:4'],
+            ...$this->regrasFiscaisProduto(),
         ]);
 
         $produto->update($dados);
 
         return response()->json($produto->fresh());
+    }
+
+    /**
+     * Campos fiscais do produto (Escopo v2, decisão de 2026-07-25 -
+     * Reforma Tributária/LC 214/2025): regime atual (ICMS/PIS/COFINS/
+     * IPI), novo regime (IBS/CBS) e Imposto Seletivo. Compartilhado
+     * entre criarProduto/atualizarProduto para não duplicar ~40 regras.
+     */
+    private function regrasFiscaisProduto(): array
+    {
+        return [
+            'codigo' => ['nullable', 'string', 'max:255'],
+            'codigo_barras' => ['nullable', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string'],
+            'categoria' => ['nullable', 'string', 'max:255'],
+            'grupo_id' => ['nullable', 'integer'],
+            'unidade' => ['nullable', 'string', 'max:6'],
+            'preco_custo' => ['nullable', 'numeric', 'min:0'],
+            'valor_atacado' => ['nullable', 'numeric', 'min:0'],
+            'estoque_atual' => ['nullable', 'integer', 'min:0'],
+            'estoque_minimo' => ['nullable', 'integer', 'min:0'],
+            'ativo' => ['sometimes', 'boolean'],
+            'pesavel' => ['sometimes', 'boolean'],
+            'imagem_url' => ['nullable', 'string', 'max:255'],
+            'peso_liquido' => ['nullable', 'numeric', 'min:0'],
+            'peso_bruto' => ['nullable', 'numeric', 'min:0'],
+            'fornecedor_id' => ['nullable', 'integer'],
+            'ncm' => ['nullable', 'string', 'max:8'],
+            'cfop_padrao' => ['nullable', 'string', 'max:4'],
+            'tipo_produto_fiscal' => ['nullable', 'in:consumo,materia_prima,produto,servico,brinde'],
+
+            // ICMS
+            'cfop_interestadual' => ['nullable', 'string', 'max:4'],
+            'cest' => ['nullable', 'string', 'max:7'],
+            'cst_origem' => ['nullable', 'string', 'max:1'],
+            'cst_icms' => ['nullable', 'string', 'max:2'],
+            'aliquota_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'fcp_percentual' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'mva_percentual' => ['nullable', 'numeric', 'min:0', 'max:999'],
+            'reducao_base_calculo_icms' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'grupo_fiscal' => ['nullable', 'string', 'max:255'],
+            'codigo_beneficio_fiscal' => ['nullable', 'string', 'max:255'],
+
+            // PIS/COFINS
+            'cst_pis' => ['nullable', 'string', 'max:2'],
+            'aliquota_pis' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'cst_cofins' => ['nullable', 'string', 'max:2'],
+            'aliquota_cofins' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'natureza_receita_pis_cofins' => ['nullable', 'string', 'max:255'],
+
+            // IPI
+            'cst_ipi' => ['nullable', 'string', 'max:2'],
+            'aliquota_ipi' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'codigo_enquadramento_ipi' => ['nullable', 'string', 'max:255'],
+
+            // IBS/CBS (novo regime)
+            'situacao_novo_regime' => ['nullable', 'in:0,1,2'],
+            'cst_ibs_cbs' => ['nullable', 'string', 'max:3'],
+            'cclasstrib_id' => ['nullable', 'integer'],
+            'aliquota_ibs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'aliquota_cbs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'reducao_base_calculo_ibs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'reducao_base_calculo_cbs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'percentual_credito_ibs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'percentual_credito_cbs' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'ccredpres_id' => ['nullable', 'integer'],
+
+            // Imposto Seletivo
+            'sujeito_imposto_seletivo' => ['sometimes', 'boolean'],
+            'tipo_imposto_seletivo' => ['nullable', 'in:veiculos,cigarros,bebidas_alcoolicas,bebidas_acucaradas,combustiveis_fosseis,bens_minerais'],
+            'cclasstrib_is' => ['nullable', 'string', 'max:6'],
+            'aliquota_is' => ['nullable', 'numeric', 'min:0', 'max:100'],
+
+            // Destinação e crédito
+            'destinacao_tributaria' => ['nullable', 'in:RV,UC,AT,SV'],
+            'tipo_credito' => ['nullable', 'in:IN,PA,NE'],
+        ];
     }
 
     // ---- Clientes ----

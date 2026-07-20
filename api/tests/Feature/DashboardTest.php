@@ -391,6 +391,67 @@ class DashboardTest extends TestCase
         $this->assertSame($fornecedor->id, $response->json('fornecedor_id'));
     }
 
+    public function test_cadastra_produto_com_campos_fiscais_da_reforma_tributaria(): void
+    {
+        $classTrib = \App\Models\TabClassTrib::where('codigo', '000001')->first();
+        $credPres = \App\Models\TabCredPres::create(['codigo' => '000001', 'descricao' => 'Crédito Presumido Teste', 'ativo' => true]);
+
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/produtos", [
+            'nome' => 'Produto Reforma Tributária',
+            'tipo' => 'fisico',
+            'preco_venda' => 40,
+            'tipo_produto_fiscal' => 'consumo',
+            'codigo_barras' => '7891234567890',
+            'estoque_minimo' => 5,
+            'valor_atacado' => 35,
+            'peso_liquido' => 1.5,
+            'peso_bruto' => 1.8,
+            'pesavel' => true,
+            'cst_origem' => '0',
+            'cst_icms' => '00',
+            'aliquota_icms' => 18,
+            'cst_pis' => '01',
+            'aliquota_pis' => 1.65,
+            'cst_cofins' => '01',
+            'aliquota_cofins' => 7.6,
+            'cst_ipi' => '50',
+            'aliquota_ipi' => 5,
+            'situacao_novo_regime' => '1',
+            'cst_ibs_cbs' => '000',
+            'cclasstrib_id' => $classTrib->id,
+            'aliquota_ibs' => 0.1,
+            'aliquota_cbs' => 0.9,
+            'ccredpres_id' => $credPres->id,
+            'sujeito_imposto_seletivo' => true,
+            'tipo_imposto_seletivo' => 'bebidas_acucaradas',
+            'aliquota_is' => 2,
+            'destinacao_tributaria' => 'RV',
+            'tipo_credito' => 'IN',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('tipo_produto_fiscal', 'consumo');
+        $response->assertJsonPath('codigo_barras', '7891234567890');
+        $response->assertJsonPath('situacao_novo_regime', '1');
+        $response->assertJsonPath('cst_ibs_cbs', '000');
+        $response->assertJsonPath('cclasstrib_id', $classTrib->id);
+        $response->assertJsonPath('sujeito_imposto_seletivo', true);
+        $response->assertJsonPath('destinacao_tributaria', 'RV');
+
+        $listagem = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/produtos");
+        $listagem->assertOk()->assertJsonPath('0.class_trib.codigo', '000001');
+    }
+
+    public function test_lista_tabelas_auxiliares_cclasstrib_e_ccredpres(): void
+    {
+        $respostaClassTrib = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/tab-cclasstrib");
+        $respostaClassTrib->assertOk();
+        $this->assertGreaterThanOrEqual(6, count($respostaClassTrib->json()));
+
+        $respostaCredPres = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/tab-ccredpres");
+        $respostaCredPres->assertOk();
+    }
+
     public function test_cadastra_cliente_completo(): void
     {
         $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/clientes", [

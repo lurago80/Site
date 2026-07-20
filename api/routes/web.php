@@ -91,6 +91,8 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::get('/produtos', [DashboardController::class, 'produtos']);
     Route::post('/produtos', [DashboardController::class, 'criarProduto']);
     Route::put('/produtos/{produtoId}', [DashboardController::class, 'atualizarProduto']);
+    Route::get('/tab-cclasstrib', [DashboardController::class, 'tabClassTrib']);
+    Route::get('/tab-ccredpres', [DashboardController::class, 'tabCredPres']);
 
     Route::get('/clientes', [DashboardController::class, 'clientes']);
     Route::post('/clientes', [DashboardController::class, 'criarCliente']);

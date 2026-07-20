@@ -1,0 +1,209 @@
+========================================================
+CAMPOS GERAIS DO CADASTRO (sem alteração - ok)
+========================================================
+ - estoque minimo
+ - imagem produto
+ - pesavel
+ - ativo
+ - valor atacado
+ - codigobarras
+ - codigo interno
+ - peso liquido
+ - peso bruto
+ - tipo produto
+CONSUMO
+MATERIA PRIMA
+PRODUTO
+SERVICO
+BRINDE
+
+[OBS] Se tipo produto = SERVICO, lembrar que a classificação usa NBS
+(Nomenclatura Brasileira de Serviços) em vez de NCM. Verificar se o
+campo NCM/NBS já existe no cadastro atual - ele é a base de tudo que
+vem a seguir e não deveria fazer parte desta lista de "campos novos"
+por já dever existir, mas confirme com o cliente.
+
+========================================================
+REGIME ANTIGO - ICMS / PIS / COFINS / IPI (ok, mantido)
+========================================================
+ - cfop_interestadual
+ - cest
+ - cst origem
+0 - Nacional, exceto as indicadas nos códigos 3 a 5.
+1 - Estrangeira - Importação direta, exceto a indicada no código 6.
+2 - Estrangeira - Adquirida no mercado interno, exceto a indicada no código 7.
+3 - Nacional, mercadoria ou bem com Conteúdo de Importação superior a 40%.
+4 - Nacional, cuja produção tenha sido feita e conformidade com os processos produtivos básicos de que tratam o Decreto-Lei n° 288/67 e as Leis nos248/91, 8.387/91, 10.176/01 e 11.484/07.
+5 - Nacional, mercadoria ou bem com Conteúdo de Importação inferior ou igual a 40%.
+6 - Estrangeira - Importação direta, sem similar nacional, constante em lista de Resolução CAMEX.
+7 - Estrangeira - Adquirida no mercado interno, sem similar nacional, constante em lista de Resolução CAMEX.
+8 - Nacional, mercadoria ou bem com Conteúdo de Importação superior a 70%.
+
+ - cst
+00 - Tributada integralmente.
+10 - Tributada e com cobrança do ICMS por ST (Substituição Tributária).
+20 - Com redução da BC (Base de Cálculo).
+30 - Isenta/não tributada e com cobrança do ICMS por Substituição Tributária.
+40 - Isenta.
+41 - Não tributada.
+50 - Com suspensão.
+51 - Com diferimento.
+60 - ICMS cobrado na Operação Anterior por Substituição Tributária.
+70 - Com redução da BC no ICMS por Substituição Tributária.
+90 - Outras operações.
+
+ - aliquota icms %
+ - cst pis (mesma tabela do cst cofins - 01 a 99, mantida como no original)
+ - aliquota pis %
+ - cst cofins (mesma tabela do cst pis - 01 a 99, mantida como no original)
+ - aliquota cofins %
+ - natureza receita (tabela monofásica PIS/COFINS - mantida como no original)
+ - cst ipi
+50 - Saída Tributada
+51 - Saída Tributável com Alíquota Zero
+52 - Saída Isenta
+53 - Saída Não-Tributada
+54 - saída Imune
+55 - Saída com Suspensão
+99 - Outras Saídas
+ - aliquota ipi %
+ - codigo enquadramento ipi (tabela Decreto 7.212/2010 - mantida como no original)
+
+ - fcp (fundo contra pobreza)
+ - mva%
+ - red. base calculo %
+ - grupo fiscal
+ - codigo beneficio fiscal (cBenef - ICMS/ST)
+
+========================================================
+NOVO REGIME (IBS / CBS / IS) - CORRIGIDO
+========================================================
+
+ - situacao novo regime
+0 - Não utiliza novo regime
+1 - Transição (antigo + novo)
+2 - Apenas novo regime
+
+--------------------------------------------------------
+[CORREÇÃO 1] CST-IBS/CBS: CAMPO ÚNICO, NÃO DUPLICAR
+--------------------------------------------------------
+O CST é o MESMO para IBS e CBS - é um único código, compartilhado
+pelos dois tributos. NÃO criar "cst cbs" e "cst ibs" como campos
+separados (risco de ficarem dessincronizados e a nota ser rejeitada
+por incompatibilidade). Um campo único resolve os dois tributos.
+
+ - cst_ibs_cbs
+000 - Tributação integral
+010 - Tributação com alíquotas uniformes
+011 - Tributação com alíquotas uniformes reduzidas
+200 - Alíquota reduzida
+220 - Alíquota fixa
+221 - Alíquota fixa proporcional
+222 - Redução de base de cálculo
+400 - Isenção
+410 - Imunidade e não incidência
+510 - Diferimento
+515 - Diferimento com redução de alíquota
+550 - Suspensão
+620 - Tributação monofásica
+800 - Transferência de crédito
+810 - Ajuste de IBS na ZFM
+811 - Ajustes
+820 - Tributação em documento específico
+830 - Exclusão da base de cálculo
+
+--------------------------------------------------------
+[CORREÇÃO 2] CAMPO QUE FALTAVA: cClassTrib
+--------------------------------------------------------
+Este é o código de 6 dígitos que efetivamente vai no XML da NF-e
+(os 3 primeiros dígitos = CST acima). Sem ele o cadastro fica
+incompleto. Como são ~150 códigos e a tabela é atualizada com
+frequência (já passou por várias revisões desde 2025), NÃO
+hardcodear os valores no combo - montar uma tabela auxiliar
+separada (importável/atualizável) e o campo do produto referencia
+essa tabela via FK.
+
+ - cclasstrib (FK para tabela auxiliar TAB_CCLASSTRIB)
+   Exemplos mais usados no varejo/food service:
+   000001 - Tributação integral (padrão para a maioria dos itens)
+   200003 - Alimentação humana (Anexo I)
+   200047 - Bares e Restaurantes
+   400xxx - Cesta básica universal (isenção total)
+   410001 - Bonificação em documento fiscal
+   410002 - Transferência entre estabelecimentos do mesmo contribuinte
+
+ - anexo_lc214 (opcional, derivado do cclasstrib - referência ao
+   anexo/artigo da LC 214/2025, útil para auditoria)
+
+--------------------------------------------------------
+Alíquotas e reduções (mantidas, com observação)
+--------------------------------------------------------
+ - aliquota ibs (alíquota de referência nacional; sugerido
+   auto-preencher a partir do cclasstrib, com opção de override manual)
+ - aliquota cbs (idem)
+ - reducao base calculo ibs
+ - reducao base calculo cbs
+ - %credito ibs
+ - %credito cbs
+
+--------------------------------------------------------
+[CORREÇÃO 3] CAMPO QUE FALTAVA: cCredPres
+--------------------------------------------------------
+Existe uma tabela oficial separada (Tabela de Código de Crédito
+Presumido do IBS e CBS) para produtos/operações com direito a
+crédito presumido (ex.: setor automotivo incentivado, ZFM,
+agropecuária). Sem esse campo, produtos com esse benefício ficam
+sem cadastro possível.
+
+ - codigo_credito_presumido (cCredPres) (FK para tabela auxiliar,
+   opcional - só preenchido quando aplicável)
+
+========================================================
+IMPOSTO SELETIVO (IS) - CORRIGIDO
+========================================================
+ - sujeito a imposto seletivo
+SIM
+NÃO
+
+[CORREÇÃO 4] O campo "tipo" estava sem opções. Categorias previstas
+na LC 214/2025 (lista pode ser complementada por regulamentação):
+
+ - tipo
+VEICULOS - Automóveis, embarcações e aeronaves (conforme critérios de
+           potência/eficiência energética/impacto ambiental)
+CIGARROS - Cigarros e produtos de tabacaria
+BEBIDAS_ALCOOLICAS - Bebidas alcoólicas
+BEBIDAS_ACUCARADAS - Bebidas açucaradas
+COMBUSTIVEIS_FOSSEIS - Combustíveis fósseis
+BENS_MINERAIS - Bens minerais extraídos
+
+ - cclasstrib_is (código de classificação específico do IS, quando
+   disponibilizado pela tabela oficial - confirmar disponibilidade)
+ - aliquota IS
+
+========================================================
+DESTINAÇÃO E CRÉDITO (mantido, ok)
+========================================================
+ - destinação tributaria
+RV - Revenda
+UC - Uso/Consumo
+AT - Ativo imobilizado
+SV - Serviço vinculado
+
+ - tipo de credito
+IN - Integral
+PA - Parcial
+NE - Nenhum
+
+========================================================
+RESUMO DAS CORREÇÕES FEITAS
+========================================================
+1. Adicionado campo cClassTrib (faltava - é o código que vai na NF-e)
+2. Unificado CST-CBS e CST-IBS em um único campo cst_ibs_cbs
+   (eram duplicados e arriscavam ficar dessincronizados)
+3. Adicionado campo cCredPres (Código de Crédito Presumido)
+4. Preenchidas as opções do campo "tipo" do Imposto Seletivo
+5. Sugestão: cclasstrib e cCredPres devem ser tabelas auxiliares
+   atualizáveis (não hardcode), pois mudam com frequência
+6. Sugestão: alíquotas de IBS/CBS podem ser auto-preenchidas a
+   partir do cclasstrib escolhido, com opção de override manual

@@ -12,6 +12,12 @@
         .sidebar .grupo-label { padding: 14px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.45); }
         .sidebar .link-pdv { display: block; padding: 10px 16px; font-size: 13px; color: #fff; background: var(--cor-primaria); text-decoration: none; margin: 0 12px; border-radius: 6px; }
         .sidebar .link-pdv:hover { background: var(--cor-primaria-escura); }
+        .abas-produto { display: flex; gap: 4px; border-bottom: 1px solid var(--cor-borda); margin-bottom: 16px; flex-wrap: wrap; }
+        .abas-produto button { background: none; border: none; padding: 10px 14px; font-size: 12px; color: var(--cor-texto-suave); cursor: pointer; border-bottom: 2px solid transparent; }
+        .abas-produto button.ativa { color: var(--cor-primaria); border-bottom-color: var(--cor-primaria); font-weight: 600; }
+        .aba-conteudo-produto { display: none; }
+        .aba-conteudo-produto.ativa { display: block; }
+        .aba-conteudo-produto h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--cor-texto-suave); margin: 0 0 10px; }
         .conteudo { flex: 1; padding: 24px; }
         .secao { display: none; }
         .secao.ativa { display: block; }
@@ -103,27 +109,229 @@
                 <h1>Produtos</h1>
                 <div class="card">
                     <input type="hidden" id="pr-id">
-                    <div class="linha-form">
-                        <div><label>Código/SKU</label><input type="text" id="pr-codigo" style="width:100px"></div>
-                        <div><label>Nome</label><input type="text" id="pr-nome"></div>
-                        <div><label>Categoria</label><input type="text" id="pr-categoria" style="width:120px"></div>
-                        <div><label>Grupo</label><select id="pr-grupo"><option value="">Sem grupo</option></select></div>
-                        <div><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
-                        <div><label>Unidade</label><input type="text" id="pr-unidade" value="UN" style="width:60px"></div>
+
+                    <div class="abas-produto">
+                        <button type="button" class="ativa" onclick="mostrarAbaProduto('geral', this)">Geral</button>
+                        <button type="button" onclick="mostrarAbaProduto('icms', this)">ICMS / PIS / COFINS / IPI</button>
+                        <button type="button" onclick="mostrarAbaProduto('ibscbs', this)">IBS / CBS (novo regime)</button>
+                        <button type="button" onclick="mostrarAbaProduto('is', this)">Imposto Seletivo</button>
+                        <button type="button" onclick="mostrarAbaProduto('destino', this)">Destinação / Crédito</button>
                     </div>
-                    <div class="linha-form">
-                        <div><label>Preço de venda (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:110px"></div>
-                        <div><label>Preço de custo (R$)</label><input type="number" step="0.01" id="pr-custo" style="width:110px"></div>
-                        <div><label>Estoque</label><input type="number" id="pr-estoque" style="width:80px"></div>
-                        <div><label>Fornecedor</label><select id="pr-fornecedor"><option value="">Nenhum</option></select></div>
-                        <div><label>NCM</label><input type="text" id="pr-ncm" placeholder="8 dígitos" style="width:100px"></div>
-                        <div><label>CFOP (interno)</label><input type="text" id="pr-cfop" placeholder="ex: 5102" style="width:90px"></div>
+
+                    <div class="aba-conteudo-produto ativa" id="aba-produto-geral">
+                        <div class="linha-form">
+                            <div><label>Código/SKU</label><input type="text" id="pr-codigo" style="width:100px"></div>
+                            <div><label>Código de barras</label><input type="text" id="pr-codigo-barras" style="width:130px"></div>
+                            <div style="flex:1"><label>Nome</label><input type="text" id="pr-nome"></div>
+                            <div><label>Categoria</label><input type="text" id="pr-categoria" style="width:120px"></div>
+                            <div><label>Grupo</label><select id="pr-grupo"><option value="">Sem grupo</option></select></div>
+                        </div>
+                        <div class="linha-form">
+                            <div><label>Tipo</label><select id="pr-tipo"><option value="fisico">Físico</option><option value="agendamento">Agendamento</option></select></div>
+                            <div><label>Tipo de produto (fiscal)</label>
+                                <select id="pr-tipo-fiscal">
+                                    <option value="produto">Produto</option>
+                                    <option value="consumo">Consumo</option>
+                                    <option value="materia_prima">Matéria-prima</option>
+                                    <option value="servico">Serviço</option>
+                                    <option value="brinde">Brinde</option>
+                                </select>
+                            </div>
+                            <div><label>Unidade</label><input type="text" id="pr-unidade" value="UN" style="width:60px"></div>
+                            <div><label>Fornecedor</label><select id="pr-fornecedor"><option value="">Nenhum</option></select></div>
+                            <div style="align-self:center;"><label style="visibility:hidden;">Pesável</label><label style="font-size:12px;"><input type="checkbox" id="pr-pesavel" style="width:auto;"> Pesável</label></div>
+                            <div style="align-self:center;"><label style="visibility:hidden;">Ativo</label><label style="font-size:12px;"><input type="checkbox" id="pr-ativo" checked style="width:auto;"> Ativo</label></div>
+                        </div>
+                        <div class="linha-form">
+                            <div><label>Preço de venda (R$)</label><input type="number" step="0.01" id="pr-preco" style="width:110px"></div>
+                            <div><label>Preço de custo (R$)</label><input type="number" step="0.01" id="pr-custo" style="width:110px"></div>
+                            <div><label>Valor atacado (R$)</label><input type="number" step="0.01" id="pr-valor-atacado" style="width:110px"></div>
+                            <div><label>Estoque atual</label><input type="number" id="pr-estoque" style="width:90px"></div>
+                            <div><label>Estoque mínimo</label><input type="number" id="pr-estoque-minimo" style="width:90px"></div>
+                        </div>
+                        <div class="linha-form">
+                            <div><label>Peso líquido (kg)</label><input type="number" step="0.001" id="pr-peso-liquido" style="width:100px"></div>
+                            <div><label>Peso bruto (kg)</label><input type="number" step="0.001" id="pr-peso-bruto" style="width:100px"></div>
+                            <div style="flex:1"><label>Imagem (URL)</label><input type="text" id="pr-imagem" placeholder="https://..."></div>
+                        </div>
+                        <div class="linha-form">
+                            <div style="flex:1"><label>Descrição</label><input type="text" id="pr-descricao" style="width:100%"></div>
+                        </div>
                     </div>
-                    <div class="linha-form">
-                        <div style="flex:1"><label>Descrição</label><input type="text" id="pr-descricao" style="width:100%"></div>
+
+                    <div class="aba-conteudo-produto" id="aba-produto-icms">
+                        <h3>Classificação fiscal</h3>
+                        <div class="linha-form">
+                            <div><label>NCM</label><input type="text" id="pr-ncm" placeholder="8 dígitos" style="width:100px"></div>
+                            <div><label>CEST</label><input type="text" id="pr-cest" style="width:100px"></div>
+                            <div><label>CFOP padrão (interno)</label><input type="text" id="pr-cfop" placeholder="ex: 5102" style="width:100px"></div>
+                            <div><label>CFOP interestadual</label><input type="text" id="pr-cfop-interestadual" placeholder="ex: 6102" style="width:100px"></div>
+                        </div>
+                        <h3>ICMS</h3>
+                        <div class="linha-form">
+                            <div><label>CST origem</label>
+                                <select id="pr-cst-origem">
+                                    <option value="">-</option>
+                                    <option value="0">0 - Nacional</option>
+                                    <option value="1">1 - Estrangeira (importação direta)</option>
+                                    <option value="2">2 - Estrangeira (mercado interno)</option>
+                                    <option value="3">3 - Nacional, conteúdo importação &gt; 40%</option>
+                                    <option value="4">4 - Nacional, processo produtivo básico</option>
+                                    <option value="5">5 - Nacional, conteúdo importação ≤ 40%</option>
+                                    <option value="6">6 - Estrangeira, sem similar nacional (CAMEX)</option>
+                                    <option value="7">7 - Estrangeira, mercado interno, sem similar (CAMEX)</option>
+                                    <option value="8">8 - Nacional, conteúdo importação &gt; 70%</option>
+                                </select>
+                            </div>
+                            <div><label>CST ICMS</label>
+                                <select id="pr-cst-icms">
+                                    <option value="">-</option>
+                                    <option value="00">00 - Tributada integralmente</option>
+                                    <option value="10">10 - Tributada com ICMS-ST</option>
+                                    <option value="20">20 - Com redução de BC</option>
+                                    <option value="30">30 - Isenta/não tributada com ICMS-ST</option>
+                                    <option value="40">40 - Isenta</option>
+                                    <option value="41">41 - Não tributada</option>
+                                    <option value="50">50 - Suspensão</option>
+                                    <option value="51">51 - Diferimento</option>
+                                    <option value="60">60 - ICMS cobrado anteriormente por ST</option>
+                                    <option value="70">70 - Redução de BC com ICMS-ST</option>
+                                    <option value="90">90 - Outras</option>
+                                </select>
+                            </div>
+                            <div><label>Alíquota ICMS (%)</label><input type="number" step="0.01" id="pr-aliquota-icms" style="width:90px"></div>
+                            <div><label>Redução BC ICMS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-icms" style="width:100px"></div>
+                            <div><label>FCP (%)</label><input type="number" step="0.01" id="pr-fcp" style="width:80px"></div>
+                            <div><label>MVA (%)</label><input type="number" step="0.01" id="pr-mva" style="width:80px"></div>
+                        </div>
+                        <div class="linha-form">
+                            <div><label>Grupo fiscal</label><input type="text" id="pr-grupo-fiscal" style="width:140px"></div>
+                            <div><label>Código benefício fiscal (cBenef)</label><input type="text" id="pr-codigo-beneficio" style="width:160px"></div>
+                        </div>
+                        <h3>PIS / COFINS</h3>
+                        <div class="linha-form">
+                            <div><label>CST PIS</label><input type="text" id="pr-cst-pis" placeholder="ex: 01" style="width:70px"></div>
+                            <div><label>Alíquota PIS (%)</label><input type="number" step="0.01" id="pr-aliquota-pis" style="width:90px"></div>
+                            <div><label>CST COFINS</label><input type="text" id="pr-cst-cofins" placeholder="ex: 01" style="width:80px"></div>
+                            <div><label>Alíquota COFINS (%)</label><input type="number" step="0.01" id="pr-aliquota-cofins" style="width:100px"></div>
+                            <div style="flex:1"><label>Natureza da receita (monofásica)</label><input type="text" id="pr-natureza-receita"></div>
+                        </div>
+                        <h3>IPI</h3>
+                        <div class="linha-form">
+                            <div><label>CST IPI</label>
+                                <select id="pr-cst-ipi">
+                                    <option value="">-</option>
+                                    <option value="50">50 - Saída tributada</option>
+                                    <option value="51">51 - Saída tributável com alíquota zero</option>
+                                    <option value="52">52 - Saída isenta</option>
+                                    <option value="53">53 - Saída não-tributada</option>
+                                    <option value="54">54 - Saída imune</option>
+                                    <option value="55">55 - Saída com suspensão</option>
+                                    <option value="99">99 - Outras saídas</option>
+                                </select>
+                            </div>
+                            <div><label>Alíquota IPI (%)</label><input type="number" step="0.01" id="pr-aliquota-ipi" style="width:90px"></div>
+                            <div><label>Código enquadramento IPI</label><input type="text" id="pr-enquadramento-ipi" style="width:160px"></div>
+                        </div>
+                    </div>
+
+                    <div class="aba-conteudo-produto" id="aba-produto-ibscbs">
+                        <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                            Reforma Tributária (LC 214/2025) - CST é um código único, compartilhado por IBS e CBS
+                            (não existe "CST separado" para cada um).
+                        </p>
+                        <div class="linha-form">
+                            <div><label>Situação novo regime</label>
+                                <select id="pr-situacao-novo-regime">
+                                    <option value="0">0 - Não utiliza novo regime</option>
+                                    <option value="1">1 - Transição (antigo + novo)</option>
+                                    <option value="2">2 - Apenas novo regime</option>
+                                </select>
+                            </div>
+                            <div><label>CST IBS/CBS</label>
+                                <select id="pr-cst-ibscbs">
+                                    <option value="">-</option>
+                                    <option value="000">000 - Tributação integral</option>
+                                    <option value="010">010 - Alíquotas uniformes</option>
+                                    <option value="011">011 - Alíquotas uniformes reduzidas</option>
+                                    <option value="200">200 - Alíquota reduzida</option>
+                                    <option value="220">220 - Alíquota fixa</option>
+                                    <option value="221">221 - Alíquota fixa proporcional</option>
+                                    <option value="222">222 - Redução de base de cálculo</option>
+                                    <option value="400">400 - Isenção</option>
+                                    <option value="410">410 - Imunidade e não incidência</option>
+                                    <option value="510">510 - Diferimento</option>
+                                    <option value="515">515 - Diferimento com redução de alíquota</option>
+                                    <option value="550">550 - Suspensão</option>
+                                    <option value="620">620 - Tributação monofásica</option>
+                                    <option value="800">800 - Transferência de crédito</option>
+                                    <option value="810">810 - Ajuste de IBS na ZFM</option>
+                                    <option value="811">811 - Ajustes</option>
+                                    <option value="820">820 - Tributação em documento específico</option>
+                                    <option value="830">830 - Exclusão da base de cálculo</option>
+                                </select>
+                            </div>
+                            <div style="flex:1"><label>cClassTrib</label><select id="pr-cclasstrib"><option value="">Selecione</option></select></div>
+                        </div>
+                        <div class="linha-form">
+                            <div><label>Alíquota IBS (%)</label><input type="number" step="0.01" id="pr-aliquota-ibs" style="width:90px"></div>
+                            <div><label>Alíquota CBS (%)</label><input type="number" step="0.01" id="pr-aliquota-cbs" style="width:90px"></div>
+                            <div><label>Redução BC IBS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-ibs" style="width:100px"></div>
+                            <div><label>Redução BC CBS (%)</label><input type="number" step="0.01" id="pr-reducao-bc-cbs" style="width:100px"></div>
+                        </div>
+                        <div class="linha-form">
+                            <div><label>% Crédito IBS</label><input type="number" step="0.01" id="pr-credito-ibs" style="width:90px"></div>
+                            <div><label>% Crédito CBS</label><input type="number" step="0.01" id="pr-credito-cbs" style="width:90px"></div>
+                            <div style="flex:1"><label>Código de Crédito Presumido (cCredPres) - opcional</label><select id="pr-ccredpres"><option value="">Nenhum</option></select></div>
+                        </div>
+                    </div>
+
+                    <div class="aba-conteudo-produto" id="aba-produto-is">
+                        <div class="linha-form">
+                            <div style="align-self:center;"><label style="font-size:12px;"><input type="checkbox" id="pr-sujeito-is" style="width:auto;"> Sujeito a Imposto Seletivo</label></div>
+                            <div><label>Tipo</label>
+                                <select id="pr-tipo-is">
+                                    <option value="">-</option>
+                                    <option value="veiculos">Veículos</option>
+                                    <option value="cigarros">Cigarros</option>
+                                    <option value="bebidas_alcoolicas">Bebidas alcoólicas</option>
+                                    <option value="bebidas_acucaradas">Bebidas açucaradas</option>
+                                    <option value="combustiveis_fosseis">Combustíveis fósseis</option>
+                                    <option value="bens_minerais">Bens minerais</option>
+                                </select>
+                            </div>
+                            <div><label>cClassTrib IS</label><input type="text" id="pr-cclasstrib-is" style="width:110px"></div>
+                            <div><label>Alíquota IS (%)</label><input type="number" step="0.01" id="pr-aliquota-is" style="width:90px"></div>
+                        </div>
+                    </div>
+
+                    <div class="aba-conteudo-produto" id="aba-produto-destino">
+                        <div class="linha-form">
+                            <div><label>Destinação tributária</label>
+                                <select id="pr-destinacao">
+                                    <option value="">-</option>
+                                    <option value="RV">RV - Revenda</option>
+                                    <option value="UC">UC - Uso/Consumo</option>
+                                    <option value="AT">AT - Ativo imobilizado</option>
+                                    <option value="SV">SV - Serviço vinculado</option>
+                                </select>
+                            </div>
+                            <div><label>Tipo de crédito</label>
+                                <select id="pr-tipo-credito">
+                                    <option value="">-</option>
+                                    <option value="IN">IN - Integral</option>
+                                    <option value="PA">PA - Parcial</option>
+                                    <option value="NE">NE - Nenhum</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="linha-form" style="margin-top:8px; border-top:1px solid var(--cor-borda); padding-top:12px;">
                         <div><button class="acao" id="pr-botao" onclick="salvarProduto()">Cadastrar</button></div>
                         <div><button class="secundario" onclick="limparFormularioProduto()" style="display:none;" id="pr-cancelar">Cancelar edição</button></div>
                     </div>
+
                     <table>
                         <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>Fornecedor</th><th>NCM</th><th>CFOP</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-produtos"></tbody>
@@ -791,7 +999,7 @@
         let fornecedoresCache = [];
 
         async function carregarProdutos() {
-            await carregarFornecedoresParaSelect();
+            await Promise.all([carregarFornecedoresParaSelect(), carregarTabelasFiscaisProduto()]);
             const resp = await fetch(`${base}/produtos`);
             produtosCache = await resp.json();
             document.getElementById('tbody-produtos').innerHTML = produtosCache.map(p => `
@@ -818,23 +1026,90 @@
                 fornecedoresCache.map(f => `<option value="${f.id}">${f.razao_social}</option>`).join('');
         }
 
+        async function carregarTabelasFiscaisProduto() {
+            const [classTrib, credPres] = await Promise.all([
+                fetch(`${base}/tab-cclasstrib`).then(r => r.json()),
+                fetch(`${base}/tab-ccredpres`).then(r => r.json()),
+            ]);
+            document.getElementById('pr-cclasstrib').innerHTML = '<option value="">Selecione</option>' +
+                classTrib.map(c => `<option value="${c.id}">${c.codigo} - ${c.descricao}</option>`).join('');
+            document.getElementById('pr-ccredpres').innerHTML = '<option value="">Nenhum</option>' +
+                credPres.map(c => `<option value="${c.id}">${c.codigo} - ${c.descricao}</option>`).join('');
+        }
+
+        function mostrarAbaProduto(nome, botao) {
+            document.querySelectorAll('.aba-conteudo-produto').forEach(el => el.classList.remove('ativa'));
+            document.getElementById(`aba-produto-${nome}`).classList.add('ativa');
+            document.querySelectorAll('.abas-produto button').forEach(b => b.classList.remove('ativa'));
+            botao.classList.add('ativa');
+        }
+
         function editarProduto(id) {
             const p = produtosCache.find(x => x.id === id);
             if (!p) return;
             document.getElementById('pr-id').value = p.id;
+            // Geral
             document.getElementById('pr-codigo').value = p.codigo ?? '';
+            document.getElementById('pr-codigo-barras').value = p.codigo_barras ?? '';
             document.getElementById('pr-nome').value = p.nome;
             document.getElementById('pr-categoria').value = p.categoria ?? '';
             document.getElementById('pr-grupo').value = p.grupo_id ?? '';
             document.getElementById('pr-tipo').value = p.tipo;
+            document.getElementById('pr-tipo-fiscal').value = p.tipo_produto_fiscal ?? 'produto';
             document.getElementById('pr-unidade').value = p.unidade ?? 'UN';
+            document.getElementById('pr-fornecedor').value = p.fornecedor_id ?? '';
+            document.getElementById('pr-pesavel').checked = !!p.pesavel;
+            document.getElementById('pr-ativo').checked = !!p.ativo;
             document.getElementById('pr-preco').value = p.preco_venda;
             document.getElementById('pr-custo').value = p.preco_custo ?? '';
+            document.getElementById('pr-valor-atacado').value = p.valor_atacado ?? '';
             document.getElementById('pr-estoque').value = p.estoque_atual ?? '';
-            document.getElementById('pr-fornecedor').value = p.fornecedor_id ?? '';
-            document.getElementById('pr-ncm').value = p.ncm ?? '';
-            document.getElementById('pr-cfop').value = p.cfop_padrao ?? '';
+            document.getElementById('pr-estoque-minimo').value = p.estoque_minimo ?? '';
+            document.getElementById('pr-peso-liquido').value = p.peso_liquido ?? '';
+            document.getElementById('pr-peso-bruto').value = p.peso_bruto ?? '';
+            document.getElementById('pr-imagem').value = p.imagem_url ?? '';
             document.getElementById('pr-descricao').value = p.descricao ?? '';
+            // ICMS/PIS/COFINS/IPI
+            document.getElementById('pr-ncm').value = p.ncm ?? '';
+            document.getElementById('pr-cest').value = p.cest ?? '';
+            document.getElementById('pr-cfop').value = p.cfop_padrao ?? '';
+            document.getElementById('pr-cfop-interestadual').value = p.cfop_interestadual ?? '';
+            document.getElementById('pr-cst-origem').value = p.cst_origem ?? '';
+            document.getElementById('pr-cst-icms').value = p.cst_icms ?? '';
+            document.getElementById('pr-aliquota-icms').value = p.aliquota_icms ?? '';
+            document.getElementById('pr-reducao-bc-icms').value = p.reducao_base_calculo_icms ?? '';
+            document.getElementById('pr-fcp').value = p.fcp_percentual ?? '';
+            document.getElementById('pr-mva').value = p.mva_percentual ?? '';
+            document.getElementById('pr-grupo-fiscal').value = p.grupo_fiscal ?? '';
+            document.getElementById('pr-codigo-beneficio').value = p.codigo_beneficio_fiscal ?? '';
+            document.getElementById('pr-cst-pis').value = p.cst_pis ?? '';
+            document.getElementById('pr-aliquota-pis').value = p.aliquota_pis ?? '';
+            document.getElementById('pr-cst-cofins').value = p.cst_cofins ?? '';
+            document.getElementById('pr-aliquota-cofins').value = p.aliquota_cofins ?? '';
+            document.getElementById('pr-natureza-receita').value = p.natureza_receita_pis_cofins ?? '';
+            document.getElementById('pr-cst-ipi').value = p.cst_ipi ?? '';
+            document.getElementById('pr-aliquota-ipi').value = p.aliquota_ipi ?? '';
+            document.getElementById('pr-enquadramento-ipi').value = p.codigo_enquadramento_ipi ?? '';
+            // IBS/CBS
+            document.getElementById('pr-situacao-novo-regime').value = p.situacao_novo_regime ?? '0';
+            document.getElementById('pr-cst-ibscbs').value = p.cst_ibs_cbs ?? '';
+            document.getElementById('pr-cclasstrib').value = p.cclasstrib_id ?? '';
+            document.getElementById('pr-aliquota-ibs').value = p.aliquota_ibs ?? '';
+            document.getElementById('pr-aliquota-cbs').value = p.aliquota_cbs ?? '';
+            document.getElementById('pr-reducao-bc-ibs').value = p.reducao_base_calculo_ibs ?? '';
+            document.getElementById('pr-reducao-bc-cbs').value = p.reducao_base_calculo_cbs ?? '';
+            document.getElementById('pr-credito-ibs').value = p.percentual_credito_ibs ?? '';
+            document.getElementById('pr-credito-cbs').value = p.percentual_credito_cbs ?? '';
+            document.getElementById('pr-ccredpres').value = p.ccredpres_id ?? '';
+            // Imposto Seletivo
+            document.getElementById('pr-sujeito-is').checked = !!p.sujeito_imposto_seletivo;
+            document.getElementById('pr-tipo-is').value = p.tipo_imposto_seletivo ?? '';
+            document.getElementById('pr-cclasstrib-is').value = p.cclasstrib_is ?? '';
+            document.getElementById('pr-aliquota-is').value = p.aliquota_is ?? '';
+            // Destinação
+            document.getElementById('pr-destinacao').value = p.destinacao_tributaria ?? '';
+            document.getElementById('pr-tipo-credito').value = p.tipo_credito ?? '';
+
             document.getElementById('pr-botao').textContent = 'Salvar edição';
             document.getElementById('pr-cancelar').style.display = 'inline-block';
             document.getElementById('secao-produtos').scrollIntoView({ behavior: 'smooth' });
@@ -842,12 +1117,26 @@
 
         function limparFormularioProduto() {
             document.getElementById('pr-id').value = '';
-            ['pr-codigo', 'pr-nome', 'pr-categoria', 'pr-custo', 'pr-estoque', 'pr-ncm', 'pr-cfop', 'pr-descricao']
-                .forEach(id => document.getElementById(id).value = '');
+            [
+                'pr-codigo', 'pr-codigo-barras', 'pr-nome', 'pr-categoria', 'pr-custo', 'pr-valor-atacado',
+                'pr-estoque', 'pr-estoque-minimo', 'pr-peso-liquido', 'pr-peso-bruto', 'pr-imagem', 'pr-descricao',
+                'pr-ncm', 'pr-cest', 'pr-cfop', 'pr-cfop-interestadual', 'pr-cst-origem', 'pr-cst-icms',
+                'pr-aliquota-icms', 'pr-reducao-bc-icms', 'pr-fcp', 'pr-mva', 'pr-grupo-fiscal', 'pr-codigo-beneficio',
+                'pr-cst-pis', 'pr-aliquota-pis', 'pr-cst-cofins', 'pr-aliquota-cofins', 'pr-natureza-receita',
+                'pr-cst-ipi', 'pr-aliquota-ipi', 'pr-enquadramento-ipi', 'pr-cst-ibscbs', 'pr-cclasstrib',
+                'pr-aliquota-ibs', 'pr-aliquota-cbs', 'pr-reducao-bc-ibs', 'pr-reducao-bc-cbs', 'pr-credito-ibs',
+                'pr-credito-cbs', 'pr-ccredpres', 'pr-tipo-is', 'pr-cclasstrib-is', 'pr-aliquota-is',
+                'pr-destinacao', 'pr-tipo-credito',
+            ].forEach(id => document.getElementById(id).value = '');
             document.getElementById('pr-preco').value = '';
             document.getElementById('pr-unidade').value = 'UN';
             document.getElementById('pr-fornecedor').value = '';
             document.getElementById('pr-grupo').value = '';
+            document.getElementById('pr-tipo-fiscal').value = 'produto';
+            document.getElementById('pr-situacao-novo-regime').value = '0';
+            document.getElementById('pr-pesavel').checked = false;
+            document.getElementById('pr-ativo').checked = true;
+            document.getElementById('pr-sujeito-is').checked = false;
             document.getElementById('pr-botao').textContent = 'Cadastrar';
             document.getElementById('pr-cancelar').style.display = 'none';
         }
@@ -856,18 +1145,65 @@
             const id = document.getElementById('pr-id').value;
             const dados = {
                 codigo: document.getElementById('pr-codigo').value || null,
+                codigo_barras: document.getElementById('pr-codigo-barras').value || null,
                 nome: document.getElementById('pr-nome').value,
                 categoria: document.getElementById('pr-categoria').value || null,
                 grupo_id: document.getElementById('pr-grupo').value || null,
                 tipo: document.getElementById('pr-tipo').value,
+                tipo_produto_fiscal: document.getElementById('pr-tipo-fiscal').value,
                 unidade: document.getElementById('pr-unidade').value || 'UN',
+                fornecedor_id: document.getElementById('pr-fornecedor').value || null,
+                pesavel: document.getElementById('pr-pesavel').checked,
+                ativo: document.getElementById('pr-ativo').checked,
                 preco_venda: Number(document.getElementById('pr-preco').value),
                 preco_custo: document.getElementById('pr-custo').value || null,
+                valor_atacado: document.getElementById('pr-valor-atacado').value || null,
                 estoque_atual: document.getElementById('pr-estoque').value || null,
-                fornecedor_id: document.getElementById('pr-fornecedor').value || null,
-                ncm: document.getElementById('pr-ncm').value || null,
-                cfop_padrao: document.getElementById('pr-cfop').value || null,
+                estoque_minimo: document.getElementById('pr-estoque-minimo').value || null,
+                peso_liquido: document.getElementById('pr-peso-liquido').value || null,
+                peso_bruto: document.getElementById('pr-peso-bruto').value || null,
+                imagem_url: document.getElementById('pr-imagem').value || null,
                 descricao: document.getElementById('pr-descricao').value || null,
+
+                ncm: document.getElementById('pr-ncm').value || null,
+                cest: document.getElementById('pr-cest').value || null,
+                cfop_padrao: document.getElementById('pr-cfop').value || null,
+                cfop_interestadual: document.getElementById('pr-cfop-interestadual').value || null,
+                cst_origem: document.getElementById('pr-cst-origem').value || null,
+                cst_icms: document.getElementById('pr-cst-icms').value || null,
+                aliquota_icms: document.getElementById('pr-aliquota-icms').value || null,
+                reducao_base_calculo_icms: document.getElementById('pr-reducao-bc-icms').value || null,
+                fcp_percentual: document.getElementById('pr-fcp').value || null,
+                mva_percentual: document.getElementById('pr-mva').value || null,
+                grupo_fiscal: document.getElementById('pr-grupo-fiscal').value || null,
+                codigo_beneficio_fiscal: document.getElementById('pr-codigo-beneficio').value || null,
+                cst_pis: document.getElementById('pr-cst-pis').value || null,
+                aliquota_pis: document.getElementById('pr-aliquota-pis').value || null,
+                cst_cofins: document.getElementById('pr-cst-cofins').value || null,
+                aliquota_cofins: document.getElementById('pr-aliquota-cofins').value || null,
+                natureza_receita_pis_cofins: document.getElementById('pr-natureza-receita').value || null,
+                cst_ipi: document.getElementById('pr-cst-ipi').value || null,
+                aliquota_ipi: document.getElementById('pr-aliquota-ipi').value || null,
+                codigo_enquadramento_ipi: document.getElementById('pr-enquadramento-ipi').value || null,
+
+                situacao_novo_regime: document.getElementById('pr-situacao-novo-regime').value,
+                cst_ibs_cbs: document.getElementById('pr-cst-ibscbs').value || null,
+                cclasstrib_id: document.getElementById('pr-cclasstrib').value || null,
+                aliquota_ibs: document.getElementById('pr-aliquota-ibs').value || null,
+                aliquota_cbs: document.getElementById('pr-aliquota-cbs').value || null,
+                reducao_base_calculo_ibs: document.getElementById('pr-reducao-bc-ibs').value || null,
+                reducao_base_calculo_cbs: document.getElementById('pr-reducao-bc-cbs').value || null,
+                percentual_credito_ibs: document.getElementById('pr-credito-ibs').value || null,
+                percentual_credito_cbs: document.getElementById('pr-credito-cbs').value || null,
+                ccredpres_id: document.getElementById('pr-ccredpres').value || null,
+
+                sujeito_imposto_seletivo: document.getElementById('pr-sujeito-is').checked,
+                tipo_imposto_seletivo: document.getElementById('pr-tipo-is').value || null,
+                cclasstrib_is: document.getElementById('pr-cclasstrib-is').value || null,
+                aliquota_is: document.getElementById('pr-aliquota-is').value || null,
+
+                destinacao_tributaria: document.getElementById('pr-destinacao').value || null,
+                tipo_credito: document.getElementById('pr-tipo-credito').value || null,
             };
             const url = id ? `${base}/produtos/${id}` : `${base}/produtos`;
             const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
