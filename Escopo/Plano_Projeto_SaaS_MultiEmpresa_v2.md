@@ -261,6 +261,34 @@ CREATE POLICY empresa_isolation ON <tabela>
 
 *(lista do v1 mantida, com os itens de LGPD e homologação promovidos para escopo obrigatório da Fase 1 — ver changelog no topo deste documento.)*
 
+## 8.5 Checklist de Produção (novo — 2026-08-17)
+
+Consolida num único lugar itens de configuração/infraestrutura que já estavam espalhados em notas soltas pelo changelog técnico acima - nenhum deles é resolvido só com código, todos exigem uma ação de deploy ou uma credencial real. Sem isso, o sistema funciona em homologação/dev mas não está pronto para receber tráfego real.
+
+**Hospedagem (nada disso existe ainda - maior lacuna real do projeto):**
+- [ ] Backend Laravel hospedado publicamente (VPS ou similar) - hoje só roda em `localhost:8000` nesta máquina de desenvolvimento;
+- [ ] PostgreSQL de produção (gerenciado ou VPS próprio, com backup) - hoje é o cluster local `C:\PostgreSQL\data_site` (porta 5436), criado só para desenvolvimento/teste neste ambiente (ver achado técnico de 2026-08-17);
+- [ ] Domínio + HTTPS/SSL para a API e para cada slug de empresa;
+- [ ] `loja-publica/` com `NEXT_PUBLIC_API_URL` apontando para a API de produção (hoje aponta para `localhost:8000` - deploy de validação já feito na Vercel, ver achado técnico de 2026-08-17, mas ainda não é o lançamento real).
+
+**Configuração do `.env` de produção:**
+- [ ] `APP_DEBUG=false` (hoje `true` até no `.env.example`, convenção de dev - em produção expõe stack trace e caminhos de arquivo publicamente);
+- [ ] `MAIL_MAILER=smtp` com credenciais reais (hoje `log`, só grava no log local - exemplo pronto com SendGrid no `.env.example`; pendente credencial real, ver pendência em aberto);
+- [ ] `upload_max_filesize`/`post_max_size` do `php.ini` do servidor ajustados para pelo menos 20MB (mesmo ajuste já feito na máquina de dev para a importação de IBPT, ver achado técnico de 2026-07-26).
+
+**Processos contínuos (fora do `php artisan serve`, que é só para desenvolvimento):**
+- [ ] `php artisan queue:work` (ou `queue:listen`) rodando como processo supervisionado - sem isso, jobs na fila `database` (ex. confirmação de WhatsApp) nunca são processados;
+- [ ] `whatsapp-service/` (Baileys) rodando continuamente ao lado do Laravel, via `pm2` ou `systemd` (arquivos já prontos em `whatsapp-service/ecosystem.config.js` e `whatsapp-service/whatsapp-service.service`) - se cair, notificações via Baileys passam a falhar (não derruba o resto do sistema);
+- [ ] Cron do Laravel (`schedule:run` a cada minuto) para `app:liberar-reservas-expiradas` e `app:enviar-lembretes-visita`.
+
+**Credenciais reais pendentes (nenhuma pode ser criada por aqui, dependem do cliente/operador):**
+- [ ] SMTP de produção (SendGrid ou outro) - aguardando API key e verificação de remetente;
+- [ ] Pareamento real do WhatsApp via Baileys com um número de celular de verdade - QR code já testado, falta escanear;
+- [ ] Credenciais reais (não sandbox) do Mercado Pago/PagSeguro/Cielo, Asaas e Z-API, por empresa cliente, quando for o caso.
+
+**Dados operacionais (dependem do operador preencher, não é lacuna de código):**
+- [ ] Inscrição Estadual de cada cliente PJ antes de emitir NFe dentro do estado (rejeição confirmada pela SEFAZ-SP sem isso).
+
 ## 9. Próximos Passos
 
 - ~~Estruturação do projeto Laravel~~ — feito;
