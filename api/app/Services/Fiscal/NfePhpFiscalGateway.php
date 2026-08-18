@@ -8,6 +8,7 @@ use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
 use App\Models\Fornecedor;
+use App\Models\Produto;
 use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
 use App\Services\Fiscal\Dto\ResultadoEventoFiscal;
 use Illuminate\Support\Collection;
@@ -274,7 +275,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $nfe->tagimposto($std);
 
             $this->tagPisCofinsIsento($nfe, $numeroItem);
-            $this->tagIBSCBSTeste2026($nfe, $numeroItem, $valorItem);
+            $this->tagIBSCBS($nfe, $numeroItem, $valorItem, $item->produto);
         }
 
         $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento);
@@ -470,7 +471,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $nfe->tagimposto($std);
 
             $this->tagPisCofinsIsento($nfe, $numeroItem);
-            $this->tagIBSCBSTeste2026($nfe, $numeroItem, $valorItem);
+            $this->tagIBSCBS($nfe, $numeroItem, $valorItem, $item->produto);
         }
 
         $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento);
@@ -588,27 +589,36 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
     }
 
     /**
-     * Grupo IBS/CBS da Reforma Tributária - alíquotas de teste da fase
-     * de transição 2026 (LC 214/2025): CBS 0,9% / IBS 0,1% combinados.
-     * CST 000 = tributação integral, cClassTrib 000001 = padrão sem
-     * benefício. TODO: revisar quando a SEFAZ consolidar a tabela
-     * definitiva de cClassTrib por segmento.
+     * Grupo IBS/CBS da Reforma Tributária (LC 214/2025): usa o CST,
+     * cClassTrib e as alíquotas cadastrados no produto (item 31 do
+     * changelog técnico) quando presentes; sem cadastro fiscal do
+     * produto, cai no padrão de teste da fase de transição 2026 (CST
+     * 000, cClassTrib 000001, CBS 0,9% / IBS 0,1% combinados) usado
+     * até aqui - mantém a emissão funcionando para produtos ainda não
+     * classificados. TODO: aplicar redução de base de cálculo e
+     * crédito presumido do produto (`reducao_base_calculo_ibs/cbs`,
+     * `percentual_credito_ibs/cbs`), ainda não usados aqui.
      */
-    private function tagIBSCBSTeste2026(Make $nfe, int $numeroItem, float $valorItem): void
+    private function tagIBSCBS(Make $nfe, int $numeroItem, float $valorItem, ?Produto $produto): void
     {
-        $vIBS = round($valorItem * 0.001, 2);
-        $vCBS = round($valorItem * 0.009, 2);
+        $cst = $produto?->cst_ibs_cbs ?: '000';
+        $cClassTrib = $produto?->classTrib?->codigo ?: '000001';
+        $pIBS = $produto?->aliquota_ibs !== null ? (float) $produto->aliquota_ibs : 0.10;
+        $pCBS = $produto?->aliquota_cbs !== null ? (float) $produto->aliquota_cbs : 0.90;
+
+        $vIBS = round($valorItem * $pIBS / 100, 2);
+        $vCBS = round($valorItem * $pCBS / 100, 2);
 
         $std = new \stdClass();
         $std->item = $numeroItem;
-        $std->CST = '000';
-        $std->cClassTrib = '000001';
+        $std->CST = $cst;
+        $std->cClassTrib = $cClassTrib;
         $std->vBC = $valorItem;
-        $std->gIBSUF_pIBSUF = 0.10;
+        $std->gIBSUF_pIBSUF = $pIBS;
         $std->gIBSUF_vIBSUF = $vIBS;
         $std->gIBSMun_pIBSMun = 0;
         $std->gIBSMun_vIBSMun = 0;
-        $std->gCBS_pCBS = 0.90;
+        $std->gCBS_pCBS = $pCBS;
         $std->gCBS_vCBS = $vCBS;
         $nfe->tagIBSCBS($std);
     }
