@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'razao_social', 'cnpj', 'slug', 'segmento', 'modulo_agendamento_ativo', 'plano_id', 'status',
     'uf', 'municipio', 'codigo_ibge_municipio', 'cep', 'logradouro', 'numero', 'bairro', 'complemento',
     'asaas_customer_id', 'logo_url', 'cor_primaria',
+    'estoque_permite_negativo', 'pdv_impressao_direta',
 ])]
 class Empresa extends Model
 {
@@ -18,6 +19,8 @@ class Empresa extends Model
     {
         return [
             'modulo_agendamento_ativo' => 'boolean',
+            'estoque_permite_negativo' => 'boolean',
+            'pdv_impressao_direta' => 'boolean',
         ];
     }
 

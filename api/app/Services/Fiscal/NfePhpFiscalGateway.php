@@ -7,6 +7,7 @@ use App\Models\Cliente;
 use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
+use App\Models\Fornecedor;
 use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
 use App\Services\Fiscal\Dto\ResultadoEventoFiscal;
 use Illuminate\Support\Collection;
@@ -23,10 +24,14 @@ use NFePHP\NFe\Tools;
  * caso de "regularização" de uma venda NFC-e via NFe com CFOP 5929/6929
  * (ver Fiscal\CfopResolver).
  *
+ * Cobre também devolução de venda (cliente devolvendo à empresa, CFOP
+ * 1202/2202, tpNF=0) e devolução de compra (empresa devolvendo ao
+ * fornecedor, CFOP 5202/6202, tpNF=1) - ver Fiscal\CfopResolver e
+ * EmissaoFiscalService::emitirDevolucao()/emitirDevolucaoFornecedor().
+ *
  * TODO antes de produção:
  * - suporte a outros regimes tributários além de Simples Nacional (CRT=1);
- * - NFe hoje assume sempre operação de venda (CFOP 5102/6102 como base) -
- *   não cobre devolução, remessa, bonificação etc.
+ * - remessa/bonificação ainda não são cobertas.
  */
 class NfePhpFiscalGateway implements FiscalGatewayInterface
 {
@@ -289,22 +294,32 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         Empresa $empresa,
         ConfigFiscal $configFiscal,
     ): string {
-        $venda = $documento->venda;
-        $cliente = $venda?->cliente;
+        $tipoOperacaoDocumento = $documento->tipo_operacao ?? CfopResolver::TIPO_VENDA;
+        $regularizacaoDeNfce = $tipoOperacaoDocumento === 'regularizacao_nfce';
+        $devolucaoCliente = $tipoOperacaoDocumento === 'devolucao' && $documento->direcao_devolucao === 'cliente_para_empresa';
+        $devolucaoFornecedor = $tipoOperacaoDocumento === 'devolucao' && $documento->direcao_devolucao === 'empresa_para_fornecedor';
 
-        if ($cliente === null) {
-            throw new \RuntimeException('NFe exige um cliente/destinatário identificado na venda.');
-        }
-        $this->validarDestinatario($cliente);
+        // CfopResolver trabalha com um vocabulário de subtipos mais fino
+        // (venda/regularização/devolução-cliente/devolução-fornecedor) do
+        // que a coluna tipo_operacao do banco (venda/regularizacao_nfce/
+        // devolucao) - aqui traduzimos um para o outro.
+        $tipoOperacao = match (true) {
+            $regularizacaoDeNfce => CfopResolver::TIPO_REGULARIZACAO_NFCE,
+            $devolucaoCliente => CfopResolver::TIPO_DEVOLUCAO_CLIENTE,
+            $devolucaoFornecedor => CfopResolver::TIPO_DEVOLUCAO_FORNECEDOR,
+            default => CfopResolver::TIPO_VENDA,
+        };
 
-        $regularizacaoDeNfce = $documento->documento_fiscal_origem_id !== null;
+        $destinatario = $devolucaoFornecedor
+            ? $this->dadosDestinatarioFornecedor($documento->compra?->fornecedor)
+            : $this->dadosDestinatarioCliente($documento->venda?->cliente);
 
         // schema > 9 habilita os campos da Reforma Tributária (IBS/CBS)
         $nfe = new Make('PL_010_V130');
 
         $cUF = $this->codigoUf($empresa->uf);
         $tpAmb = $configFiscal->ambiente_ativo === 'producao' ? 1 : 2;
-        $interno = strtoupper($cliente->uf) === strtoupper($empresa->uf);
+        $interno = strtoupper($destinatario->uf) === strtoupper($empresa->uf);
 
         $std = new \stdClass();
         $std->versao = '4.00';
@@ -312,21 +327,24 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
         $std = new \stdClass();
         $std->cUF = $cUF;
-        $std->natOp = $regularizacaoDeNfce
-            ? 'Regularização de venda documentada por NFC-e'
-            : 'Venda de mercadoria';
+        $std->natOp = match (true) {
+            $regularizacaoDeNfce => 'Regularização de venda documentada por NFC-e',
+            $devolucaoCliente => 'Devolução de venda de mercadoria',
+            $devolucaoFornecedor => 'Devolução de compra para comercialização',
+            default => 'Venda de mercadoria',
+        };
         $std->mod = 55;
         $std->serie = (int) $documento->serie;
         $std->nNF = $documento->numero;
-        $std->tpNF = 1; // saída
+        $std->tpNF = $devolucaoCliente ? 0 : 1; // 0 = entrada (devolução do cliente), 1 = saída
         $std->idDest = $interno ? 1 : 2; // 1 = interna, 2 = interestadual
         $std->cMunFG = $empresa->codigo_ibge_municipio;
         $std->tpImp = 1; // DANFE retrato
         $std->tpEmis = 1; // emissão normal
         $std->tpAmb = $tpAmb;
         $std->finNFe = 1; // NFe normal
-        $std->indFinal = empty($cliente->inscricao_estadual) ? 1 : 0;
-        $std->indPres = $regularizacaoDeNfce ? 9 : 1; // 9 = não se aplica (venda já ocorreu no PDV)
+        $std->indFinal = empty($destinatario->inscricao_estadual) ? 1 : 0;
+        $std->indPres = ($regularizacaoDeNfce || $devolucaoCliente || $devolucaoFornecedor) ? 9 : 1; // 9 = não se aplica
         $std->indIntermed = 0; // 0 = operação sem intermediador/marketplace
         $std->procEmi = 0;
         $std->verProc = '1.0.0';
@@ -337,7 +355,25 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         // referenciada é de uma NFC-e (modelo 65). Para o cenário de
         // regularização a ligação com a NFC-e de origem já fica registrada
         // internamente (documento_fiscal_origem_id) e visível no painel -
-        // o CFOP 5929/6929 já identifica a operação perante a SEFAZ.
+        // o CFOP 5929/6929 já identifica a operação perante a SEFAZ. O
+        // mesmo vale para devolução de venda originada por NFC-e: só
+        // usamos NFref quando a nota de origem é modelo 55.
+        if ($devolucaoCliente) {
+            $documentoOrigem = $documento->documentoOrigem;
+            if ($documentoOrigem?->modelo === 55 && ! empty($documentoOrigem->chave_acesso)) {
+                $std = new \stdClass();
+                $std->refNFe = $documentoOrigem->chave_acesso;
+                $nfe->tagrefNFe($std);
+            }
+        }
+
+        if ($devolucaoFornecedor && ! empty($documento->compra?->chave_acesso)) {
+            // Só existe chave quando a compra foi importada via XML
+            // (tipo_entrada = 'xml') - compra manual não referencia NFref.
+            $std = new \stdClass();
+            $std->refNFe = $documento->compra->chave_acesso;
+            $nfe->tagrefNFe($std);
+        }
 
         $std = new \stdClass();
         $std->CNPJ = preg_replace('/\D/', '', $empresa->cnpj);
@@ -359,33 +395,33 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $nfe->tagenderEmit($std);
 
         $std = new \stdClass();
-        $documentoCliente = preg_replace('/\D/', '', (string) $cliente->cpf_cnpj);
-        $ehPessoaJuridica = strlen($documentoCliente) === 14;
+        $documentoDestinatario = preg_replace('/\D/', '', (string) $destinatario->documento);
+        $ehPessoaJuridica = strlen($documentoDestinatario) === 14;
         if ($ehPessoaJuridica) {
-            $std->CNPJ = $documentoCliente;
+            $std->CNPJ = $documentoDestinatario;
         } else {
-            $std->CPF = $documentoCliente;
+            $std->CPF = $documentoDestinatario;
         }
-        $std->xNome = $cliente->nome;
-        if (! empty($cliente->inscricao_estadual)) {
+        $std->xNome = $destinatario->nome;
+        if (! empty($destinatario->inscricao_estadual)) {
             // 1 = contribuinte ICMS, com IE real informada
             $std->indIEDest = 1;
-            $std->IE = $cliente->inscricao_estadual;
+            $std->IE = $destinatario->inscricao_estadual;
         } else {
             // 9 = não contribuinte - válido para CPF (consumidor final)
             $std->indIEDest = 9;
         }
-        $std->email = $cliente->email;
+        $std->email = $destinatario->email;
         $nfe->tagdest($std);
 
         $std = new \stdClass();
-        $std->xLgr = $cliente->logradouro;
-        $std->nro = $cliente->numero;
-        $std->xBairro = $cliente->bairro;
-        $std->cMun = $cliente->codigo_ibge_municipio;
-        $std->xMun = $cliente->municipio;
-        $std->UF = $cliente->uf;
-        $std->CEP = preg_replace('/\D/', '', (string) $cliente->cep);
+        $std->xLgr = $destinatario->logradouro;
+        $std->nro = $destinatario->numero;
+        $std->xBairro = $destinatario->bairro;
+        $std->cMun = $destinatario->codigo_ibge_municipio;
+        $std->xMun = $destinatario->municipio;
+        $std->UF = $destinatario->uf;
+        $std->CEP = preg_replace('/\D/', '', (string) $destinatario->cep);
         $std->cPais = 1058;
         $std->xPais = 'Brasil';
         $nfe->tagenderDest($std);
@@ -399,9 +435,9 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
             $cfop = $this->cfopResolver->resolver(
                 $empresa->uf,
-                $cliente->uf,
+                $destinatario->uf,
                 $item->produto?->cfop_padrao,
-                $regularizacaoDeNfce,
+                $tipoOperacao,
             );
 
             $std = new \stdClass();
@@ -448,9 +484,17 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         return $xml;
     }
 
-    private function validarDestinatario(Cliente $cliente): void
+    /**
+     * DTO uniforme de destinatário (cliente ou fornecedor) consumido por
+     * tagdest/tagenderDest/CfopResolver - ver montarXmlNfe().
+     */
+    private function dadosDestinatarioCliente(?Cliente $cliente): \stdClass
     {
-        $faltando = array_filter([
+        if ($cliente === null) {
+            throw new \RuntimeException('NFe exige um cliente/destinatário identificado na venda.');
+        }
+
+        $this->validarDestinatario('Cliente', [
             'cpf_cnpj' => $cliente->cpf_cnpj,
             'uf' => $cliente->uf,
             'municipio' => $cliente->municipio,
@@ -458,11 +502,70 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             'logradouro' => $cliente->logradouro,
             'numero' => $cliente->numero,
             'bairro' => $cliente->bairro,
-        ], fn ($valor) => empty($valor));
+        ]);
+
+        $std = new \stdClass();
+        $std->documento = $cliente->cpf_cnpj;
+        $std->nome = $cliente->nome;
+        $std->inscricao_estadual = $cliente->inscricao_estadual;
+        $std->email = $cliente->email;
+        $std->logradouro = $cliente->logradouro;
+        $std->numero = $cliente->numero;
+        $std->bairro = $cliente->bairro;
+        $std->codigo_ibge_municipio = $cliente->codigo_ibge_municipio;
+        $std->municipio = $cliente->municipio;
+        $std->uf = $cliente->uf;
+        $std->cep = $cliente->cep;
+
+        return $std;
+    }
+
+    private function dadosDestinatarioFornecedor(?Fornecedor $fornecedor): \stdClass
+    {
+        if ($fornecedor === null) {
+            throw new \RuntimeException('NFe de devolução exige um fornecedor identificado na compra.');
+        }
+
+        if (empty($fornecedor->cnpj)) {
+            throw new \RuntimeException('Fornecedor sem CNPJ cadastrado - obrigatório para NFe de devolução.');
+        }
+
+        $this->validarDestinatario('Fornecedor', [
+            'cnpj' => $fornecedor->cnpj,
+            'uf' => $fornecedor->uf,
+            'municipio' => $fornecedor->municipio,
+            'codigo_ibge_municipio' => $fornecedor->codigo_ibge_municipio,
+            'logradouro' => $fornecedor->logradouro,
+            'numero' => $fornecedor->numero,
+            'bairro' => $fornecedor->bairro,
+        ]);
+
+        $std = new \stdClass();
+        $std->documento = $fornecedor->cnpj;
+        $std->nome = $fornecedor->razao_social;
+        $std->inscricao_estadual = $fornecedor->inscricao_estadual;
+        $std->email = $fornecedor->email;
+        $std->logradouro = $fornecedor->logradouro;
+        $std->numero = $fornecedor->numero;
+        $std->bairro = $fornecedor->bairro;
+        $std->codigo_ibge_municipio = $fornecedor->codigo_ibge_municipio;
+        $std->municipio = $fornecedor->municipio;
+        $std->uf = $fornecedor->uf;
+        $std->cep = $fornecedor->cep;
+
+        return $std;
+    }
+
+    /**
+     * @param  array<string, mixed>  $campos
+     */
+    private function validarDestinatario(string $rotulo, array $campos): void
+    {
+        $faltando = array_filter($campos, fn ($valor) => empty($valor));
 
         if (! empty($faltando)) {
-            $campos = implode(', ', array_keys($faltando));
-            throw new \RuntimeException("Cliente sem dados obrigatórios para NFe: {$campos}.");
+            $camposFaltando = implode(', ', array_keys($faltando));
+            throw new \RuntimeException("{$rotulo} sem dados obrigatórios para NFe: {$camposFaltando}.");
         }
     }
 

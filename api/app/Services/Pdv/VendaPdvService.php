@@ -6,6 +6,7 @@ use App\Models\AgendaVisitacao;
 use App\Models\Atendente;
 use App\Models\Cliente;
 use App\Models\Empresa;
+use App\Models\FormaPagamento;
 use App\Models\Produto;
 use App\Models\Venda;
 use App\Models\Vendedor;
@@ -25,11 +26,12 @@ class VendaPdvService
     public function __construct(
         private readonly ReservaVagaService $reservaVagaService,
         private readonly EmissaoFiscalService $emissaoFiscalService,
+        private readonly CaixaService $caixaService,
     ) {}
 
-    public function finalizar(Empresa $empresa, array $dados): Venda
+    public function finalizar(Empresa $empresa, array $dados, int $usuarioId): Venda
     {
-        return DB::transaction(function () use ($empresa, $dados) {
+        return DB::transaction(function () use ($empresa, $dados, $usuarioId) {
             $vendedor = ! empty($dados['vendedor_id'])
                 ? Vendedor::findOrFail($dados['vendedor_id'])
                 : null;
@@ -60,7 +62,7 @@ class VendaPdvService
             $comissaoTotal = 0;
 
             foreach ($dados['itens'] ?? [] as $item) {
-                [$valorItem, $comissaoItem] = $this->criarItemProduto($venda, $item, $vendedor);
+                [$valorItem, $comissaoItem] = $this->criarItemProduto($venda, $item, $vendedor, $empresa);
                 $valorTotal += $valorItem;
                 $comissaoTotal += $comissaoItem;
             }
@@ -81,24 +83,39 @@ class VendaPdvService
                 'comissao' => $comissaoTotal > 0 ? $comissaoTotal : null,
             ]);
 
+            $formaPagamento = ! empty($dados['forma_pagamento_id'])
+                ? FormaPagamento::find($dados['forma_pagamento_id'])
+                : null;
+
+            if ($formaPagamento?->tipo === 'dinheiro' && $valorTotal > 0) {
+                $this->caixaService->registrarVenda($empresa, $usuarioId, $valorTotal, "Venda #{$venda->id}");
+            }
+
             if ($dados['tipo_doc'] === 'fiscal') {
                 $this->emissaoFiscalService->emitir($venda->fresh('itens'), 65);
             }
 
-            return $venda->fresh(['itens', 'cliente', 'vendedor', 'atendente']);
+            return $venda->fresh([
+                'itens.produto', 'itens.agendaVisitacao', 'cliente', 'vendedor',
+                'atendente', 'formaPagamento', 'empresa', 'documentoFiscal',
+            ]);
         });
     }
 
     /**
      * @return array{0: float, 1: float} [valorItem, comissaoItem]
      */
-    private function criarItemProduto(Venda $venda, array $item, ?Vendedor $vendedor): array
+    private function criarItemProduto(Venda $venda, array $item, ?Vendedor $vendedor, Empresa $empresa): array
     {
         $produto = Produto::findOrFail($item['produto_id']);
         $quantidade = (int) $item['quantidade'];
 
         if ($produto->estoque_atual !== null) {
-            abort_if($produto->estoque_atual < $quantidade, 409, "Estoque insuficiente para {$produto->nome}.");
+            abort_if(
+                ! $empresa->estoque_permite_negativo && $produto->estoque_atual < $quantidade,
+                409,
+                "Estoque insuficiente para {$produto->nome}."
+            );
             $produto->decrement('estoque_atual', $quantidade);
         }
 

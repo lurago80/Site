@@ -50,6 +50,7 @@
             <button onclick="mostrarSecao('grupos', this)">Grupos de Produto</button>
             <button onclick="mostrarSecao('clientes', this)">Clientes</button>
             <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
+            <button onclick="mostrarSecao('compras', this)">Entrada de Notas</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
 
@@ -64,6 +65,7 @@
             <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
 
             <div class="grupo-label">Configurações</div>
+            <button onclick="mostrarSecao('parametros', this)">Parâmetros</button>
             <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
             <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
             <button onclick="mostrarSecao('whatsapp', this)">WhatsApp</button>
@@ -378,38 +380,47 @@
 
             <section id="secao-clientes" class="secao">
                 <h1>Clientes</h1>
-                <p style="font-size:12px; color:var(--cor-texto-suave);">
-                    Endereço completo é obrigatório para emitir NFe (modelo 55) para o cliente - a loja pública e o PDV só coletam nome/CPF na hora da venda.
-                </p>
                 <div class="card">
-                    <input type="hidden" id="cl-id">
-                    <div class="linha-form">
-                        <div><label>Nome</label><input type="text" id="cl-nome"></div>
-                        <div><label>CPF/CNPJ</label><input type="text" id="cl-cpf-cnpj" style="width:140px"></div>
-                        <div style="align-self:flex-end;"><button type="button" class="secundario" onclick="buscarCnpjCliente()">Buscar CNPJ</button></div>
-                        <div><label>Telefone</label><input type="text" id="cl-telefone" style="width:120px"></div>
-                        <div><label>E-mail</label><input type="email" id="cl-email"></div>
-                        <div><label><input type="checkbox" id="cl-lgpd"> Consentimento LGPD</label></div>
-                    </div>
-                    <div class="linha-form">
-                        <div><label>CEP</label><input type="text" id="cl-cep" style="width:90px" placeholder="00000-000" onblur="buscarCepCliente()"></div>
-                        <div><label>Logradouro</label><input type="text" id="cl-logradouro"></div>
-                        <div><label>Número</label><input type="text" id="cl-numero" style="width:70px"></div>
-                        <div><label>Bairro</label><input type="text" id="cl-bairro"></div>
-                        <div><label>Município</label><input type="text" id="cl-municipio"></div>
-                        <div><label>UF</label><input type="text" id="cl-uf" style="width:50px" maxlength="2"></div>
-                        <div><label>Cód. IBGE</label><input type="text" id="cl-ibge" style="width:80px"></div>
-                        <div><label>IE</label><input type="text" id="cl-ie" style="width:100px" placeholder="preencher manualmente"></div>
-                    </div>
-                    <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
-                        CEP preenche o endereço automaticamente. "Buscar CNPJ" traz razão social/endereço da Receita
-                        Federal - Inscrição Estadual não vem dessa consulta (é cadastrada por estado, não existe API
-                        nacional gratuita), preencha à mão.
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Endereço completo é obrigatório para emitir NFe (modelo 55) para o cliente — a loja pública e o PDV só coletam nome/CPF na hora da venda.
                     </p>
-                    <div class="linha-form">
-                        <div><button class="acao" id="cl-botao" onclick="salvarCliente()">Cadastrar</button></div>
-                        <div><button class="secundario" onclick="limparFormularioCliente()" style="display:none;" id="cl-cancelar">Cancelar edição</button></div>
+                    <input type="hidden" id="cl-id">
+                    <div class="grupo-campos">
+                        <h3>Dados básicos</h3>
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:200px"><label>Nome</label><input type="text" id="cl-nome"></div>
+                            <div><label>CPF/CNPJ</label><input type="text" id="cl-cpf-cnpj" style="width:150px"></div>
+                            <div><label>&nbsp;</label><button type="button" class="secundario" onclick="buscarCnpjCliente()">Buscar CNPJ</button></div>
+                            <div><label>Telefone</label><input type="text" id="cl-telefone" style="width:130px"></div>
+                            <div style="flex:1; min-width:180px"><label>E-mail</label><input type="email" id="cl-email"></div>
+                            <label class="campo-check"><input type="checkbox" id="cl-lgpd"> Consentimento LGPD</label>
+                        </div>
                     </div>
+                    <div class="grupo-campos">
+                        <h3>Endereço</h3>
+                        <div class="linha-form">
+                            <div><label>CEP</label><input type="text" id="cl-cep" style="width:100px" placeholder="00000-000" onblur="buscarCepCliente()"></div>
+                            <div style="flex:2; min-width:200px"><label>Logradouro</label><input type="text" id="cl-logradouro"></div>
+                            <div><label>Número</label><input type="text" id="cl-numero" style="width:80px"></div>
+                            <div style="flex:1; min-width:150px"><label>Bairro</label><input type="text" id="cl-bairro"></div>
+                        </div>
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:180px"><label>Município</label><input type="text" id="cl-municipio"></div>
+                            <div><label>UF</label><input type="text" id="cl-uf" style="width:60px" maxlength="2"></div>
+                            <div><label>Cód. IBGE</label><input type="text" id="cl-ibge" style="width:90px"></div>
+                            <div><label>IE</label><input type="text" id="cl-ie" style="width:120px" placeholder="preencher manualmente"></div>
+                        </div>
+                        <p style="font-size:11px; color:var(--cor-texto-suave); margin:0;">
+                            CEP preenche o endereço automaticamente. "Buscar CNPJ" traz razão social/endereço da Receita
+                            Federal — Inscrição Estadual não vem dessa consulta (é cadastrada por estado, não existe API
+                            nacional gratuita), preencha à mão.
+                        </p>
+                    </div>
+                    <div class="form-acoes">
+                        <button class="acao" id="cl-botao" onclick="salvarCliente()">Cadastrar</button>
+                        <button class="secundario" onclick="limparFormularioCliente()" style="display:none;" id="cl-cancelar">Cancelar edição</button>
+                    </div>
+                    <h2>Clientes cadastrados</h2>
                     <table>
                         <thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>E-mail</th><th>Telefone</th><th>Endereço</th><th>LGPD</th><th></th></tr></thead>
                         <tbody id="tbody-clientes"></tbody>
@@ -422,35 +433,122 @@
                 <h1>Fornecedores</h1>
                 <div class="card">
                     <input type="hidden" id="fo-id">
-                    <div class="linha-form">
-                        <div><label>Razão social</label><input type="text" id="fo-razao"></div>
-                        <div><label>Nome fantasia</label><input type="text" id="fo-fantasia"></div>
-                        <div><label>CNPJ</label><input type="text" id="fo-cnpj" style="width:140px"></div>
-                        <div style="align-self:flex-end;"><button type="button" class="secundario" onclick="buscarCnpjFornecedor()">Buscar CNPJ</button></div>
-                        <div><label>IE</label><input type="text" id="fo-ie" style="width:100px" placeholder="preencher manualmente"></div>
+                    <div class="grupo-campos">
+                        <h3>Identificação</h3>
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:180px"><label>Razão social</label><input type="text" id="fo-razao"></div>
+                            <div style="flex:1; min-width:160px"><label>Nome fantasia</label><input type="text" id="fo-fantasia"></div>
+                            <div><label>CNPJ</label><input type="text" id="fo-cnpj" style="width:150px"></div>
+                            <div><label>&nbsp;</label><button type="button" class="secundario" onclick="buscarCnpjFornecedor()">Buscar CNPJ</button></div>
+                            <div><label>IE</label><input type="text" id="fo-ie" style="width:120px" placeholder="preencher manualmente"></div>
+                        </div>
                     </div>
-                    <div class="linha-form">
-                        <div><label>Contato</label><input type="text" id="fo-contato"></div>
-                        <div><label>Telefone</label><input type="text" id="fo-telefone" style="width:120px"></div>
-                        <div><label>E-mail</label><input type="email" id="fo-email"></div>
+                    <div class="grupo-campos">
+                        <h3>Contato</h3>
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:160px"><label>Contato</label><input type="text" id="fo-contato"></div>
+                            <div><label>Telefone</label><input type="text" id="fo-telefone" style="width:130px"></div>
+                            <div style="flex:1; min-width:180px"><label>E-mail</label><input type="email" id="fo-email"></div>
+                        </div>
                     </div>
-                    <div class="linha-form">
-                        <div><label>CEP</label><input type="text" id="fo-cep" style="width:90px" placeholder="00000-000" onblur="buscarCepFornecedor()"></div>
-                        <div style="flex:1"><label>Endereço</label><input type="text" id="fo-endereco" style="width:100%"></div>
+                    <div class="grupo-campos">
+                        <h3>Endereço</h3>
+                        <div class="linha-form">
+                            <div><label>CEP</label><input type="text" id="fo-cep" style="width:100px" placeholder="00000-000" onblur="buscarCepFornecedor()"></div>
+                            <div style="flex:1; min-width:220px"><label>Endereço</label><input type="text" id="fo-endereco"></div>
+                        </div>
+                        <p style="font-size:11px; color:var(--cor-texto-suave); margin:0;">
+                            CEP preenche o endereço automaticamente. "Buscar CNPJ" traz razão social/endereço da Receita
+                            Federal — Inscrição Estadual não vem dessa consulta, preencha à mão.
+                        </p>
                     </div>
-                    <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
-                        CEP preenche o endereço automaticamente. "Buscar CNPJ" traz razão social/endereço da Receita
-                        Federal - Inscrição Estadual não vem dessa consulta, preencha à mão.
-                    </p>
-                    <div class="linha-form">
-                        <div><button class="acao" id="fo-botao" onclick="salvarFornecedor()">Cadastrar</button></div>
-                        <div><button class="secundario" onclick="limparFormularioFornecedor()" style="display:none;" id="fo-cancelar">Cancelar edição</button></div>
+                    <div class="form-acoes">
+                        <button class="acao" id="fo-botao" onclick="salvarFornecedor()">Cadastrar</button>
+                        <button class="secundario" onclick="limparFormularioFornecedor()" style="display:none;" id="fo-cancelar">Cancelar edição</button>
                     </div>
+                    <h2>Fornecedores cadastrados</h2>
                     <table>
                         <thead><tr><th>Razão social</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th></th></tr></thead>
                         <tbody id="tbody-fornecedores"></tbody>
                     </table>
                     <p class="msg" id="msg-fornecedores"></p>
+                </div>
+            </section>
+
+            <section id="secao-compras" class="secao">
+                <h1>Entrada de Notas</h1>
+                <div class="card">
+                    <h2>Importar XML de NFe</h2>
+                    <div class="linha-form">
+                        <div><label>Arquivo XML</label><input type="file" id="co-xml-arquivo" accept=".xml"></div>
+                        <div><label>&nbsp;</label><button type="button" class="acao" onclick="importarXmlCompra()">Importar</button></div>
+                    </div>
+                    <p class="msg" id="msg-compra-xml"></p>
+                </div>
+
+                <div class="card">
+                    <h2>Entrada manual</h2>
+                    <div class="grupo-campos">
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:200px">
+                                <label>Fornecedor</label>
+                                <select id="co-fornecedor"></select>
+                            </div>
+                            <div><label>Nº nota</label><input type="text" id="co-numero" style="width:120px"></div>
+                            <div><label>Série</label><input type="text" id="co-serie" style="width:80px"></div>
+                            <div><label>Data entrada</label><input type="date" id="co-data-entrada"></div>
+                            <div><label>Frete</label><input type="number" step="0.01" id="co-frete" style="width:100px" value="0"></div>
+                            <div><label>Desconto</label><input type="number" step="0.01" id="co-desconto" style="width:100px" value="0"></div>
+                        </div>
+                    </div>
+
+                    <div class="grupo-campos">
+                        <h3>Itens</h3>
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:200px">
+                                <label>Produto</label>
+                                <select id="co-item-produto"></select>
+                            </div>
+                            <div><label>Quantidade</label><input type="number" step="0.001" id="co-item-quantidade" style="width:100px"></div>
+                            <div><label>Valor unitário</label><input type="number" step="0.0001" id="co-item-valor" style="width:110px"></div>
+                            <div><label>&nbsp;</label><button type="button" class="secundario" onclick="adicionarItemCompra()">Adicionar item</button></div>
+                        </div>
+                        <table>
+                            <thead><tr><th>Produto</th><th>Qtd.</th><th>Valor unit.</th><th>Total</th><th></th></tr></thead>
+                            <tbody id="tbody-compra-itens"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="form-acoes">
+                        <button class="acao" onclick="salvarCompraManual()">Registrar entrada</button>
+                    </div>
+                    <p class="msg" id="msg-compra-manual"></p>
+                </div>
+
+                <div class="card">
+                    <h2>Notas de entrada</h2>
+                    <table>
+                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data entrada</th><th>Valor total</th><th>Status</th><th></th></tr></thead>
+                        <tbody id="tbody-compras"></tbody>
+                    </table>
+                    <p class="msg" id="msg-compras"></p>
+                </div>
+
+                <div class="card" id="compra-conferencia-card" style="display:none;">
+                    <h2>Conferência de itens importados (Nota #<span id="compra-conf-id"></span>)</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave);">
+                        Itens sem produto localizado por código de barras precisam ser vinculados a um produto
+                        existente ou cadastrados como novo produto antes de confirmar a entrada.
+                    </p>
+                    <table>
+                        <thead><tr><th>Descrição (XML)</th><th>Qtd.</th><th>Valor unit.</th><th>Produto</th><th></th></tr></thead>
+                        <tbody id="tbody-compra-conferencia"></tbody>
+                    </table>
+                    <div class="form-acoes">
+                        <button class="acao" onclick="confirmarCompra()">Confirmar entrada</button>
+                        <button class="secundario" onclick="document.getElementById('compra-conferencia-card').style.display='none';">Fechar</button>
+                    </div>
+                    <p class="msg" id="msg-compra-conferencia"></p>
                 </div>
             </section>
 
@@ -658,6 +756,39 @@
                         <div><button class="acao" onclick="lancarMovimentoBancario()">Lançar</button></div>
                     </div>
                     <p class="msg" id="msg-extrato-banco"></p>
+                </div>
+            </section>
+
+            <section id="secao-parametros" class="secao">
+                <h1>Parâmetros</h1>
+
+                <div class="card">
+                    <h2>Estoque</h2>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400;">
+                        <input type="checkbox" id="pm-estoque-negativo" style="width:auto;">
+                        Permitir venda com estoque negativo
+                    </label>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        Se desativado, o PDV bloqueia a venda quando não há saldo suficiente do produto em estoque.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h2>PDV — Impressão de cupom</h2>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400;">
+                        <input type="checkbox" id="pm-impressao-direta" style="width:auto;">
+                        Imprimir cupom automaticamente ao finalizar a venda
+                    </label>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        Se desativado, o cupom abre em uma janela de pré-visualização e o operador escolhe quando imprimir.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <div class="linha-form">
+                        <div><button class="acao" onclick="salvarConfigOperacional()">Salvar parâmetros</button></div>
+                    </div>
+                    <p class="msg" id="msg-config-operacional"></p>
                 </div>
             </section>
 
@@ -958,7 +1089,7 @@
         const empresa = @json($empresaSlug);
         const base = `/dashboard/${empresa}`;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
-        const headersJson = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken };
+        const headersJson = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken };
 
         const carregadores = {
             dashboard: carregarIndicadores,
@@ -966,6 +1097,7 @@
             produtos: () => { carregarProdutos(); carregarGrupos(); },
             clientes: carregarClientes,
             fornecedores: carregarFornecedores,
+            compras: carregarCompras,
             vendedores: carregarVendedores,
             atendentes: carregarAtendentes,
             grupos: carregarGrupos,
@@ -973,6 +1105,7 @@
             'plano-contas': () => { carregarPlanoContas(); },
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
+            parametros: carregarConfigOperacional,
             'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); carregarConfigLoja(); },
             fiscal: () => { carregarRelatorioFiscal(); carregarVendasNaoFiscaisFiscal(); carregarNfcesDisponiveisFiscal(); },
             'caixa-consulta': carregarCaixaConsulta,
@@ -1336,6 +1469,228 @@
             } catch (e) {
                 document.getElementById('msg-fornecedores').className = 'msg erro';
                 document.getElementById('msg-fornecedores').textContent = e.message;
+            }
+        }
+
+        let comprasCache = [];
+        let compraItensRascunho = [];
+        let compraConferenciaAtual = null;
+
+        async function carregarCompras() {
+            await Promise.all([carregarFornecedoresParaSelect(), carregarProdutosParaSelectCompra()]);
+
+            document.getElementById('co-fornecedor').innerHTML = fornecedoresCache
+                .map(f => `<option value="${f.id}">${f.razao_social}</option>`).join('');
+
+            if (!document.getElementById('co-data-entrada').value) {
+                document.getElementById('co-data-entrada').value = new Date().toISOString().slice(0, 10);
+            }
+
+            const resp = await fetch(`${base}/compras`);
+            comprasCache = await resp.json();
+            document.getElementById('tbody-compras').innerHTML = comprasCache.map(c => `
+                <tr>
+                    <td>${c.numero_nota ?? '-'}</td>
+                    <td>${c.fornecedor ? c.fornecedor.razao_social : '-'}</td>
+                    <td>${c.data_entrada}</td>
+                    <td>R$ ${Number(c.valor_total).toFixed(2)}</td>
+                    <td>${c.status}</td>
+                    <td>
+                        ${c.status === 'pendente' ? `<button class="secundario" onclick="abrirConferenciaCompra(${c.id})">Conferir/Confirmar</button>` : ''}
+                    </td>
+                </tr>
+            `).join('') || '<tr><td colspan="6">Nenhuma nota de entrada registrada.</td></tr>';
+        }
+
+        async function carregarProdutosParaSelectCompra() {
+            if (produtosCache.length) {
+                preencherSelectProdutoCompra();
+                return;
+            }
+            const resp = await fetch(`${base}/produtos`);
+            produtosCache = await resp.json();
+            preencherSelectProdutoCompra();
+        }
+
+        function preencherSelectProdutoCompra() {
+            document.getElementById('co-item-produto').innerHTML = produtosCache
+                .map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+        }
+
+        function adicionarItemCompra() {
+            const produtoId = Number(document.getElementById('co-item-produto').value);
+            const quantidade = Number(document.getElementById('co-item-quantidade').value);
+            const valorUnitario = Number(document.getElementById('co-item-valor').value);
+            const produto = produtosCache.find(p => p.id === produtoId);
+
+            if (!produto || !quantidade || !valorUnitario) {
+                return;
+            }
+
+            compraItensRascunho.push({ produto_id: produtoId, nome: produto.nome, quantidade, valor_unitario: valorUnitario });
+            document.getElementById('co-item-quantidade').value = '';
+            document.getElementById('co-item-valor').value = '';
+            renderizarItensCompraRascunho();
+        }
+
+        function removerItemCompraRascunho(index) {
+            compraItensRascunho.splice(index, 1);
+            renderizarItensCompraRascunho();
+        }
+
+        function renderizarItensCompraRascunho() {
+            document.getElementById('tbody-compra-itens').innerHTML = compraItensRascunho.map((item, index) => `
+                <tr>
+                    <td>${item.nome}</td>
+                    <td>${item.quantidade}</td>
+                    <td>R$ ${item.valor_unitario.toFixed(4)}</td>
+                    <td>R$ ${(item.quantidade * item.valor_unitario).toFixed(2)}</td>
+                    <td><button class="secundario" onclick="removerItemCompraRascunho(${index})">Remover</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum item adicionado.</td></tr>';
+        }
+
+        async function salvarCompraManual() {
+            const msg = document.getElementById('msg-compra-manual');
+            if (!compraItensRascunho.length) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Adicione ao menos um item.';
+                return;
+            }
+
+            const dados = {
+                fornecedor_id: Number(document.getElementById('co-fornecedor').value),
+                numero_nota: document.getElementById('co-numero').value || null,
+                serie_nota: document.getElementById('co-serie').value || null,
+                data_entrada: document.getElementById('co-data-entrada').value || null,
+                valor_frete: Number(document.getElementById('co-frete').value) || 0,
+                valor_desconto: Number(document.getElementById('co-desconto').value) || 0,
+                itens: compraItensRascunho.map(i => ({ produto_id: i.produto_id, quantidade: i.quantidade, valor_unitario: i.valor_unitario })),
+            };
+
+            const resp = await fetch(`${base}/compras`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            if (resp.ok) {
+                msg.className = 'msg sucesso';
+                msg.textContent = 'Entrada registrada. Confirme na lista de notas abaixo para dar baixa em estoque e gerar contas a pagar.';
+                compraItensRascunho = [];
+                renderizarItensCompraRascunho();
+                document.getElementById('co-numero').value = '';
+                document.getElementById('co-serie').value = '';
+                carregarCompras();
+            } else {
+                const erro = await resp.json();
+                msg.className = 'msg erro';
+                msg.textContent = erro.message ?? 'Erro ao registrar entrada.';
+            }
+        }
+
+        async function importarXmlCompra() {
+            const msg = document.getElementById('msg-compra-xml');
+            const arquivo = document.getElementById('co-xml-arquivo').files[0];
+            if (!arquivo) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Selecione um arquivo XML.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('xml', arquivo);
+
+            const resp = await fetch(`${base}/compras/importar-xml`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: formData,
+            });
+
+            if (resp.ok) {
+                const compra = await resp.json();
+                msg.className = 'msg sucesso';
+                msg.textContent = 'XML importado. Confira o vínculo dos itens abaixo antes de confirmar.';
+                document.getElementById('co-xml-arquivo').value = '';
+                await carregarCompras();
+                abrirConferenciaCompra(compra.id);
+            } else {
+                const erro = await resp.json();
+                msg.className = 'msg erro';
+                msg.textContent = erro.message ?? 'Erro ao importar XML.';
+            }
+        }
+
+        async function abrirConferenciaCompra(compraId) {
+            const resp = await fetch(`${base}/compras/${compraId}`);
+            compraConferenciaAtual = await resp.json();
+            document.getElementById('compra-conf-id').textContent = compraConferenciaAtual.id;
+
+            document.getElementById('tbody-compra-conferencia').innerHTML = compraConferenciaAtual.itens.map(item => `
+                <tr>
+                    <td>${item.descricao_xml ?? (item.produto ? item.produto.nome : '-')}</td>
+                    <td>${item.quantidade}</td>
+                    <td>R$ ${Number(item.valor_unitario).toFixed(4)}</td>
+                    <td>
+                        ${item.produto
+                            ? item.produto.nome
+                            : `<select id="conf-produto-${item.id}">
+                                <option value="">Selecionar produto...</option>
+                                ${produtosCache.map(p => `<option value="${p.id}">${p.nome}</option>`).join('')}
+                                <option value="novo">+ Cadastrar novo produto</option>
+                               </select>`
+                        }
+                    </td>
+                    <td>
+                        ${item.produto ? '' : `<button class="secundario" onclick="vincularItemCompra(${item.id})">Vincular</button>`}
+                    </td>
+                </tr>
+            `).join('');
+
+            document.getElementById('compra-conferencia-card').style.display = 'block';
+            document.getElementById('compra-conferencia-card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function vincularItemCompra(itemId) {
+            const select = document.getElementById(`conf-produto-${itemId}`);
+            const valor = select.value;
+            const msg = document.getElementById('msg-compra-conferencia');
+
+            let dados;
+            if (valor === 'novo') {
+                const item = compraConferenciaAtual.itens.find(i => i.id === itemId);
+                dados = { novo_produto: { nome: item.descricao_xml, preco_venda: item.valor_unitario } };
+            } else if (valor) {
+                dados = { produto_id: Number(valor) };
+            } else {
+                msg.className = 'msg erro';
+                msg.textContent = 'Selecione um produto ou a opção de cadastrar novo.';
+                return;
+            }
+
+            const resp = await fetch(`${base}/compras/${compraConferenciaAtual.id}/itens/${itemId}/vincular`, {
+                method: 'PUT', headers: headersJson, body: JSON.stringify(dados),
+            });
+
+            if (resp.ok) {
+                await abrirConferenciaCompra(compraConferenciaAtual.id);
+            } else {
+                const erro = await resp.json();
+                msg.className = 'msg erro';
+                msg.textContent = erro.message ?? 'Erro ao vincular item.';
+            }
+        }
+
+        async function confirmarCompra() {
+            const msg = document.getElementById('msg-compra-conferencia');
+            const resp = await fetch(`${base}/compras/${compraConferenciaAtual.id}/confirmar`, {
+                method: 'PUT', headers: headersJson,
+            });
+
+            if (resp.ok) {
+                msg.className = 'msg sucesso';
+                msg.textContent = 'Entrada confirmada: estoque atualizado e conta a pagar gerada.';
+                document.getElementById('compra-conferencia-card').style.display = 'none';
+                carregarCompras();
+            } else {
+                const erro = await resp.json();
+                msg.className = 'msg erro';
+                msg.textContent = erro.message ?? 'Erro ao confirmar entrada.';
             }
         }
 
@@ -1909,6 +2264,27 @@
             const msg = document.getElementById('msg-config-loja');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Identidade visual salva.';
+        }
+
+        // ---- Parâmetros operacionais (estoque, PDV, etc.) ----
+
+        async function carregarConfigOperacional() {
+            const resp = await fetch(`${base}/config-operacional`);
+            const dados = await resp.json();
+            document.getElementById('pm-estoque-negativo').checked = !!dados.estoque_permite_negativo;
+            document.getElementById('pm-impressao-direta').checked = !!dados.pdv_impressao_direta;
+        }
+
+        async function salvarConfigOperacional() {
+            const dados = {
+                estoque_permite_negativo: document.getElementById('pm-estoque-negativo').checked,
+                pdv_impressao_direta: document.getElementById('pm-impressao-direta').checked,
+            };
+            const resp = await fetch(`${base}/config-operacional`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-operacional');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Parâmetros salvos.';
         }
 
         // ---- Fiscal (emissão, relatório, cancelamento, inutilização) ----

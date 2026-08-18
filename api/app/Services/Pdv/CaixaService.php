@@ -25,7 +25,7 @@ class CaixaService
 
         $movimentosDesdeAbertura = Caixa::where('empresa_id', $empresaId)
             ->where('id', '>=', $aberturaAtual->id)
-            ->whereIn('tipo', ['abertura', 'sangria', 'suprimento'])
+            ->whereIn('tipo', ['abertura', 'sangria', 'suprimento', 'venda'])
             ->get();
 
         $saldo = $movimentosDesdeAbertura->sum(
@@ -77,6 +77,29 @@ class CaixaService
             'empresa_id' => $empresa->id,
             'usuario_id' => $usuarioId,
             'tipo' => $tipo,
+            'valor' => $valor,
+            'data_hora' => now(),
+            'observacao' => $observacao,
+        ]);
+    }
+
+    /**
+     * Lança a entrada de uma venda paga em dinheiro no caixa físico
+     * aberto no momento. Se não houver caixa aberto (empresa vendendo
+     * fora do fluxo normal do PDV), não lança nada - não há gaveta para
+     * receber o valor, e travar a venda por isso seria pior que só não
+     * refletir no caixa.
+     */
+    public function registrarVenda(Empresa $empresa, int $usuarioId, float $valor, ?string $observacao): ?Caixa
+    {
+        if ($this->aberturaEmAberto($empresa->id) === null) {
+            return null;
+        }
+
+        return Caixa::create([
+            'empresa_id' => $empresa->id,
+            'usuario_id' => $usuarioId,
+            'tipo' => 'venda',
             'valor' => $valor,
             'data_hora' => now(),
             'observacao' => $observacao,

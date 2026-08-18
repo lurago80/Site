@@ -1125,6 +1125,30 @@ class DashboardController extends Controller
         return response()->json($empresaAtual->fresh()->only(['segmento', 'logo_url', 'cor_primaria']));
     }
 
+    // ---- Parâmetros operacionais (estoque, PDV, etc.) ----
+
+    public function configOperacional(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta']));
+    }
+
+    public function atualizarConfigOperacional(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'estoque_permite_negativo' => ['required', 'boolean'],
+            'pdv_impressao_direta' => ['required', 'boolean'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $empresaAtual->update($dados);
+
+        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta']));
+    }
+
     // ---- Configuração de gateway de pagamento ----
 
     /**

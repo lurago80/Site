@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'empresa_id', 'cliente_id', 'vendedor_id', 'atendente_id', 'forma_pagamento_id',
@@ -50,5 +51,17 @@ class Venda extends Model
     public function itens(): HasMany
     {
         return $this->hasMany(ItemVenda::class);
+    }
+
+    public function documentoFiscal(): HasOne
+    {
+        return $this->hasOne(DocumentoFiscal::class)
+            ->whereIn('tipo_operacao', ['venda', 'regularizacao_nfce'])
+            ->latest('id');
+    }
+
+    public function devolucoes(): HasMany
+    {
+        return $this->hasMany(DocumentoFiscal::class)->where('tipo_operacao', 'devolucao');
     }
 }

@@ -76,6 +76,59 @@
     </div>
 
     <div class="card">
+        <h2>Devolução de venda (gerar NFe de devolução)</h2>
+        <p style="font-size:12px; color:#616e7c; margin-top:0;">
+            Cliente devolvendo mercadoria comprada. Gera NFe (modelo 55) com CFOP 1202 (mesmo estado)
+            ou 2202 (fora do estado), referenciando a nota original quando possível.
+        </p>
+        <table>
+            <thead><tr><th>Documento</th><th>Cliente</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+            <tbody id="tbody-devolucao-documentos"><tr><td colspan="5">Carregando...</td></tr></tbody>
+        </table>
+        <p class="msg" id="msg-devolucao-lista"></p>
+
+        <div id="painel-devolucao-itens" style="display:none; margin-top:16px;">
+            <h3 style="font-size:14px;">Itens disponíveis para devolução — documento #<span id="devolucao-documento-numero"></span></h3>
+            <table>
+                <thead><tr><th>Devolver?</th><th>Produto</th><th>Vendido</th><th>Já devolvido</th><th>Disponível</th><th>Quantidade a devolver</th></tr></thead>
+                <tbody id="tbody-devolucao-itens"><tr><td colspan="6">Carregando...</td></tr></tbody>
+            </table>
+            <div class="linha-form">
+                <div><button onclick="confirmarDevolucao()">Confirmar devolução</button></div>
+                <div><button class="secundario" onclick="fecharPainelDevolucao()">Cancelar</button></div>
+            </div>
+            <p class="msg" id="msg-devolucao-confirmar"></p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Devolução a fornecedor (gerar NFe de devolução)</h2>
+        <p style="font-size:12px; color:#616e7c; margin-top:0;">
+            Empresa devolvendo mercadoria comprada. Gera NFe (modelo 55) com CFOP 5202 (mesmo estado)
+            ou 6202 (fora do estado), referenciando a nota do fornecedor quando possível.
+            Exige compra confirmada e fornecedor com endereço completo cadastrado.
+        </p>
+        <table>
+            <thead><tr><th>Compra</th><th>Fornecedor</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+            <tbody id="tbody-devolucao-fornecedor-compras"><tr><td colspan="5">Carregando...</td></tr></tbody>
+        </table>
+        <p class="msg" id="msg-devolucao-fornecedor-lista"></p>
+
+        <div id="painel-devolucao-fornecedor-itens" style="display:none; margin-top:16px;">
+            <h3 style="font-size:14px;">Itens disponíveis para devolução — compra #<span id="devolucao-fornecedor-compra-numero"></span></h3>
+            <table>
+                <thead><tr><th>Devolver?</th><th>Produto</th><th>Comprado</th><th>Já devolvido</th><th>Disponível</th><th>Quantidade a devolver</th></tr></thead>
+                <tbody id="tbody-devolucao-fornecedor-itens"><tr><td colspan="6">Carregando...</td></tr></tbody>
+            </table>
+            <div class="linha-form">
+                <div><button onclick="confirmarDevolucaoFornecedor()">Confirmar devolução</button></div>
+                <div><button class="secundario" onclick="fecharPainelDevolucaoFornecedor()">Cancelar</button></div>
+            </div>
+            <p class="msg" id="msg-devolucao-fornecedor-confirmar"></p>
+        </div>
+    </div>
+
+    <div class="card">
         <h2>Inutilizar numeração</h2>
         <div class="linha-form">
             <div><label>Modelo</label>
@@ -212,6 +265,146 @@
             carregarRelatorio();
         }
 
+        let devolucaoDocumentoId = null;
+
+        async function carregarDocumentosElegiveisDevolucao() {
+            const resp = await fetch(`${apiBase}/documentos-elegiveis-devolucao`);
+            const lista = await resp.json();
+            const tbody = document.getElementById('tbody-devolucao-documentos');
+            if (!lista.length) { tbody.innerHTML = '<tr><td colspan="5">Nenhum documento disponível para devolução.</td></tr>'; return; }
+            tbody.innerHTML = lista.map(d => `
+                <tr>
+                    <td>#${d.numero} (${d.modelo === 55 ? 'NFe' : 'NFC-e'})</td>
+                    <td>${d.cliente || 'Não identificado'}</td>
+                    <td>R$ ${Number(d.total).toFixed(2)}</td>
+                    <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
+                    <td><button onclick="abrirPainelDevolucao(${d.id}, ${d.numero})">Devolver</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function abrirPainelDevolucao(documentoId, numero) {
+            devolucaoDocumentoId = documentoId;
+            document.getElementById('devolucao-documento-numero').textContent = numero;
+            document.getElementById('painel-devolucao-itens').style.display = 'block';
+            document.getElementById('msg-devolucao-confirmar').textContent = '';
+
+            const resp = await fetch(`${apiBase}/documentos/${documentoId}/itens-disponiveis-devolucao`);
+            const itens = await resp.json();
+            const tbody = document.getElementById('tbody-devolucao-itens');
+            if (!itens.length) { tbody.innerHTML = '<tr><td colspan="6">Nenhum item disponível.</td></tr>'; return; }
+            tbody.innerHTML = itens.map(i => `
+                <tr>
+                    <td><input type="checkbox" class="devolucao-item-check" data-item-venda-id="${i.item_venda_id}"></td>
+                    <td>${i.produto || '-'}</td>
+                    <td>${i.quantidade_vendida}</td>
+                    <td>${i.quantidade_ja_devolvida}</td>
+                    <td>${i.quantidade_disponivel}</td>
+                    <td><input type="number" step="0.001" min="0" max="${i.quantidade_disponivel}" class="devolucao-item-qtd" data-item-venda-id="${i.item_venda_id}" style="width:90px" ${i.quantidade_disponivel <= 0 ? 'disabled' : ''}></td>
+                </tr>
+            `).join('');
+        }
+
+        function fecharPainelDevolucao() {
+            devolucaoDocumentoId = null;
+            document.getElementById('painel-devolucao-itens').style.display = 'none';
+        }
+
+        async function confirmarDevolucao() {
+            const itens = Array.from(document.querySelectorAll('.devolucao-item-check'))
+                .filter(chk => chk.checked)
+                .map(chk => {
+                    const itemVendaId = Number(chk.dataset.itemVendaId);
+                    const input = document.querySelector(`.devolucao-item-qtd[data-item-venda-id="${itemVendaId}"]`);
+                    return { item_venda_id: itemVendaId, quantidade: Number(input.value) };
+                });
+
+            const msg = document.getElementById('msg-devolucao-confirmar');
+            if (!itens.length) { msg.className = 'msg erro'; msg.textContent = 'Selecione ao menos um item.'; return; }
+
+            const resp = await fetch(`${apiBase}/documentos/${devolucaoDocumentoId}/devolucao`, {
+                method: 'POST',
+                headers: headersJson,
+                body: JSON.stringify({ itens }),
+            });
+            const dados = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
+            msg.className = 'msg ok'; msg.textContent = `NFe de devolução emitida: status ${dados.status}.`;
+            fecharPainelDevolucao();
+            carregarDocumentosElegiveisDevolucao();
+            carregarRelatorio();
+        }
+
+        let devolucaoFornecedorCompraId = null;
+
+        async function carregarComprasElegiveisDevolucao() {
+            const resp = await fetch(`${apiBase}/compras-elegiveis-devolucao`);
+            const lista = await resp.json();
+            const tbody = document.getElementById('tbody-devolucao-fornecedor-compras');
+            if (!lista.length) { tbody.innerHTML = '<tr><td colspan="5">Nenhuma compra confirmada disponível para devolução.</td></tr>'; return; }
+            tbody.innerHTML = lista.map(c => `
+                <tr>
+                    <td>#${c.id}${c.numero_nota ? ' (NF ' + c.numero_nota + ')' : ''}</td>
+                    <td>${c.fornecedor || 'Não identificado'}</td>
+                    <td>R$ ${Number(c.total).toFixed(2)}</td>
+                    <td>${new Date(c.data_entrada).toLocaleDateString('pt-BR')}</td>
+                    <td><button onclick="abrirPainelDevolucaoFornecedor(${c.id})">Devolver</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function abrirPainelDevolucaoFornecedor(compraId) {
+            devolucaoFornecedorCompraId = compraId;
+            document.getElementById('devolucao-fornecedor-compra-numero').textContent = compraId;
+            document.getElementById('painel-devolucao-fornecedor-itens').style.display = 'block';
+            document.getElementById('msg-devolucao-fornecedor-confirmar').textContent = '';
+
+            const resp = await fetch(`${apiBase}/compras/${compraId}/itens-disponiveis-devolucao`);
+            const itens = await resp.json();
+            const tbody = document.getElementById('tbody-devolucao-fornecedor-itens');
+            if (!itens.length) { tbody.innerHTML = '<tr><td colspan="6">Nenhum item disponível.</td></tr>'; return; }
+            tbody.innerHTML = itens.map(i => `
+                <tr>
+                    <td><input type="checkbox" class="devolucao-fornecedor-item-check" data-item-compra-id="${i.item_compra_id}"></td>
+                    <td>${i.produto || '-'}</td>
+                    <td>${i.quantidade_comprada}</td>
+                    <td>${i.quantidade_ja_devolvida}</td>
+                    <td>${i.quantidade_disponivel}</td>
+                    <td><input type="number" step="0.001" min="0" max="${i.quantidade_disponivel}" class="devolucao-fornecedor-item-qtd" data-item-compra-id="${i.item_compra_id}" style="width:90px" ${i.quantidade_disponivel <= 0 ? 'disabled' : ''}></td>
+                </tr>
+            `).join('');
+        }
+
+        function fecharPainelDevolucaoFornecedor() {
+            devolucaoFornecedorCompraId = null;
+            document.getElementById('painel-devolucao-fornecedor-itens').style.display = 'none';
+        }
+
+        async function confirmarDevolucaoFornecedor() {
+            const itens = Array.from(document.querySelectorAll('.devolucao-fornecedor-item-check'))
+                .filter(chk => chk.checked)
+                .map(chk => {
+                    const itemCompraId = Number(chk.dataset.itemCompraId);
+                    const input = document.querySelector(`.devolucao-fornecedor-item-qtd[data-item-compra-id="${itemCompraId}"]`);
+                    return { item_compra_id: itemCompraId, quantidade: Number(input.value) };
+                });
+
+            const msg = document.getElementById('msg-devolucao-fornecedor-confirmar');
+            if (!itens.length) { msg.className = 'msg erro'; msg.textContent = 'Selecione ao menos um item.'; return; }
+
+            const resp = await fetch(`${apiBase}/compras/${devolucaoFornecedorCompraId}/devolucao`, {
+                method: 'POST',
+                headers: headersJson,
+                body: JSON.stringify({ itens }),
+            });
+            const dados = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message; return; }
+            msg.className = 'msg ok'; msg.textContent = `NFe de devolução emitida: status ${dados.status}.`;
+            fecharPainelDevolucaoFornecedor();
+            carregarComprasElegiveisDevolucao();
+            carregarRelatorio();
+        }
+
         async function inutilizar() {
             const dados = {
                 modelo: Number(document.getElementById('inut-modelo').value),
@@ -234,6 +427,8 @@
         carregarRelatorio();
         carregarVendasNaoFiscais();
         carregarNfcesDisponiveis();
+        carregarDocumentosElegiveisDevolucao();
+        carregarComprasElegiveisDevolucao();
     </script>
 </body>
 </html>

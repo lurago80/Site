@@ -3,6 +3,7 @@
 namespace App\Services\Fiscal;
 
 use App\Models\CertificadoDigital;
+use App\Models\Compra;
 use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\DocumentoFiscalItem;
@@ -45,10 +46,15 @@ class EmissaoFiscalService
 
             [$serie, $numero] = $this->proximoNumero($configFiscal, $modelo);
 
+            $tipoOperacao = $documentoOrigemId !== null
+                ? CfopResolver::TIPO_REGULARIZACAO_NFCE
+                : CfopResolver::TIPO_VENDA;
+
             $documento = DocumentoFiscal::create([
                 'empresa_id' => $venda->empresa_id,
                 'venda_id' => $venda->id,
                 'documento_fiscal_origem_id' => $documentoOrigemId,
+                'tipo_operacao' => $tipoOperacao,
                 'modelo' => $modelo,
                 'serie' => $serie,
                 'numero' => $numero,
@@ -62,7 +68,7 @@ class EmissaoFiscalService
                 ->where('empresa_id', $venda->empresa_id)
                 ->first();
 
-            $itensEmMemoria = $this->montarItensEmMemoria($venda, $documento, $documentoOrigemId !== null);
+            $itensEmMemoria = $this->montarItensEmMemoria($venda, $documento, $tipoOperacao);
 
             $resultado = $this->gateway->emitir(
                 $documento,
@@ -128,6 +134,276 @@ class EmissaoFiscalService
         }
 
         return $this->emitir($documentoNfce->venda, 55, $documentoNfce->id);
+    }
+
+    /**
+     * Emite uma NFe de devolução (modelo 55, CFOP 1202/2202, tpNF=0) para
+     * o cliente devolvendo itens (parcial ou totalmente) de uma venda já
+     * documentada por NFe ou NFC-e - ver Fiscal\CfopResolver e
+     * NfePhpFiscalGateway::montarXmlNfe(). Usa a mesma sequência de
+     * numeração/série de NFe da empresa (sem série dedicada).
+     *
+     * @param  array<int, array{item_venda_id: int, quantidade: float}>  $itensDevolucao
+     */
+    public function emitirDevolucao(DocumentoFiscal $documentoOrigem, array $itensDevolucao): DocumentoFiscal
+    {
+        if ($documentoOrigem->status !== 'autorizada') {
+            throw new \RuntimeException('Só é possível devolver itens de um documento autorizado.');
+        }
+
+        if (! in_array($documentoOrigem->modelo, [55, 65], true)) {
+            throw new \RuntimeException("Modelo fiscal não suportado: {$documentoOrigem->modelo}.");
+        }
+
+        if ($documentoOrigem->tipo_operacao === 'devolucao') {
+            throw new \RuntimeException('Não é possível devolver um documento que já é uma devolução.');
+        }
+
+        if (empty($itensDevolucao)) {
+            throw new \InvalidArgumentException('Informe ao menos um item a devolver.');
+        }
+
+        $venda = $documentoOrigem->venda;
+
+        if ($venda === null) {
+            throw new \RuntimeException('Documento sem venda associada.');
+        }
+
+        return DB::transaction(function () use ($documentoOrigem, $itensDevolucao, $venda) {
+            $itensSelecionados = collect($itensDevolucao)->map(function (array $selecao) use ($venda) {
+                $itemVenda = $venda->itens->firstWhere('id', $selecao['item_venda_id']);
+
+                if ($itemVenda === null) {
+                    throw new \InvalidArgumentException("Item de venda {$selecao['item_venda_id']} não pertence a esta venda.");
+                }
+
+                $quantidadeSolicitada = (float) $selecao['quantidade'];
+
+                if ($quantidadeSolicitada <= 0) {
+                    throw new \InvalidArgumentException("Quantidade a devolver do item {$selecao['item_venda_id']} deve ser maior que zero.");
+                }
+
+                $quantidadeJaDevolvida = (float) DocumentoFiscalItem::query()
+                    ->where('item_venda_id', $itemVenda->id)
+                    ->whereHas('documentoFiscal', fn ($query) => $query
+                        ->where('tipo_operacao', 'devolucao')
+                        ->whereNotIn('status', ['cancelada', 'rejeitada']))
+                    ->sum('quantidade');
+
+                $quantidadeDisponivel = (float) $itemVenda->quantidade - $quantidadeJaDevolvida;
+
+                if ($quantidadeSolicitada > $quantidadeDisponivel) {
+                    throw new \InvalidArgumentException(
+                        "Quantidade a devolver do item {$itemVenda->id} ({$quantidadeSolicitada}) excede o saldo disponível ({$quantidadeDisponivel})."
+                    );
+                }
+
+                return ['item_venda' => $itemVenda, 'quantidade' => $quantidadeSolicitada];
+            });
+
+            $configFiscal = ConfigFiscal::query()
+                ->where('empresa_id', $venda->empresa_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($configFiscal === null) {
+                throw new \RuntimeException('Empresa não possui configuração fiscal cadastrada (config_fiscal).');
+            }
+
+            [$serie, $numero] = $this->proximoNumero($configFiscal, 55);
+
+            $valorTotal = $itensSelecionados->sum(fn (array $s) => round($s['quantidade'] * (float) $s['item_venda']->valor_unitario, 2));
+
+            $documento = DocumentoFiscal::create([
+                'empresa_id' => $venda->empresa_id,
+                'venda_id' => $venda->id,
+                'documento_fiscal_origem_id' => $documentoOrigem->id,
+                'tipo_operacao' => 'devolucao',
+                'direcao_devolucao' => 'cliente_para_empresa',
+                'modelo' => 55,
+                'serie' => $serie,
+                'numero' => $numero,
+                'ambiente' => $configFiscal->ambiente_ativo,
+                'status' => 'contingencia',
+                'total' => $valorTotal,
+                'valor_produtos' => $valorTotal,
+            ]);
+
+            $certificado = CertificadoDigital::query()
+                ->where('empresa_id', $venda->empresa_id)
+                ->first();
+
+            $itensEmMemoria = $this->montarItensEmMemoria(
+                $venda,
+                $documento,
+                CfopResolver::TIPO_DEVOLUCAO_CLIENTE,
+                $itensSelecionados,
+            );
+
+            $resultado = $this->gateway->emitir(
+                $documento,
+                $itensEmMemoria,
+                $venda->empresa,
+                $configFiscal,
+                $certificado,
+            );
+
+            $documento->update([
+                'status' => $resultado->status,
+                'chave_acesso' => $resultado->chaveAcesso,
+                'protocolo_autorizacao' => $resultado->protocoloAutorizacao,
+                'xml_path' => $this->salvarXml($venda->empresa_id, $resultado->chaveAcesso, $documento->id, $resultado->xml),
+                'motivo_cancelamento' => $resultado->motivoRejeicao,
+            ]);
+
+            foreach ($itensEmMemoria as $item) {
+                $item->documento_fiscal_id = $documento->id;
+                $item->save();
+            }
+
+            return $documento->fresh('itens');
+        });
+    }
+
+    /**
+     * Emite uma NFe de devolução ao fornecedor (modelo 55, CFOP 5202/6202,
+     * tpNF=1) para itens (parcial ou totalmente) de uma compra já
+     * confirmada - ver Fiscal\CfopResolver e NfePhpFiscalGateway
+     * (devolução empresa->fornecedor). Decrementa o estoque devolvido,
+     * espelhando CompraService::confirmar() na direção inversa.
+     *
+     * @param  array<int, array{item_compra_id: int, quantidade: float}>  $itensDevolucao
+     */
+    public function emitirDevolucaoFornecedor(Compra $compra, array $itensDevolucao): DocumentoFiscal
+    {
+        if ($compra->status !== 'confirmada') {
+            throw new \RuntimeException('Só é possível devolver itens de uma compra confirmada.');
+        }
+
+        if (empty($itensDevolucao)) {
+            throw new \InvalidArgumentException('Informe ao menos um item a devolver.');
+        }
+
+        $compra->loadMissing('itens.produto', 'fornecedor');
+
+        return DB::transaction(function () use ($compra, $itensDevolucao) {
+            $itensSelecionados = collect($itensDevolucao)->map(function (array $selecao) use ($compra) {
+                $itemCompra = $compra->itens->firstWhere('id', $selecao['item_compra_id']);
+
+                if ($itemCompra === null) {
+                    throw new \InvalidArgumentException("Item de compra {$selecao['item_compra_id']} não pertence a esta compra.");
+                }
+
+                $quantidadeSolicitada = (float) $selecao['quantidade'];
+
+                if ($quantidadeSolicitada <= 0) {
+                    throw new \InvalidArgumentException("Quantidade a devolver do item {$selecao['item_compra_id']} deve ser maior que zero.");
+                }
+
+                $quantidadeJaDevolvida = (float) DocumentoFiscalItem::query()
+                    ->where('item_compra_id', $itemCompra->id)
+                    ->whereHas('documentoFiscal', fn ($query) => $query
+                        ->where('tipo_operacao', 'devolucao')
+                        ->where('direcao_devolucao', 'empresa_para_fornecedor')
+                        ->whereNotIn('status', ['cancelada', 'rejeitada']))
+                    ->sum('quantidade');
+
+                $quantidadeDisponivel = (float) $itemCompra->quantidade - $quantidadeJaDevolvida;
+
+                if ($quantidadeSolicitada > $quantidadeDisponivel) {
+                    throw new \InvalidArgumentException(
+                        "Quantidade a devolver do item {$itemCompra->id} ({$quantidadeSolicitada}) excede o saldo disponível ({$quantidadeDisponivel})."
+                    );
+                }
+
+                return ['item_compra' => $itemCompra, 'quantidade' => $quantidadeSolicitada];
+            });
+
+            $configFiscal = ConfigFiscal::query()
+                ->where('empresa_id', $compra->empresa_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($configFiscal === null) {
+                throw new \RuntimeException('Empresa não possui configuração fiscal cadastrada (config_fiscal).');
+            }
+
+            [$serie, $numero] = $this->proximoNumero($configFiscal, 55);
+
+            $valorTotal = $itensSelecionados->sum(fn (array $s) => round($s['quantidade'] * (float) $s['item_compra']->valor_unitario, 2));
+
+            $documento = DocumentoFiscal::create([
+                'empresa_id' => $compra->empresa_id,
+                'compra_id' => $compra->id,
+                'tipo_operacao' => 'devolucao',
+                'direcao_devolucao' => 'empresa_para_fornecedor',
+                'modelo' => 55,
+                'serie' => $serie,
+                'numero' => $numero,
+                'ambiente' => $configFiscal->ambiente_ativo,
+                'status' => 'contingencia',
+                'total' => $valorTotal,
+                'valor_produtos' => $valorTotal,
+            ]);
+
+            $empresa = $compra->empresa;
+            $ufEmpresa = $empresa->uf;
+            $ufFornecedor = $compra->fornecedor->uf ?: $ufEmpresa;
+
+            $itensEmMemoria = $itensSelecionados->map(function (array $selecao) use ($compra, $documento, $ufEmpresa, $ufFornecedor) {
+                $itemCompra = $selecao['item_compra'];
+                $quantidade = $selecao['quantidade'];
+
+                $cfop = $ufEmpresa
+                    ? $this->cfopResolver->resolver($ufEmpresa, $ufFornecedor, $itemCompra->produto?->cfop_padrao, CfopResolver::TIPO_DEVOLUCAO_FORNECEDOR)
+                    : null;
+
+                return new DocumentoFiscalItem([
+                    'empresa_id' => $compra->empresa_id,
+                    'documento_fiscal_id' => $documento->id,
+                    'item_compra_id' => $itemCompra->id,
+                    'produto_id' => $itemCompra->produto_id,
+                    'ncm' => $itemCompra->produto?->ncm,
+                    'cfop' => $cfop,
+                    'quantidade' => $quantidade,
+                    'valor_unitario' => $itemCompra->valor_unitario,
+                    'valor_total' => round($quantidade * (float) $itemCompra->valor_unitario, 2),
+                ]);
+            })->values();
+
+            $certificado = CertificadoDigital::query()
+                ->where('empresa_id', $compra->empresa_id)
+                ->first();
+
+            $resultado = $this->gateway->emitir(
+                $documento,
+                $itensEmMemoria,
+                $empresa,
+                $configFiscal,
+                $certificado,
+            );
+
+            $documento->update([
+                'status' => $resultado->status,
+                'chave_acesso' => $resultado->chaveAcesso,
+                'protocolo_autorizacao' => $resultado->protocoloAutorizacao,
+                'xml_path' => $this->salvarXml($compra->empresa_id, $resultado->chaveAcesso, $documento->id, $resultado->xml),
+                'motivo_cancelamento' => $resultado->motivoRejeicao,
+            ]);
+
+            foreach ($itensEmMemoria as $item) {
+                $item->documento_fiscal_id = $documento->id;
+                $item->save();
+            }
+
+            if ($resultado->status === 'autorizada') {
+                foreach ($itensSelecionados as $selecao) {
+                    $selecao['item_compra']->produto?->decrement('estoque_atual', $selecao['quantidade']);
+                }
+            }
+
+            return $documento->fresh('itens');
+        });
     }
 
     public function cancelar(DocumentoFiscal $documento, string $justificativa): DocumentoFiscal
@@ -230,16 +506,29 @@ class EmissaoFiscalService
     }
 
     /**
+     * @param  Collection<int, array{item_venda: \App\Models\ItemVenda, quantidade: float}>|null  $itensSelecionados  quando null, usa todos os itens da venda com a quantidade cheia (venda/regularização)
      * @return Collection<int, DocumentoFiscalItem>
      */
-    private function montarItensEmMemoria(Venda $venda, DocumentoFiscal $documento, bool $regularizacaoDeNfce): Collection
-    {
+    private function montarItensEmMemoria(
+        Venda $venda,
+        DocumentoFiscal $documento,
+        string $tipoOperacao,
+        ?Collection $itensSelecionados = null,
+    ): Collection {
         $ufEmpresa = $venda->empresa->uf;
         $ufCliente = $venda->cliente?->uf ?: $ufEmpresa;
 
-        return $venda->itens->map(function ($itemVenda) use ($venda, $documento, $ufEmpresa, $ufCliente, $regularizacaoDeNfce) {
+        $itens = $itensSelecionados ?? $venda->itens->map(fn ($itemVenda) => [
+            'item_venda' => $itemVenda,
+            'quantidade' => $itemVenda->quantidade,
+        ]);
+
+        return $itens->map(function (array $selecao) use ($venda, $documento, $ufEmpresa, $ufCliente, $tipoOperacao) {
+            $itemVenda = $selecao['item_venda'];
+            $quantidade = $selecao['quantidade'];
+
             $cfop = $ufEmpresa
-                ? $this->cfopResolver->resolver($ufEmpresa, $ufCliente, $itemVenda->produto?->cfop_padrao, $regularizacaoDeNfce)
+                ? $this->cfopResolver->resolver($ufEmpresa, $ufCliente, $itemVenda->produto?->cfop_padrao, $tipoOperacao)
                 : null;
 
             return new DocumentoFiscalItem([
@@ -249,11 +538,11 @@ class EmissaoFiscalService
                 'produto_id' => $itemVenda->produto_id,
                 'ncm' => $itemVenda->produto?->ncm,
                 'cfop' => $cfop,
-                'quantidade' => $itemVenda->quantidade,
+                'quantidade' => $quantidade,
                 'valor_unitario' => $itemVenda->valor_unitario,
-                'valor_total' => $itemVenda->valor_total,
+                'valor_total' => round($quantidade * (float) $itemVenda->valor_unitario, 2),
             ]);
-        });
+        })->values();
     }
 
     /**

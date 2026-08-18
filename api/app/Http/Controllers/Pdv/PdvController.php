@@ -25,9 +25,14 @@ class PdvController extends Controller
         private readonly CaixaService $caixaService,
     ) {}
 
-    public function caixa(string $empresa)
+    public function caixa(Request $request, string $empresa)
     {
-        return view('pdv.caixa', ['empresaSlug' => $empresa]);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return view('pdv.caixa', [
+            'empresaSlug' => $empresa,
+            'pdvImpressaoDireta' => $empresaAtual?->pdv_impressao_direta ?? false,
+        ]);
     }
 
     public function produtos(Request $request, string $empresa)
@@ -95,7 +100,7 @@ class PdvController extends Controller
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
             'agenda_visitacao_id' => ['nullable', 'integer'],
-            'agenda_quantidade' => ['required_with:agenda_visitacao_id', 'integer', 'min:1'],
+            'agenda_quantidade' => ['nullable', 'required_with:agenda_visitacao_id', 'integer', 'min:1'],
         ]);
 
         abort_if(
@@ -107,7 +112,7 @@ class PdvController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         try {
-            $venda = $this->vendaPdvService->finalizar($empresaAtual, $dados);
+            $venda = $this->vendaPdvService->finalizar($empresaAtual, $dados, $request->user()->id);
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

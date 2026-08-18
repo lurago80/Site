@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\Compras\ComprasController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Fiscal\GestaoFiscalController;
 use App\Http\Controllers\Pdv\PdvController;
@@ -47,6 +48,12 @@ Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(functio
     Route::post('/inutilizacoes', [GestaoFiscalController::class, 'inutilizar']);
     Route::post('/vendas/{vendaId}/importar', [GestaoFiscalController::class, 'importarVendaNaoFiscal']);
     Route::post('/nfces/{documentoNfceId}/importar-para-nfe', [GestaoFiscalController::class, 'importarVendaNfce']);
+    Route::get('/documentos-elegiveis-devolucao', [GestaoFiscalController::class, 'documentosElegiveisDevolucao']);
+    Route::get('/documentos/{documentoId}/itens-disponiveis-devolucao', [GestaoFiscalController::class, 'itensDisponiveisDevolucao']);
+    Route::post('/documentos/{documentoId}/devolucao', [GestaoFiscalController::class, 'emitirDevolucao']);
+    Route::get('/compras-elegiveis-devolucao', [GestaoFiscalController::class, 'comprasElegiveisDevolucao']);
+    Route::get('/compras/{compraId}/itens-disponiveis-devolucao', [GestaoFiscalController::class, 'itensCompraDisponiveisDevolucao']);
+    Route::post('/compras/{compraId}/devolucao', [GestaoFiscalController::class, 'emitirDevolucaoFornecedor']);
     Route::get('/documentos/{documentoId}/reimprimir', [GestaoFiscalController::class, 'reimprimir']);
     Route::get('/exportar/xmls', [GestaoFiscalController::class, 'exportarXmls']);
     Route::get('/exportar/relatorio-contador', [GestaoFiscalController::class, 'exportarRelatorioContador']);
@@ -110,6 +117,14 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::post('/fornecedores', [DashboardController::class, 'criarFornecedor']);
     Route::put('/fornecedores/{fornecedorId}', [DashboardController::class, 'atualizarFornecedor']);
 
+    Route::get('/compras', [ComprasController::class, 'index']);
+    Route::post('/compras', [ComprasController::class, 'store']);
+    Route::post('/compras/importar-xml', [ComprasController::class, 'importarXml']);
+    Route::get('/compras/{compraId}', [ComprasController::class, 'show']);
+    Route::put('/compras/{compraId}/itens/{itemId}/vincular', [ComprasController::class, 'vincularItem']);
+    Route::put('/compras/{compraId}/confirmar', [ComprasController::class, 'confirmar']);
+    Route::put('/compras/{compraId}/cancelar', [ComprasController::class, 'cancelar']);
+
     Route::get('/contas-pagar', [DashboardController::class, 'contasPagar']);
     Route::post('/contas-pagar', [DashboardController::class, 'criarContaPagar']);
     Route::put('/contas-pagar/{contaId}/pagar', [DashboardController::class, 'marcarContaPagarPaga']);
@@ -150,6 +165,9 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
 
     Route::get('/config-loja', [DashboardController::class, 'configLoja']);
     Route::put('/config-loja', [DashboardController::class, 'atualizarConfigLoja']);
+
+    Route::get('/config-operacional', [DashboardController::class, 'configOperacional']);
+    Route::put('/config-operacional', [DashboardController::class, 'atualizarConfigOperacional']);
 
     Route::get('/config-pagamento', [DashboardController::class, 'configPagamento']);
     Route::put('/config-pagamento', [DashboardController::class, 'atualizarConfigPagamento']);
