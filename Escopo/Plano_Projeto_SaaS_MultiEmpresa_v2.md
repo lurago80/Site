@@ -265,9 +265,10 @@ CREATE POLICY empresa_isolation ON <tabela>
 
 Consolida num único lugar itens de configuração/infraestrutura que já estavam espalhados em notas soltas pelo changelog técnico acima - nenhum deles é resolvido só com código, todos exigem uma ação de deploy ou uma credencial real. Sem isso, o sistema funciona em homologação/dev mas não está pronto para receber tráfego real.
 
-**Hospedagem (nada disso existe ainda - maior lacuna real do projeto):**
-- [ ] Backend Laravel hospedado publicamente (VPS ou similar) - hoje só roda em `localhost:8000` nesta máquina de desenvolvimento;
-- [ ] PostgreSQL de produção (gerenciado ou VPS próprio, com backup) - hoje é o cluster local `C:\PostgreSQL\data_site` (porta 5436), criado só para desenvolvimento/teste neste ambiente (ver achado técnico de 2026-08-17);
+**Hospedagem:**
+- [x] Backend Laravel rodando como serviço Windows (NSSM) em máquina da rede local (TERMINAL02, 192.168.0.23:8000) - testado de ponta a ponta em 2026-08-20 (migrations, seed, login, RLS multi-tenant, tudo OK). Ainda não é hospedagem pública real: só acessível dentro da rede local, sem domínio/HTTPS - é o ambiente de teste antes do lançamento (ver achado técnico de 2026-08-20). PHP 8.4.24 instalado nessa máquina (não 8.3 como o `composer.json` sugere - Symfony/Laravel 13 já exigem 8.4+ na prática);
+- [ ] Expor essa máquina (ou uma VPS) publicamente com domínio real - o `cloudflared` já está instalado e rodando nessa máquina (usado por outro projeto), então dá pra reaproveitar via Cloudflare Tunnel sem precisar de VPS nem abrir porta no roteador; falta configurar um novo "Public Hostname" no painel Cloudflare Zero Trust apontando para `localhost:8000`;
+- [ ] PostgreSQL de produção com backup - hoje são dois clusters de teste/dev sem backup automatizado: `C:\PostgreSQL\data_site` (porta 5436, máquina de desenvolvimento local) e o cluster compartilhado do TERMINAL02 (porta 5432, banco `saas_multiempresa` criado em 2026-08-20, compartilhado com outros projetos da empresa);
 - [ ] Domínio + HTTPS/SSL para a API e para cada slug de empresa;
 - [ ] `loja-publica/` com `NEXT_PUBLIC_API_URL` apontando para a API de produção (hoje aponta para `localhost:8000` - deploy de validação já feito na Vercel, ver achado técnico de 2026-08-17, mas ainda não é o lançamento real).
 
@@ -277,7 +278,7 @@ Consolida num único lugar itens de configuração/infraestrutura que já estava
 - [ ] `upload_max_filesize`/`post_max_size` do `php.ini` do servidor ajustados para pelo menos 20MB (mesmo ajuste já feito na máquina de dev para a importação de IBPT, ver achado técnico de 2026-07-26).
 
 **Processos contínuos (fora do `php artisan serve`, que é só para desenvolvimento):**
-- [ ] `php artisan queue:work` rodando como processo supervisionado - sem isso, jobs na fila `database` (ex. confirmação de WhatsApp) nunca são processados (arquivo já pronto em `api/laravel-queue-worker.service`, ver achado técnico de 2026-08-20; falta só instalar no servidor real);
+- [x] `php artisan queue:work` rodando como processo supervisionado - testado como serviço Windows (NSSM, `LaravelQueueWorker`) no TERMINAL02 em 2026-08-20; `api/laravel-queue-worker.service` continua pronto para quando o ambiente de produção final for Linux;
 - [ ] `whatsapp-service/` (Baileys) rodando continuamente ao lado do Laravel, via `pm2` ou `systemd` (arquivos já prontos em `whatsapp-service/ecosystem.config.js` e `whatsapp-service/whatsapp-service.service`) - se cair, notificações via Baileys passam a falhar (não derruba o resto do sistema);
 - [ ] Cron do Laravel (`schedule:run` a cada minuto) para `app:liberar-reservas-expiradas` e `app:enviar-lembretes-visita` - o agendamento em si já está em código (`routes/console.php`); falta só a linha de crontab do servidor chamando `php artisan schedule:run` a cada minuto, ex.: `* * * * * cd /var/www/api && php artisan schedule:run >> /dev/null 2>&1`.
 
