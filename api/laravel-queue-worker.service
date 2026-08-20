@@ -1,0 +1,32 @@
+[Unit]
+# Unidade systemd para o worker da fila `database` do Laravel
+# (php artisan queue:work), que processa jobs assíncronos como o envio
+# de confirmação de visita por WhatsApp. Sem isso rodando, os jobs
+# ficam parados na tabela `jobs` e nunca são processados.
+#
+# Instalação:
+#   sudo cp laravel-queue-worker.service /etc/systemd/system/
+#   # edite WorkingDirectory, User e o caminho do php abaixo antes de ativar
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now laravel-queue-worker
+#   sudo systemctl status laravel-queue-worker
+#   sudo journalctl -u laravel-queue-worker -f   # acompanhar logs
+#
+# Observação: --tries e --backoff evitam que um job com erro permanente
+# fique reprocessando indefinidamente; --sleep evita polling agressivo
+# no banco quando a fila está vazia.
+Description=Worker da fila do Laravel (queue:work) - plataforma SaaS MultiEmpresa
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/api
+ExecStart=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --backoff=10 --max-time=3600
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

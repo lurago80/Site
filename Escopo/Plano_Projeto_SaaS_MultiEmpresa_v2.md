@@ -277,9 +277,9 @@ Consolida num único lugar itens de configuração/infraestrutura que já estava
 - [ ] `upload_max_filesize`/`post_max_size` do `php.ini` do servidor ajustados para pelo menos 20MB (mesmo ajuste já feito na máquina de dev para a importação de IBPT, ver achado técnico de 2026-07-26).
 
 **Processos contínuos (fora do `php artisan serve`, que é só para desenvolvimento):**
-- [ ] `php artisan queue:work` (ou `queue:listen`) rodando como processo supervisionado - sem isso, jobs na fila `database` (ex. confirmação de WhatsApp) nunca são processados;
+- [ ] `php artisan queue:work` rodando como processo supervisionado - sem isso, jobs na fila `database` (ex. confirmação de WhatsApp) nunca são processados (arquivo já pronto em `api/laravel-queue-worker.service`, ver achado técnico de 2026-08-20; falta só instalar no servidor real);
 - [ ] `whatsapp-service/` (Baileys) rodando continuamente ao lado do Laravel, via `pm2` ou `systemd` (arquivos já prontos em `whatsapp-service/ecosystem.config.js` e `whatsapp-service/whatsapp-service.service`) - se cair, notificações via Baileys passam a falhar (não derruba o resto do sistema);
-- [ ] Cron do Laravel (`schedule:run` a cada minuto) para `app:liberar-reservas-expiradas` e `app:enviar-lembretes-visita`.
+- [ ] Cron do Laravel (`schedule:run` a cada minuto) para `app:liberar-reservas-expiradas` e `app:enviar-lembretes-visita` - o agendamento em si já está em código (`routes/console.php`); falta só a linha de crontab do servidor chamando `php artisan schedule:run` a cada minuto, ex.: `* * * * * cd /var/www/api && php artisan schedule:run >> /dev/null 2>&1`.
 
 **Credenciais reais pendentes (nenhuma pode ser criada por aqui, dependem do cliente/operador):**
 - [ ] SMTP de produção (SendGrid ou outro) - aguardando API key e verificação de remetente;
