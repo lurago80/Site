@@ -273,7 +273,7 @@ Consolida num único lugar itens de configuração/infraestrutura que já estava
 
 **Configuração do `.env` de produção:**
 - [ ] `APP_DEBUG=false` (hoje `true` até no `.env.example`, convenção de dev - em produção expõe stack trace e caminhos de arquivo publicamente);
-- [ ] `MAIL_MAILER=smtp` com credenciais reais (hoje `log`, só grava no log local - exemplo pronto com SendGrid no `.env.example`; pendente credencial real, ver pendência em aberto);
+- [x] `MAIL_MAILER=smtp` com credenciais reais - testado com sucesso em 2026-08-20 via fluxo real de "esqueci minha senha" (SMTP `email-ssl.com.br:465`, conta `nfe_clientes@inoveinfo.com.br`, e-mail recebido). Configurado só no `api/.env` local (não versionado); credencial é provisória e será trocada antes do lançamento real - repetir o teste quando a definitiva chegar.
 - [ ] `upload_max_filesize`/`post_max_size` do `php.ini` do servidor ajustados para pelo menos 20MB (mesmo ajuste já feito na máquina de dev para a importação de IBPT, ver achado técnico de 2026-07-26).
 
 **Processos contínuos (fora do `php artisan serve`, que é só para desenvolvimento):**
@@ -282,7 +282,7 @@ Consolida num único lugar itens de configuração/infraestrutura que já estava
 - [ ] Cron do Laravel (`schedule:run` a cada minuto) para `app:liberar-reservas-expiradas` e `app:enviar-lembretes-visita` - o agendamento em si já está em código (`routes/console.php`); falta só a linha de crontab do servidor chamando `php artisan schedule:run` a cada minuto, ex.: `* * * * * cd /var/www/api && php artisan schedule:run >> /dev/null 2>&1`.
 
 **Credenciais reais pendentes (nenhuma pode ser criada por aqui, dependem do cliente/operador):**
-- [ ] SMTP de produção (SendGrid ou outro) - aguardando API key e verificação de remetente;
+- [ ] SMTP de produção definitivo - a conta `nfe_clientes@inoveinfo.com.br` (email-ssl.com.br) usada no teste de 2026-08-20 é provisória; trocar credencial antes do lançamento real;
 - [ ] Pareamento real do WhatsApp via Baileys com um número de celular de verdade - QR code já testado, falta escanear;
 - [ ] Credenciais reais (não sandbox) do Mercado Pago/PagSeguro/Cielo, Asaas e Z-API, por empresa cliente, quando for o caso.
 
