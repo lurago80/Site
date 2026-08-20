@@ -272,7 +272,7 @@ Consolida num único lugar itens de configuração/infraestrutura que já estava
 - [ ] `loja-publica/` com `NEXT_PUBLIC_API_URL` apontando para a API de produção (hoje aponta para `localhost:8000` - deploy de validação já feito na Vercel, ver achado técnico de 2026-08-17, mas ainda não é o lançamento real).
 
 **Configuração do `.env` de produção:**
-- [ ] `APP_DEBUG=false` (hoje `true` até no `.env.example`, convenção de dev - em produção expõe stack trace e caminhos de arquivo publicamente);
+- [ ] `APP_DEBUG=false` no `.env` do servidor de produção - `.env.example` mantém `true` de propósito (convenção de dev) mas agora tem aviso explícito sobre trocar para `false` em produção (ver achado técnico de 2026-08-20); item só se resolve de fato quando existir um `.env` real no servidor;
 - [x] `MAIL_MAILER=smtp` com credenciais reais - testado com sucesso em 2026-08-20 via fluxo real de "esqueci minha senha" (SMTP `email-ssl.com.br:465`, conta `nfe_clientes@inoveinfo.com.br`, e-mail recebido). Configurado só no `api/.env` local (não versionado); credencial é provisória e será trocada antes do lançamento real - repetir o teste quando a definitiva chegar.
 - [ ] `upload_max_filesize`/`post_max_size` do `php.ini` do servidor ajustados para pelo menos 20MB (mesmo ajuste já feito na máquina de dev para a importação de IBPT, ver achado técnico de 2026-07-26).
 
