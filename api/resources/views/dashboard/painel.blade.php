@@ -1049,6 +1049,7 @@
                                 <option value="mercadopago">Mercado Pago</option>
                                 <option value="pagseguro">PagSeguro</option>
                                 <option value="cielo">Cielo</option>
+                                <option value="stone">Stone</option>
                             </select>
                         </div>
                         <div><label>Ambiente</label>

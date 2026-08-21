@@ -23,6 +23,7 @@ class PagamentoGatewayFactory
             'mercadopago' => new MercadoPagoPagamentoGateway(),
             'pagseguro' => new PagSeguroPagamentoGateway(),
             'cielo' => new CieloPagamentoGateway(),
+            'stone' => new StonePagamentoGateway(),
             default => new SimuladoPagamentoGateway(),
         };
     }

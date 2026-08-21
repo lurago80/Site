@@ -45,5 +45,6 @@ Route::middleware(['tenant', 'throttle:20,1'])->prefix('loja/{empresa}')->group(
 */
 Route::middleware('throttle:60,1')->group(function () {
     Route::post('/webhooks/pagamento/mercadopago', [WebhookPagamentoController::class, 'mercadoPago']);
+    Route::post('/webhooks/pagamento/stone', [WebhookPagamentoController::class, 'stone']);
     Route::post('/webhooks/assinatura/asaas', [WebhookAssinaturaController::class, 'asaas']);
 });

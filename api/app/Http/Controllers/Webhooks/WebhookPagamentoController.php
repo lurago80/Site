@@ -56,4 +56,35 @@ class WebhookPagamentoController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
+    /**
+     * Webhook da Stone/Pagar.me - eventos tipo "order.paid", "charge.paid"
+     * etc, com o id do charge em data.charges[0].id. Mesmo princípio de
+     * segurança do Mercado Pago acima: reconsulta a API antes de confiar.
+     */
+    public function stone(Request $request)
+    {
+        $referenciaExterna = (string) $request->input('data.charges.0.id');
+
+        if ($referenciaExterna === '') {
+            return response()->json(['ignorado' => true]);
+        }
+
+        DB::statement("SELECT set_config('app.is_super_admin', 'true', false)");
+
+        $cobranca = Cobranca::where('gateway', 'stone')
+            ->where('referencia_externa', $referenciaExterna)
+            ->first();
+
+        if ($cobranca === null) {
+            return response()->json(['encontrado' => false]);
+        }
+
+        DB::statement("SELECT set_config('app.current_empresa_id', ?, false)", [(string) $cobranca->empresa_id]);
+        DB::statement("SELECT set_config('app.is_super_admin', 'false', false)");
+
+        $this->pagamentoService->consultarEAtualizarStatus($cobranca);
+
+        return response()->json(['ok' => true]);
+    }
 }

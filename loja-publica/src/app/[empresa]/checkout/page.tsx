@@ -7,6 +7,7 @@ import { useCarrinho } from '@/lib/cart';
 import { api, ErroApi } from '@/lib/api';
 import type { ConfigPagamentoPublica, CupomValidado, RespostaCheckout } from '@/lib/types';
 import CardBrick from '@/components/CardBrick';
+import StoneCardForm from '@/components/StoneCardForm';
 
 export default function PaginaCheckout({ params }: { params: Promise<{ empresa: string }> }) {
     const { empresa } = use(params);
@@ -81,7 +82,9 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
         return <TelaConfirmacao empresa={empresa} resultado={resultado} />;
     }
 
-    const aceitaCartaoOnline = configPagamento?.gateway === 'mercadopago' && !!configPagamento.public_key;
+    const aceitaCartaoOnline =
+        (configPagamento?.gateway === 'mercadopago' || configPagamento?.gateway === 'stone') &&
+        !!configPagamento.public_key;
     const desconto = cupomAplicado?.valido ? (cupomAplicado.valor_desconto ?? 0) : 0;
     const totalComDesconto = Math.max(0, total - desconto);
 
@@ -235,11 +238,17 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 </div>
 
                 {formaPagamento === 'cartao' && (
-                    aceitaCartaoOnline && configPagamento?.public_key ? (
+                    aceitaCartaoOnline && configPagamento?.public_key && configPagamento.gateway === 'mercadopago' ? (
                         <CardBrick
                             publicKey={configPagamento.public_key}
                             valor={totalComDesconto}
                             onToken={setDadosCartao}
+                            onErro={setErro}
+                        />
+                    ) : aceitaCartaoOnline && configPagamento?.public_key && configPagamento.gateway === 'stone' ? (
+                        <StoneCardForm
+                            publicKey={configPagamento.public_key}
+                            onToken={(token) => setDadosCartao({ token, installments: 1, payment_type_id: 'credit_card' })}
                             onErro={setErro}
                         />
                     ) : (
