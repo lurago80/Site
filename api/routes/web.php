@@ -243,7 +243,30 @@ Route::get('/{caminho}', function (string $caminho) {
         404
     );
 
-    return response()->file($arquivo);
+    // response()->file() detecta o Content-Type via fileinfo, que erra
+    // para .css/.js puro-texto (devolve text/plain) - navegadores
+    // recusam aplicar CSS/JS servido com o MIME errado, então mapeamos
+    // as extensões mais comuns explicitamente em vez de confiar nele.
+    $mimesPorExtensao = [
+        'css' => 'text/css',
+        'js' => 'application/javascript',
+        'json' => 'application/json',
+        'svg' => 'image/svg+xml',
+        'ico' => 'image/x-icon',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf',
+    ];
+    $extensao = strtolower(pathinfo($arquivo, PATHINFO_EXTENSION));
+
+    return response()->file($arquivo, array_filter([
+        'Content-Type' => $mimesPorExtensao[$extensao] ?? null,
+    ]));
 })->where('caminho', '.*\..+');
 
 });
