@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Painel Super Admin</title>
-    <link rel="stylesheet" href="/css/sistema.css">
+    <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         body { padding: 0 24px 24px; }
     </style>
@@ -163,7 +163,7 @@
         let planosCache = [];
 
         async function carregarPlanos() {
-            const resp = await fetch('/superadmin/planos');
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/planos');
             planosCache = await resp.json();
 
             const tbody = document.getElementById('tbody-planos');
@@ -204,7 +204,7 @@
                 nome: document.getElementById('p-nome').value,
                 valor_mensal: Number(document.getElementById('p-valor').value),
             };
-            const url = id ? `/superadmin/planos/${id}` : '/superadmin/planos';
+            const url = id ? `{{ url('{{ url('/superadmin') }}') }}/planos/${id}` : '{{ url('/superadmin') }}/planos';
             const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-planos');
@@ -217,7 +217,7 @@
         let empresasCache = [];
 
         async function carregarEmpresas() {
-            const resp = await fetch('/superadmin/empresas');
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/empresas');
             empresasCache = await resp.json();
 
             const tbody = document.getElementById('tbody-empresas');
@@ -276,7 +276,7 @@
                     razao_social: document.getElementById('e-razao').value,
                     plano_id: Number(document.getElementById('e-plano').value),
                 };
-                const resp = await fetch(`/superadmin/empresas/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+                const resp = await fetch(`{{ url('{{ url('/superadmin') }}') }}/empresas/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
                 const resposta = await resp.json();
                 if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
                 msg.className = 'msg ok'; msg.textContent = 'Empresa atualizada.';
@@ -291,7 +291,7 @@
                 slug: document.getElementById('e-slug').value,
                 plano_id: Number(document.getElementById('e-plano').value),
             };
-            const resp = await fetch('/superadmin/empresas', { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/empresas', { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Empresa cadastrada.';
@@ -299,14 +299,14 @@
         }
 
         async function mudarStatusEmpresa(empresaId, status) {
-            const resp = await fetch(`/superadmin/empresas/${empresaId}`, {
+            const resp = await fetch(`{{ url('{{ url('/superadmin') }}') }}/empresas/${empresaId}`, {
                 method: 'PUT', headers: headersJson, body: JSON.stringify({ status }),
             });
             if (resp.ok) carregarEmpresas();
         }
 
         async function carregarAssinaturas() {
-            const resp = await fetch('/superadmin/assinaturas');
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/assinaturas');
             const assinaturas = await resp.json();
 
             const tbody = document.getElementById('tbody-assinaturas');
@@ -328,7 +328,7 @@
                 status_pagamento: document.getElementById('a-status').value,
                 inicio: document.getElementById('a-inicio').value,
             };
-            const resp = await fetch('/superadmin/assinaturas', { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/assinaturas', { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-assinaturas');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
@@ -337,7 +337,7 @@
         }
 
         async function baixarAssinatura(assinaturaId) {
-            const resp = await fetch(`/superadmin/assinaturas/${assinaturaId}/baixar`, { method: 'PUT', headers: headersJson, body: '{}' });
+            const resp = await fetch(`{{ url('{{ url('/superadmin') }}') }}/assinaturas/${assinaturaId}/baixar`, { method: 'PUT', headers: headersJson, body: '{}' });
             const msg = document.getElementById('msg-assinaturas');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Erro ao dar baixa na assinatura.'; return; }
             msg.className = 'msg ok'; msg.textContent = 'Baixa registrada - assinatura marcada como paga.';
@@ -345,7 +345,7 @@
         }
 
         async function carregarConfigAssinatura() {
-            const resp = await fetch('/superadmin/config-assinatura');
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/config-assinatura');
             const dados = await resp.json();
             const status = document.getElementById('asa-status');
             if (!dados) { status.textContent = 'Asaas não configurado ainda - cadastro de assinatura fica manual.'; return; }
@@ -365,7 +365,7 @@
             const apiKey = document.getElementById('asa-api-key').value;
             if (apiKey) { dados.api_key = apiKey; }
 
-            const resp = await fetch('/superadmin/config-assinatura', { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/config-assinatura', { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-config-assinatura');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
@@ -375,7 +375,7 @@
         }
 
         async function carregarStatusIbpt() {
-            const resp = await fetch('/superadmin/ibpt/status');
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/ibpt/status');
             const dados = await resp.json();
             const status = document.getElementById('ibpt-status');
             status.textContent = dados.total > 0
@@ -393,7 +393,7 @@
 
             msg.className = 'msg'; msg.textContent = 'Importando - pode levar alguns segundos para tabelas grandes...';
 
-            const resp = await fetch('/superadmin/ibpt/importar', {
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/ibpt/importar', {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken },
                 body: formData,
@@ -408,7 +408,7 @@
         async function buscarIbpt() {
             const ncm = document.getElementById('ibpt-busca-ncm').value;
             if (!ncm) return;
-            const resp = await fetch(`/superadmin/ibpt/buscar?ncm=${encodeURIComponent(ncm)}`);
+            const resp = await fetch(`{{ url('{{ url('/superadmin') }}') }}/ibpt/buscar?ncm=${encodeURIComponent(ncm)}`);
             const lista = await resp.json();
             document.getElementById('tbody-ibpt-busca').innerHTML = lista.map(i => `
                 <tr>
@@ -426,7 +426,7 @@
 
         async function carregarCfops() {
             const busca = document.getElementById('cfop-busca').value.trim();
-            const resp = await fetch(`/superadmin/cfops${busca ? '?busca=' + encodeURIComponent(busca) : ''}`);
+            const resp = await fetch(`{{ url('{{ url('/superadmin') }}') }}/cfops${busca ? '?busca=' + encodeURIComponent(busca) : ''}`);
             cfopsCache = await resp.json();
 
             const tbody = document.getElementById('tbody-cfops');
@@ -471,7 +471,7 @@
             };
             if (!id) { dados.codigo = document.getElementById('c-codigo').value; }
 
-            const url = id ? `/superadmin/cfops/${id}` : '/superadmin/cfops';
+            const url = id ? `{{ url('{{ url('/superadmin') }}') }}/cfops/${id}` : '{{ url('/superadmin') }}/cfops';
             const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
@@ -483,7 +483,7 @@
         async function importarCfopPadrao() {
             const msg = document.getElementById('msg-cfop-importar');
             msg.className = 'msg'; msg.textContent = 'Importando tabela padrão...';
-            const resp = await fetch('/superadmin/cfops/importar-padrao', { method: 'POST', headers: headersJson, body: '{}' });
+            const resp = await fetch('{{ url('{{ url('/superadmin') }}') }}/cfops/importar-padrao', { method: 'POST', headers: headersJson, body: '{}' });
             const resposta = await resp.json();
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = `${resposta.total_importado.toLocaleString('pt-BR')} códigos importados/atualizados com sucesso.`;

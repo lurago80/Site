@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Esqueci minha senha — {{ config('app.name') }}</title>
-    <link rel="stylesheet" href="/css/sistema.css">
+    <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         body { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cor-primaria-escura); }
         .card { width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,.25); text-align: center; }
@@ -19,9 +19,9 @@
     </style>
 </head>
 <body>
-    <form class="card" method="POST" action="/esqueci-senha">
+    <form class="card" method="POST" action="{{ url('/esqueci-senha') }}">
         @csrf
-        <img src="/images/logo.jpg" alt="Logo">
+        <img src="{{ asset('images/logo.jpg') }}" alt="Logo">
         <h1>Esqueci minha senha</h1>
         <p class="sub">Informe o e-mail cadastrado - se ele existir no sistema, enviamos um link para redefinir a senha.</p>
 
@@ -37,7 +37,7 @@
         <input type="email" id="email" name="email" value="{{ old('email') }}" required autofocus>
 
         <button type="submit">Enviar link de redefinição</button>
-        <a class="voltar" href="/login">Voltar ao login</a>
+        <a class="voltar" href="{{ url('/login') }}">Voltar ao login</a>
     </form>
 </body>
 </html>

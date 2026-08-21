@@ -9,6 +9,21 @@ use App\Http\Controllers\Pdv\PdvController;
 use App\Http\Controllers\SuperAdmin\SuperAdminController;
 use Illuminate\Support\Facades\Route;
 
+/*
+|--------------------------------------------------------------------------
+| Prefixo de rota configurável (ROUTE_PREFIX no .env)
+|--------------------------------------------------------------------------
+| Vazio em dev local (roda na raiz). Em deploys num subpath de domínio
+| compartilhado com outros projetos - ex. TERMINAL02, atrás de Cloudflare
+| Tunnel: www.in9vex.com.br/app - define-se ROUTE_PREFIX=app no .env
+| daquele servidor. O Cloudflare Tunnel repassa o path como veio (não
+| remove o prefixo), então o Laravel precisa reconhecê-lo aqui - ver
+| App\Providers\AppServiceProvider::boot() para o lado dos links/assets
+| gerados (route()/asset()/url()), e o SESSION_PATH no .env do servidor
+| para o cookie de sessão não vazar para os outros projetos do domínio.
+*/
+Route::prefix(config('app.route_prefix'))->group(function () {
+
 Route::get('/', function () {
     return view('welcome');
 });
@@ -207,4 +222,28 @@ Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->grou
     Route::post('/cfops', [SuperAdminController::class, 'criarCfop']);
     Route::put('/cfops/{cfopId}', [SuperAdminController::class, 'atualizarCfop']);
     Route::post('/cfops/importar-padrao', [SuperAdminController::class, 'importarCfopPadrao']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Fallback de assets estáticos sob /app
+|--------------------------------------------------------------------------
+| Com o site montado num subpath, o servidor PHP embutido (php artisan
+| serve) não acha fisicamente "public/app/css/x.css" - o arquivo real
+| está em "public/css/x.css". Essa rota serve os arquivos de public/
+| respeitando o prefixo da URL, sem precisar duplicar/symlinkar nada.
+| Fica por último no arquivo de propósito - só entra em ação se nenhuma
+| rota nomeada acima já tiver capturado o path.
+*/
+Route::get('/{caminho}', function (string $caminho) {
+    $arquivo = public_path($caminho);
+
+    abort_unless(
+        str_starts_with(realpath($arquivo) ?: '', realpath(public_path())) && is_file($arquivo),
+        404
+    );
+
+    return response()->file($arquivo);
+})->where('caminho', '.*\..+');
+
 });

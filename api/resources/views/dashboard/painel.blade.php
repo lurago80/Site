@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Dashboard — {{ $empresaSlug }}</title>
-    <link rel="stylesheet" href="/css/sistema.css">
+    <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         .layout { display: flex; min-height: 100vh; }
         .sidebar .logo { padding: 0 16px 12px; }
@@ -37,7 +37,7 @@
 <body>
     <div class="layout">
         <div class="sidebar">
-            <div class="logo"><img src="/images/logo.jpg" alt="Logo"></div>
+            <div class="logo"><img src="{{ asset('images/logo.jpg') }}" alt="Logo"></div>
             <div class="empresa">{{ $empresaSlug }}</div>
             <button class="ativo" onclick="mostrarSecao('dashboard', this)">Dashboard</button>
 
@@ -70,7 +70,7 @@
             <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
             <button onclick="mostrarSecao('whatsapp', this)">WhatsApp</button>
 
-            <form method="POST" action="/logout" style="padding: 16px;">
+            <form method="POST" action="{{ url('/logout') }}" style="padding: 16px;">
                 @csrf
                 <button type="submit" class="secundario" style="width:100%;">Sair</button>
             </form>
@@ -1087,7 +1087,7 @@
 
     <script>
         const empresa = @json($empresaSlug);
-        const base = `/dashboard/${empresa}`;
+        const base = `{{ url('/dashboard') }}/${empresa}`;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const headersJson = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken };
 

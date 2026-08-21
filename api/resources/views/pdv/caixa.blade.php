@@ -154,10 +154,10 @@
 <body>
     <div class="topo">
         <div class="topo-marca">
-            <img src="/images/logo.jpg" alt="Logo">
+            <img src="{{ asset('images/logo.jpg') }}" alt="Logo">
             <h1>PDV — Frente de Caixa <span>· {{ $empresaSlug }}</span></h1>
         </div>
-        <form method="POST" action="/logout" class="topo-usuario">
+        <form method="POST" action="{{ url('/logout') }}" class="topo-usuario">
             @csrf
             <span>{{ auth()->user()->name }}</span>
             <button type="submit" class="secundario">Sair</button>
@@ -244,7 +244,7 @@
     <script>
         const empresa = @json($empresaSlug);
         const pdvImpressaoDireta = @json($pdvImpressaoDireta);
-        const base = `/pdv/${empresa}`;
+        const base = `{{ url('/pdv') }}/${empresa}`;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const headersJson = { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken };
 

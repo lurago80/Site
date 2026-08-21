@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Entrar — {{ config('app.name') }}</title>
-    <link rel="stylesheet" href="/css/sistema.css">
+    <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         body { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cor-primaria-escura); }
         .card { width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,.25); text-align: center; }
@@ -19,9 +19,9 @@
     </style>
 </head>
 <body>
-    <form class="card" method="POST" action="/login">
+    <form class="card" method="POST" action="{{ url('/login') }}">
         @csrf
-        <img src="/images/logo.jpg" alt="Logo">
+        <img src="{{ asset('images/logo.jpg') }}" alt="Logo">
         <h1>Acessar sistema</h1>
         <p class="sub">{{ config('app.name') }} — o e-mail identifica automaticamente a empresa e o nível de acesso.</p>
 
@@ -39,7 +39,7 @@
         <label for="password">Senha</label>
         <input type="password" id="password" name="password" required>
 
-        <a class="link-esqueci" href="/esqueci-senha">Esqueci minha senha</a>
+        <a class="link-esqueci" href="{{ url('/esqueci-senha') }}">Esqueci minha senha</a>
 
         <button type="submit">Entrar</button>
     </form>

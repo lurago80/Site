@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>Redefinir senha — {{ config('app.name') }}</title>
-    <link rel="stylesheet" href="/css/sistema.css">
+    <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         body { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cor-primaria-escura); }
         .card { width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,.25); text-align: center; }
@@ -17,9 +17,9 @@
     </style>
 </head>
 <body>
-    <form class="card" method="POST" action="/redefinir-senha">
+    <form class="card" method="POST" action="{{ url('/redefinir-senha') }}">
         @csrf
-        <img src="/images/logo.jpg" alt="Logo">
+        <img src="{{ asset('images/logo.jpg') }}" alt="Logo">
         <h1>Redefinir senha</h1>
         <p class="sub">Escolha uma nova senha (mínimo 8 caracteres).</p>
 

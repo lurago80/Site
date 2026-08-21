@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Painel Fiscal — {{ $empresaSlug }}</title>
-    <link rel="stylesheet" href="/css/sistema.css">
+    <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         body { padding: 0 24px 24px; }
     </style>
@@ -145,7 +145,7 @@
 
     <script>
         const empresa = @json($empresaSlug);
-        const apiBase = `/fiscal/${empresa}`;
+        const apiBase = `{{ url('/fiscal') }}/${empresa}`;
         const webBase = `/fiscal/${empresa}`;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const headersJson = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken };

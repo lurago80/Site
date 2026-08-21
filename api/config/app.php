@@ -56,6 +56,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Prefixo de rota (deploy num subpath do domínio)
+    |--------------------------------------------------------------------------
+    | Vazio por padrão (dev local roda na raiz). Só é definido quando a app
+    | é montada num subpath de um domínio compartilhado com outros projetos
+    | (ex. TERMINAL02, atrás de Cloudflare Tunnel: www.in9vex.com.br/app) -
+    | ver routes/web.php e App\Providers\AppServiceProvider.
+    */
+    'route_prefix' => trim(env('ROUTE_PREFIX', ''), '/'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

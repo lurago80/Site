@@ -7,13 +7,13 @@
 --}}
 <div class="topo-sistema">
     <div class="marca">
-        <img src="/images/logo.jpg" alt="Logo">
+        <img src="{{ asset('images/logo.jpg') }}" alt="Logo">
         @isset($titulo)
             <span class="titulo">{{ $titulo }}</span>
         @endisset
     </div>
     @auth
-        <form method="POST" action="/logout" style="display:flex; align-items:center;">
+        <form method="POST" action="{{ url('/logout') }}" style="display:flex; align-items:center;">
             @csrf
             <span class="usuario">{{ auth()->user()->name }}</span>
             <button type="submit" class="secundario">Sair</button>

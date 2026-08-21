@@ -25,6 +25,7 @@ use App\Observers\AuditLogObserver;
 use App\Services\Fiscal\FiscalGatewayInterface;
 use App\Services\Fiscal\NfePhpFiscalGateway;
 use App\Services\Fiscal\SimuladoFiscalGateway;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -71,6 +72,20 @@ class AppServiceProvider extends ServiceProvider
     {
         foreach (self::MODELS_AUDITADOS as $model) {
             $model::observe(AuditLogObserver::class);
+        }
+
+        // Só força a URL raiz quando a app roda montada num subpath (ver
+        // ROUTE_PREFIX em config/app.php) - sem isso os links/assets
+        // gerados por route()/asset()/url() saem sem o prefixo e com
+        // scheme http (quem termina TLS é o Cloudflare Tunnel, não o
+        // "php artisan serve" local). Em dev local (sem prefixo), deixa
+        // o Laravel inferir scheme/host/porta da requisição normalmente -
+        // forçar aqui quebraria dev quando a porta não é a padrão (:80).
+        if (config('app.route_prefix') && ($url = config('app.url'))) {
+            URL::forceRootUrl($url);
+            if (str_starts_with($url, 'https://')) {
+                URL::forceScheme('https');
+            }
         }
     }
 }
