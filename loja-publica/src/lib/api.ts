@@ -63,6 +63,12 @@ export const api = {
             method: 'POST',
             body: JSON.stringify({ codigo, subtotal }),
         }),
+
+    buscarCliente: (empresa: string, cpfCnpj: string) =>
+        requisitar<{ encontrado: boolean; nome?: string; email?: string | null; telefone?: string | null }>(
+            `/loja/${empresa}/clientes/buscar`,
+            { method: 'POST', body: JSON.stringify({ cpf_cnpj: cpfCnpj }) },
+        ),
 };
 
 export { ErroApi };

@@ -29,6 +29,34 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     const [cupomAplicado, setCupomAplicado] = useState<CupomValidado | null>(null);
     const [validandoCupom, setValidandoCupom] = useState(false);
     const [erroCupom, setErroCupom] = useState<string | null>(null);
+
+    const [buscandoCliente, setBuscandoCliente] = useState(false);
+    const [clienteEncontrado, setClienteEncontrado] = useState(false);
+
+    async function buscarClientePorCpf() {
+        const documento = cpfCnpj.trim();
+        // Evita disparar busca em documento incompleto (só ao sair do
+        // campo, e só se tiver o tamanho mínimo de um CPF sem máscara).
+        if (documento.replace(/\D/g, '').length < 11) return;
+
+        setBuscandoCliente(true);
+        setClienteEncontrado(false);
+
+        try {
+            const resultado = await api.buscarCliente(empresa, documento);
+            if (resultado.encontrado) {
+                setNome((atual) => atual || resultado.nome || '');
+                setEmail((atual) => atual || resultado.email || '');
+                setTelefone((atual) => atual || resultado.telefone || '');
+                setClienteEncontrado(true);
+            }
+        } catch {
+            // Falha silenciosa - é só uma conveniência de preenchimento,
+            // não deve impedir o cliente de continuar digitando na mão.
+        } finally {
+            setBuscandoCliente(false);
+        }
+    }
     const [dadosCartao, setDadosCartao] = useState<{ token: string; installments: number; payment_type_id: string } | null>(
         null,
     );
@@ -151,7 +179,22 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                     </div>
                     <div>
                         <label>CPF/CNPJ (opcional)</label>
-                        <input value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} />
+                        <input
+                            value={cpfCnpj}
+                            onChange={(e) => {
+                                setCpfCnpj(e.target.value);
+                                setClienteEncontrado(false);
+                            }}
+                            onBlur={buscarClientePorCpf}
+                        />
+                        {buscandoCliente && (
+                            <span style={{ fontSize: 12, color: 'var(--cor-texto-suave)' }}>Verificando cadastro...</span>
+                        )}
+                        {clienteEncontrado && !buscandoCliente && (
+                            <span style={{ fontSize: 12, color: 'var(--cor-ok-texto)' }}>
+                                Encontramos seu cadastro - dados preenchidos automaticamente.
+                            </span>
+                        )}
                     </div>
                     <div>
                         <label>E-mail (opcional)</label>

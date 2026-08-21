@@ -21,6 +21,12 @@ Route::middleware(['tenant', 'throttle:60,1'])->prefix('loja/{empresa}')->group(
     Route::post('/cupons/validar', [CatalogoController::class, 'validarCupom']);
 });
 
+// Limite bem mais apertado que o resto da loja - busca por CPF/CNPJ exato,
+// mas throttle curto evita que alguém tente enumerar documentos em série.
+Route::middleware(['tenant', 'throttle:10,1'])->prefix('loja/{empresa}')->group(function () {
+    Route::post('/clientes/buscar', [CatalogoController::class, 'buscarCliente']);
+});
+
 // Escrita (gera reserva/venda de verdade) - limite mais apertado que a
 // simples navegação do catálogo acima, para dificultar spam de vendas
 // ou reservas falsas.

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AgendaVisitacao;
+use App\Models\Cliente;
 use App\Models\Cupom;
 use App\Models\Empresa;
 use App\Models\Plano;
@@ -277,5 +278,41 @@ class LojaPublicaCheckoutTest extends TestCase
         // Estoque não pode ter sido debitado - o cupom inválido deve
         // abortar a transação inteira, não só deixar de aplicar o desconto.
         $this->assertSame(10, $this->produtoFisico->fresh()->estoque_atual);
+    }
+
+    public function test_busca_cliente_por_cpf_encontra_cadastro_existente(): void
+    {
+        Cliente::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'João Cliente',
+            'cpf_cnpj' => '123.456.789-00',
+            'email' => 'joao@example.com',
+            'telefone' => '11999990000',
+            'consentimento_lgpd' => true,
+            'consentimento_lgpd_data' => now(),
+            'consentimento_lgpd_versao' => 'v1',
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/clientes/buscar", [
+            'cpf_cnpj' => '123.456.789-00',
+        ]);
+
+        $response->assertOk();
+        $response->assertJson([
+            'encontrado' => true,
+            'nome' => 'João Cliente',
+            'email' => 'joao@example.com',
+            'telefone' => '11999990000',
+        ]);
+    }
+
+    public function test_busca_cliente_por_cpf_inexistente_nao_encontra(): void
+    {
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/clientes/buscar", [
+            'cpf_cnpj' => '000.000.000-00',
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['encontrado' => false]);
     }
 }

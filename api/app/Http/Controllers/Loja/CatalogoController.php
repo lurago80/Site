@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Loja;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\Cliente;
 use App\Models\ConfigPagamento;
 use App\Models\Cupom;
 use App\Models\Produto;
@@ -89,6 +90,33 @@ class CatalogoController extends Controller
             'codigo' => $cupom->codigo,
             'tipo' => $cupom->tipo,
             'valor_desconto' => $desconto,
+        ]);
+    }
+
+    /**
+     * Preenchimento automático no checkout para cliente que já comprou
+     * antes - evita digitar tudo de novo. Só busca por CPF/CNPJ EXATO
+     * (o cliente já precisa saber o próprio documento pra acionar isso),
+     * nunca por nome/e-mail parcial - impede que alguém "pesque" dados
+     * de outro cliente da loja só tentando combinações.
+     */
+    public function buscarCliente(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'cpf_cnpj' => ['required', 'string', 'max:18'],
+        ]);
+
+        $cliente = Cliente::where('cpf_cnpj', $dados['cpf_cnpj'])->first();
+
+        if ($cliente === null) {
+            return response()->json(['encontrado' => false]);
+        }
+
+        return response()->json([
+            'encontrado' => true,
+            'nome' => $cliente->nome,
+            'email' => $cliente->email,
+            'telefone' => $cliente->telefone,
         ]);
     }
 
