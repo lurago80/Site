@@ -248,7 +248,13 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                     ) : aceitaCartaoOnline && configPagamento?.public_key && configPagamento.gateway === 'stone' ? (
                         <StoneCardForm
                             publicKey={configPagamento.public_key}
-                            onToken={(token) => setDadosCartao({ token, installments: 1, payment_type_id: 'credit_card' })}
+                            onToken={(token, tipo, parcelas) =>
+                                setDadosCartao({
+                                    token,
+                                    installments: parcelas,
+                                    payment_type_id: tipo === 'debito' ? 'debit_card' : 'credit_card',
+                                })
+                            }
                             onErro={setErro}
                         />
                     ) : (

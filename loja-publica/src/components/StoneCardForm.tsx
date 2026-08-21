@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 declare global {
     interface Window {
@@ -30,11 +30,12 @@ export default function StoneCardForm({
     onErro,
 }: {
     publicKey: string;
-    onToken: (token: string) => void;
+    onToken: (token: string, tipo: 'credito' | 'debito', parcelas: number) => void;
     onErro: (mensagem: string) => void;
 }) {
     const formId = useId().replace(/:/g, '');
-    const formRef = useRef<HTMLFormElement>(null);
+    const [tipo, setTipo] = useState<'credito' | 'debito'>('credito');
+    const [parcelas, setParcelas] = useState(1);
 
     useEffect(() => {
         let cancelado = false;
@@ -61,7 +62,7 @@ export default function StoneCardForm({
                     (data) => {
                         const token = data.pagarmetoken || data.token;
                         if (token) {
-                            onToken(token);
+                            onToken(token, tipo, tipo === 'debito' ? 1 : parcelas);
                         } else {
                             onErro('Não foi possível gerar o token do cartão.');
                         }
@@ -81,10 +82,21 @@ export default function StoneCardForm({
             cancelado = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [publicKey]);
+    }, [publicKey, tipo, parcelas]);
 
     return (
-        <form ref={formRef} id={formId} data-pagarmecheckout-form style={{ display: 'grid', gap: 10 }}>
+        <form id={formId} data-pagarmecheckout-form style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    <input type="radio" style={{ width: 'auto' }} checked={tipo === 'credito'} onChange={() => setTipo('credito')} />
+                    Crédito
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    <input type="radio" style={{ width: 'auto' }} checked={tipo === 'debito'} onChange={() => setTipo('debito')} />
+                    Débito
+                </label>
+            </div>
+
             <div>
                 <label>Nome no cartão</label>
                 <input data-pagarmecheckout-element="holder_name" required />
@@ -107,6 +119,18 @@ export default function StoneCardForm({
                     <input data-pagarmecheckout-element="cvv" inputMode="numeric" required />
                 </div>
             </div>
+
+            {tipo === 'credito' && (
+                <div>
+                    <label>Parcelas</label>
+                    <select value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))} style={{ width: 120 }}>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>{n}x</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
             <button type="submit" className="botao-secundario">Confirmar cartão</button>
         </form>
     );
