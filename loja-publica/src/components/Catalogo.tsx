@@ -38,6 +38,17 @@ export default function Catalogo({
                     >
                         {produtos.map((produto) => (
                             <div key={produto.id} className="cartao" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {produto.imagem_url && (
+                                    // eslint-disable-next-line @next/next/no-img-element -- URL vem de qualquer host que o lojista cadastrar, não dá pra pré-configurar domínios do next/image
+                                    <img
+                                        src={produto.imagem_url}
+                                        alt={produto.nome}
+                                        style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 6, background: 'var(--cor-fundo)' }}
+                                        onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                        }}
+                                    />
+                                )}
                                 <strong style={{ fontSize: 14 }}>{produto.nome}</strong>
                                 {produto.descricao && (
                                     <span style={{ fontSize: 12, color: 'var(--cor-texto-suave)' }}>{produto.descricao}</span>

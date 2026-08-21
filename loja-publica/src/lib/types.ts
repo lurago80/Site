@@ -12,6 +12,7 @@ export interface Produto {
     descricao: string | null;
     preco_venda: string;
     estoque_atual: number | null;
+    imagem_url: string | null;
 }
 
 export interface HorarioAgenda {
