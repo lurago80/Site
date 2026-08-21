@@ -18,6 +18,7 @@ Route::middleware(['tenant', 'throttle:60,1'])->prefix('loja/{empresa}')->group(
     Route::get('/config-pagamento-publica', [CatalogoController::class, 'configPagamentoPublica']);
     Route::get('/produtos', [CatalogoController::class, 'produtos']);
     Route::get('/agenda', [CatalogoController::class, 'agenda']);
+    Route::post('/cupons/validar', [CatalogoController::class, 'validarCupom']);
 });
 
 // Escrita (gera reserva/venda de verdade) - limite mais apertado que a

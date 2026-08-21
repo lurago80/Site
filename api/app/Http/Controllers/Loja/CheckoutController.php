@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Loja;
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
+use App\Models\Cupom;
 use App\Models\Produto;
 use App\Jobs\EnviarConfirmacaoAgendamentoJob;
 use App\Models\ReservaTemporaria;
@@ -51,6 +52,7 @@ class CheckoutController extends Controller
             'cartao_token' => ['nullable', 'string'],
             'cartao_parcelas' => ['nullable', 'integer', 'min:1'],
             'cartao_metodo' => ['nullable', 'string', 'in:cartao_credito,cartao_debito'],
+            'cupom_codigo' => ['nullable', 'string', 'max:40'],
         ]);
 
         abort_if(
@@ -84,7 +86,18 @@ class CheckoutController extends Controller
                 $valorTotal += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade']);
             }
 
-            $venda->update(['valor_total' => $valorTotal]);
+            $valorDesconto = 0;
+            $cupomId = null;
+
+            if (! empty($dados['cupom_codigo'])) {
+                [$valorDesconto, $cupomId] = $this->aplicarCupom($dados['cupom_codigo'], $valorTotal);
+            }
+
+            $venda->update([
+                'valor_total' => $valorTotal - $valorDesconto,
+                'valor_desconto' => $valorDesconto ?: null,
+                'cupom_id' => $cupomId,
+            ]);
 
             return $venda;
         });
@@ -120,6 +133,26 @@ class CheckoutController extends Controller
         ] : null);
 
         return response()->json($vendaFinal, 201);
+    }
+
+    /**
+     * Revalida o cupom aqui dentro (não confia na prévia de
+     * CatalogoController::validarCupom) e já reserva o uso com
+     * lockForUpdate() - evita que duas compras simultâneas usando o
+     * último uso disponível de um cupom limitado passem as duas.
+     *
+     * @return array{0: float, 1: int} [valor_desconto, cupom_id]
+     */
+    private function aplicarCupom(string $codigo, float $subtotal): array
+    {
+        $cupom = Cupom::whereRaw('lower(codigo) = ?', [mb_strtolower($codigo)])->lockForUpdate()->first();
+
+        abort_if($cupom === null, 422, 'Cupom não encontrado.');
+        abort_if($cupom->motivoInvalido() !== null, 422, $cupom->motivoInvalido());
+
+        $cupom->increment('usos_realizados');
+
+        return [$cupom->calcularDesconto($subtotal), $cupom->id];
     }
 
     private function localizarOuCriarCliente(int $empresaId, array $dadosCliente): Cliente

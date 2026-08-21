@@ -53,6 +53,7 @@
             <button onclick="mostrarSecao('compras', this)">Entrada de Notas</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
+            <button onclick="mostrarSecao('cupons', this)">Cupons de Desconto</button>
 
             <div class="grupo-label">Financeiro</div>
             <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
@@ -601,6 +602,37 @@
                 </div>
             </section>
 
+            <section id="secao-cupons" class="secao">
+                <h1>Cupons de Desconto</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Cliente informa o código na loja pública, na hora do checkout. Cupom desativado ou
+                    expirado deixa de valer sem precisar apagar (mantém o histórico de quem já usou).
+                </p>
+                <div class="card">
+                    <input type="hidden" id="cp-id">
+                    <div class="linha-form">
+                        <div><label>Código</label><input type="text" id="cp-codigo" style="width:140px; text-transform:uppercase;"></div>
+                        <div><label>Tipo</label>
+                            <select id="cp-tipo">
+                                <option value="percentual">% percentual</option>
+                                <option value="valor_fixo">R$ valor fixo</option>
+                            </select>
+                        </div>
+                        <div><label>Valor</label><input type="number" step="0.01" min="0.01" id="cp-valor" style="width:110px"></div>
+                        <div><label>Válido até (opcional)</label><input type="date" id="cp-valido-ate"></div>
+                        <div><label>Limite de usos (opcional)</label><input type="number" min="1" id="cp-limite" style="width:120px"></div>
+                        <div class="campo-check"><label><input type="checkbox" id="cp-ativo" checked> Ativo</label></div>
+                        <div><button class="acao" id="cp-botao" onclick="salvarCupom()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioCupom()" style="display:none;" id="cp-cancelar">Cancelar edição</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Código</th><th>Desconto</th><th>Válido até</th><th>Usos</th><th>Ativo</th><th></th></tr></thead>
+                        <tbody id="tbody-cupons"></tbody>
+                    </table>
+                    <p class="msg" id="msg-cupons"></p>
+                </div>
+            </section>
+
             <section id="secao-caixa-consulta" class="secao">
                 <h1>Caixa (consulta)</h1>
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
@@ -1100,6 +1132,7 @@
             compras: carregarCompras,
             vendedores: carregarVendedores,
             atendentes: carregarAtendentes,
+            cupons: carregarCupons,
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); },
@@ -1910,6 +1943,73 @@
             document.getElementById('tbody-relatorio-atendentes').innerHTML = lista.map(r => `
                 <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
             `).join('') || '<tr><td colspan="3">Nenhum atendente cadastrado.</td></tr>';
+        }
+
+        let cuponsCache = [];
+
+        function formatarDescontoCupom(c) {
+            return c.tipo === 'percentual' ? `${Number(c.valor)}%` : `R$ ${Number(c.valor).toFixed(2)}`;
+        }
+
+        async function carregarCupons() {
+            const resp = await fetch(`${base}/cupons`);
+            cuponsCache = await resp.json();
+            document.getElementById('tbody-cupons').innerHTML = cuponsCache.map(c => `
+                <tr>
+                    <td>${c.codigo}</td>
+                    <td>${formatarDescontoCupom(c)}</td>
+                    <td>${c.valido_ate ?? '-'}</td>
+                    <td>${c.usos_realizados}${c.limite_uso ? ' / ' + c.limite_uso : ''}</td>
+                    <td>${c.ativo ? 'Sim' : 'Não'}</td>
+                    <td><button class="secundario" onclick="editarCupom(${c.id})">Editar</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="6">Nenhum cupom cadastrado.</td></tr>';
+        }
+
+        function editarCupom(id) {
+            const c = cuponsCache.find(x => x.id === id);
+            if (!c) return;
+            document.getElementById('cp-id').value = c.id;
+            document.getElementById('cp-codigo').value = c.codigo;
+            document.getElementById('cp-tipo').value = c.tipo;
+            document.getElementById('cp-valor').value = c.valor;
+            document.getElementById('cp-valido-ate').value = c.valido_ate ?? '';
+            document.getElementById('cp-limite').value = c.limite_uso ?? '';
+            document.getElementById('cp-ativo').checked = c.ativo;
+            document.getElementById('cp-botao').textContent = 'Salvar edição';
+            document.getElementById('cp-cancelar').style.display = 'inline-block';
+        }
+
+        function limparFormularioCupom() {
+            document.getElementById('cp-id').value = '';
+            document.getElementById('cp-codigo').value = '';
+            document.getElementById('cp-tipo').value = 'percentual';
+            document.getElementById('cp-valor').value = '';
+            document.getElementById('cp-valido-ate').value = '';
+            document.getElementById('cp-limite').value = '';
+            document.getElementById('cp-ativo').checked = true;
+            document.getElementById('cp-botao').textContent = 'Cadastrar';
+            document.getElementById('cp-cancelar').style.display = 'none';
+        }
+
+        async function salvarCupom() {
+            const id = document.getElementById('cp-id').value;
+            const dados = {
+                codigo: document.getElementById('cp-codigo').value,
+                tipo: document.getElementById('cp-tipo').value,
+                valor: Number(document.getElementById('cp-valor').value),
+                valido_ate: document.getElementById('cp-valido-ate').value || null,
+                limite_uso: document.getElementById('cp-limite').value ? Number(document.getElementById('cp-limite').value) : null,
+                ativo: document.getElementById('cp-ativo').checked,
+            };
+            const url = id ? `${base}/cupons/${id}` : `${base}/cupons`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-cupons');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = id ? 'Cupom atualizado.' : 'Cupom cadastrado.';
+            limparFormularioCupom();
+            carregarCupons();
         }
 
         async function carregarContasPagar() {

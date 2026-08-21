@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Loja;
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
 use App\Models\ConfigPagamento;
+use App\Models\Cupom;
 use App\Models\Produto;
 use Illuminate\Http\Request;
 
@@ -54,6 +55,40 @@ class CatalogoController extends Controller
         return response()->json([
             'gateway' => $config->gateway,
             'public_key' => $config->public_key,
+        ]);
+    }
+
+    /**
+     * Validação prévia do cupom antes do checkout de fato - o front-end
+     * chama isso ao clicar "Aplicar" para mostrar o desconto na hora,
+     * sem precisar esperar o pedido inteiro ser enviado. O checkout
+     * (CheckoutController) reaplica a mesma validação por conta própria
+     * na hora de fechar o pedido - nunca confia só nesta prévia.
+     */
+    public function validarCupom(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+            'subtotal' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $cupom = Cupom::whereRaw('lower(codigo) = ?', [mb_strtolower($dados['codigo'])])->first();
+
+        if ($cupom === null) {
+            return response()->json(['valido' => false, 'message' => 'Cupom não encontrado.'], 404);
+        }
+
+        if ($motivo = $cupom->motivoInvalido()) {
+            return response()->json(['valido' => false, 'message' => $motivo], 422);
+        }
+
+        $desconto = $cupom->calcularDesconto((float) $dados['subtotal']);
+
+        return response()->json([
+            'valido' => true,
+            'codigo' => $cupom->codigo,
+            'tipo' => $cupom->tipo,
+            'valor_desconto' => $desconto,
         ]);
     }
 

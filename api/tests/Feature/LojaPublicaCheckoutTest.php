@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AgendaVisitacao;
+use App\Models\Cupom;
 use App\Models\Empresa;
 use App\Models\Plano;
 use App\Models\Produto;
@@ -176,5 +177,105 @@ class LojaPublicaCheckoutTest extends TestCase
         ]);
 
         $response->assertStatus(409);
+    }
+
+    public function test_valida_cupom_percentual_e_retorna_o_desconto(): void
+    {
+        Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'BEMVINDO10',
+            'tipo' => 'percentual',
+            'valor' => 10,
+            'ativo' => true,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
+            'codigo' => 'bemvindo10',
+            'subtotal' => 100,
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['valido' => true, 'valor_desconto' => 10]);
+    }
+
+    public function test_cupom_expirado_e_recusado(): void
+    {
+        Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'VENCIDO',
+            'tipo' => 'valor_fixo',
+            'valor' => 5,
+            'valido_ate' => now()->subDay(),
+            'ativo' => true,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
+            'codigo' => 'VENCIDO',
+            'subtotal' => 100,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJson(['valido' => false]);
+    }
+
+    public function test_checkout_aplica_o_desconto_do_cupom_e_registra_o_uso(): void
+    {
+        $cupom = Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'DESC5',
+            'tipo' => 'valor_fixo',
+            'valor' => 5,
+            'ativo' => true,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => [
+                'nome' => 'Maria Compradora',
+                'email' => 'maria@example.com',
+                'consentimento_lgpd' => true,
+            ],
+            'itens' => [
+                ['produto_id' => $this->produtoFisico->id, 'quantidade' => 2],
+            ],
+            'forma_pagamento' => 'cartao',
+            'cupom_codigo' => 'desc5',
+        ]);
+
+        $response->assertCreated();
+        // 2 × 18,00 = 36,00 - 5,00 de desconto = 31,00.
+        $response->assertJsonPath('valor_total', '31.00');
+        $response->assertJsonPath('valor_desconto', '5.00');
+        $this->assertSame(1, $cupom->fresh()->usos_realizados);
+    }
+
+    public function test_checkout_recusa_cupom_que_atingiu_o_limite_de_usos(): void
+    {
+        Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'ESGOTADO',
+            'tipo' => 'valor_fixo',
+            'valor' => 5,
+            'limite_uso' => 1,
+            'usos_realizados' => 1,
+            'ativo' => true,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => [
+                'nome' => 'Maria Compradora',
+                'email' => 'maria@example.com',
+                'consentimento_lgpd' => true,
+            ],
+            'itens' => [
+                ['produto_id' => $this->produtoFisico->id, 'quantidade' => 1],
+            ],
+            'forma_pagamento' => 'cartao',
+            'cupom_codigo' => 'ESGOTADO',
+        ]);
+
+        $response->assertStatus(422);
+        // Estoque não pode ter sido debitado - o cupom inválido deve
+        // abortar a transação inteira, não só deixar de aplicar o desconto.
+        $this->assertSame(10, $this->produtoFisico->fresh()->estoque_atual);
     }
 }

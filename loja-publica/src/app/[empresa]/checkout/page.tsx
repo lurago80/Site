@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCarrinho } from '@/lib/cart';
 import { api, ErroApi } from '@/lib/api';
-import type { ConfigPagamentoPublica, RespostaCheckout } from '@/lib/types';
+import type { ConfigPagamentoPublica, CupomValidado, RespostaCheckout } from '@/lib/types';
 import CardBrick from '@/components/CardBrick';
 
 export default function PaginaCheckout({ params }: { params: Promise<{ empresa: string }> }) {
@@ -24,6 +24,11 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     const [enviando, setEnviando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
     const [resultado, setResultado] = useState<RespostaCheckout | null>(null);
+
+    const [codigoCupom, setCodigoCupom] = useState('');
+    const [cupomAplicado, setCupomAplicado] = useState<CupomValidado | null>(null);
+    const [validandoCupom, setValidandoCupom] = useState(false);
+    const [erroCupom, setErroCupom] = useState<string | null>(null);
     const [dadosCartao, setDadosCartao] = useState<{ token: string; installments: number; payment_type_id: string } | null>(
         null,
     );
@@ -49,6 +54,31 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     }
 
     const aceitaCartaoOnline = configPagamento?.gateway === 'mercadopago' && !!configPagamento.public_key;
+    const desconto = cupomAplicado?.valido ? (cupomAplicado.valor_desconto ?? 0) : 0;
+    const totalComDesconto = Math.max(0, total - desconto);
+
+    async function aplicarCupom() {
+        if (!codigoCupom.trim()) return;
+
+        setErroCupom(null);
+        setValidandoCupom(true);
+
+        try {
+            const resposta = await api.validarCupom(empresa, codigoCupom.trim(), total);
+            setCupomAplicado(resposta);
+        } catch (e) {
+            setCupomAplicado(null);
+            setErroCupom(e instanceof ErroApi ? e.message : 'Não foi possível validar o cupom.');
+        } finally {
+            setValidandoCupom(false);
+        }
+    }
+
+    function removerCupom() {
+        setCupomAplicado(null);
+        setCodigoCupom('');
+        setErroCupom(null);
+    }
 
     async function finalizarPedido() {
         setErro(null);
@@ -89,6 +119,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 itens: produtosItens.map((i) => (i.tipo === 'produto' ? { produto_id: i.produtoId, quantidade: i.quantidade } : null)),
                 reserva_id: reservaId,
                 forma_pagamento: formaPagamento,
+                cupom_codigo: cupomAplicado?.valido ? cupomAplicado.codigo : undefined,
             };
 
             if (formaPagamento === 'cartao' && dadosCartao) {
@@ -164,7 +195,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                     aceitaCartaoOnline && configPagamento?.public_key ? (
                         <CardBrick
                             publicKey={configPagamento.public_key}
-                            valor={total}
+                            valor={totalComDesconto}
                             onToken={setDadosCartao}
                             onErro={setErro}
                         />
@@ -176,11 +207,52 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 )}
             </div>
 
+            <div className="cartao" style={{ marginBottom: 16 }}>
+                <h2 style={{ fontSize: 14, marginTop: 0 }}>Cupom de desconto</h2>
+
+                {cupomAplicado?.valido ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <span className="msg-ok" style={{ flex: 1 }}>
+                            Cupom <strong>{cupomAplicado.codigo}</strong> aplicado - desconto de R$ {desconto.toFixed(2)}.
+                        </span>
+                        <button className="botao-secundario" onClick={removerCupom}>Remover</button>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        <input
+                            value={codigoCupom}
+                            onChange={(e) => setCodigoCupom(e.target.value)}
+                            placeholder="Código do cupom"
+                            style={{ textTransform: 'uppercase' }}
+                            onKeyDown={(e) => e.key === 'Enter' && aplicarCupom()}
+                        />
+                        <button className="botao-secundario" onClick={aplicarCupom} disabled={validandoCupom || !codigoCupom.trim()} style={{ flexShrink: 0 }}>
+                            {validandoCupom ? 'Validando...' : 'Aplicar'}
+                        </button>
+                    </div>
+                )}
+                {erroCupom && <p className="msg-erro" style={{ marginTop: 10 }}>{erroCupom}</p>}
+            </div>
+
             {erro && <p className="msg-erro" style={{ marginBottom: 12 }}>{erro}</p>}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 16, marginBottom: 16 }}>
-                <span>Total</span>
-                <span>R$ {total.toFixed(2)}</span>
+            <div className="cartao" style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {desconto > 0 && (
+                    <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-texto-suave)' }}>
+                            <span>Subtotal</span>
+                            <span>R$ {total.toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-ok-texto)' }}>
+                            <span>Desconto</span>
+                            <span>- R$ {desconto.toFixed(2)}</span>
+                        </div>
+                    </>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 18 }}>
+                    <span>Total</span>
+                    <span>R$ {totalComDesconto.toFixed(2)}</span>
+                </div>
             </div>
 
             <button className="botao-primario" onClick={finalizarPedido} disabled={enviando} style={{ width: '100%' }}>

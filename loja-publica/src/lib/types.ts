@@ -55,6 +55,15 @@ export interface Cobranca {
 export interface RespostaCheckout {
     id: number;
     valor_total: string;
+    valor_desconto: string | null;
     status_pagamento: string;
     cobranca: Cobranca | null;
+}
+
+export interface CupomValidado {
+    valido: boolean;
+    codigo?: string;
+    tipo?: 'percentual' | 'valor_fixo';
+    valor_desconto?: number;
+    mensagem?: string;
 }

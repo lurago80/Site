@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 #[Fillable([
     'empresa_id', 'cliente_id', 'vendedor_id', 'atendente_id', 'forma_pagamento_id',
     'canal', 'tipo_doc', 'status_pagamento', 'valor_total', 'comissao', 'data_venda',
+    'cupom_id', 'valor_desconto',
 ])]
 class Venda extends Model
 {
@@ -19,8 +20,14 @@ class Venda extends Model
         return [
             'valor_total' => 'decimal:2',
             'comissao' => 'decimal:2',
+            'valor_desconto' => 'decimal:2',
             'data_venda' => 'datetime',
         ];
+    }
+
+    public function cupom(): BelongsTo
+    {
+        return $this->belongsTo(Cupom::class);
     }
 
     public function cliente(): BelongsTo

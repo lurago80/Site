@@ -1,5 +1,6 @@
 import type {
     ConfigPagamentoPublica,
+    CupomValidado,
     EmpresaInfo,
     HorarioAgenda,
     Produto,
@@ -55,6 +56,12 @@ export const api = {
         requisitar<RespostaCheckout>(`/loja/${empresa}/checkout`, {
             method: 'POST',
             body: JSON.stringify(dados),
+        }),
+
+    validarCupom: (empresa: string, codigo: string, subtotal: number) =>
+        requisitar<CupomValidado>(`/loja/${empresa}/cupons/validar`, {
+            method: 'POST',
+            body: JSON.stringify({ codigo, subtotal }),
         }),
 };
 

@@ -13,6 +13,7 @@ use App\Models\ConfigPagamento;
 use App\Models\ConfigWhatsapp;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
+use App\Models\Cupom;
 use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
 use App\Models\GravaBanco;
@@ -1098,6 +1099,70 @@ class DashboardController extends Controller
         $forma->update($dados);
 
         return response()->json($forma->fresh());
+    }
+
+    // ---- Cupons de desconto (loja pública) ----
+
+    public function cupons(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            Cupom::where('empresa_id', $empresaAtual->id)->orderBy('codigo')->get()
+        );
+    }
+
+    public function criarCupom(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'codigo' => ['required', 'string', 'max:40'],
+            'tipo' => ['required', 'in:percentual,valor_fixo'],
+            'valor' => ['required', 'numeric', 'min:0.01'],
+            'valido_ate' => ['nullable', 'date'],
+            'limite_uso' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        if ($dados['tipo'] === 'percentual') {
+            abort_if($dados['valor'] > 100, 422, 'Desconto percentual não pode passar de 100%.');
+        }
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $dados['codigo'] = mb_strtoupper($dados['codigo']);
+
+        $cupom = Cupom::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($cupom, 201);
+    }
+
+    public function atualizarCupom(Request $request, string $empresa, int $cupomId)
+    {
+        $this->exigirAdmin($request);
+
+        $cupom = Cupom::findOrFail($cupomId);
+
+        $dados = $request->validate([
+            'codigo' => ['sometimes', 'string', 'max:40'],
+            'tipo' => ['sometimes', 'in:percentual,valor_fixo'],
+            'valor' => ['sometimes', 'numeric', 'min:0.01'],
+            'valido_ate' => ['nullable', 'date'],
+            'limite_uso' => ['nullable', 'integer', 'min:1'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        if (($dados['tipo'] ?? $cupom->tipo) === 'percentual' && ($dados['valor'] ?? $cupom->valor) > 100) {
+            abort(422, 'Desconto percentual não pode passar de 100%.');
+        }
+
+        if (isset($dados['codigo'])) {
+            $dados['codigo'] = mb_strtoupper($dados['codigo']);
+        }
+
+        $cupom->update($dados);
+
+        return response()->json($cupom->fresh());
     }
 
     // ---- Identidade visual da loja pública ----

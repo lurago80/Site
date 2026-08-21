@@ -178,6 +178,10 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::post('/formas-pagamento', [DashboardController::class, 'criarFormaPagamento']);
     Route::put('/formas-pagamento/{formaId}', [DashboardController::class, 'atualizarFormaPagamento']);
 
+    Route::get('/cupons', [DashboardController::class, 'cupons']);
+    Route::post('/cupons', [DashboardController::class, 'criarCupom']);
+    Route::put('/cupons/{cupomId}', [DashboardController::class, 'atualizarCupom']);
+
     Route::get('/config-loja', [DashboardController::class, 'configLoja']);
     Route::put('/config-loja', [DashboardController::class, 'atualizarConfigLoja']);
 
