@@ -25,10 +25,12 @@ export default async function EmpresaLayout({
     const corPrimaria = info.cor_primaria || '#394285';
 
     return (
-        <div style={{ ['--cor-primaria' as string]: corPrimaria, minHeight: '100vh' }}>
+        <div style={{ ['--cor-primaria' as string]: corPrimaria, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
             <CarrinhoProvider empresa={empresa}>
                 <Header empresa={empresa} info={info} />
-                <main style={{ maxWidth: 960, margin: '0 auto', padding: '20px' }}>{children}</main>
+                <main className="container" style={{ flex: 1, padding: '28px 20px 60px' }}>
+                    {children}
+                </main>
             </CarrinhoProvider>
         </div>
     );
