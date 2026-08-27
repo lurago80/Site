@@ -26,11 +26,19 @@ if ([string]::IsNullOrEmpty($PgSenha)) {
 }
 
 $PastaBackup = "C:\Backups\postgres-saas"
+# Cópia extra num compartilhamento à parte - ainda é a mesma máquina/
+# disco físico (não é offsite de verdade: não protege contra a máquina
+# inteira falhar, ser roubada ou pegar fogo), mas isola de apagar ou
+# corromper a pasta principal por acidente. $null = pula essa etapa.
+$PastaBackupExtra = "C:\Backup_Site\postgres-saas"
 $DiasRetencao = 14
 $HorarioBackup = "03:00"
 
 if (-not (Test-Path $PastaBackup)) {
     New-Item -ItemType Directory -Force -Path $PastaBackup | Out-Null
+}
+if ($PastaBackupExtra -and -not (Test-Path $PastaBackupExtra)) {
+    New-Item -ItemType Directory -Force -Path $PastaBackupExtra | Out-Null
 }
 
 function Fazer-Backup {
@@ -42,18 +50,31 @@ function Fazer-Backup {
 
     if ($LASTEXITCODE -eq 0 -and (Test-Path $arquivo) -and (Get-Item $arquivo).Length -gt 0) {
         Write-Output "$(Get-Date -Format s) OK: backup criado em $arquivo ($((Get-Item $arquivo).Length) bytes)"
+
+        if ($PastaBackupExtra) {
+            try {
+                Copy-Item $arquivo -Destination $PastaBackupExtra -Force
+                Write-Output "$(Get-Date -Format s) OK: cópia extra em $PastaBackupExtra"
+            } catch {
+                Write-Output "$(Get-Date -Format s) ERRO ao copiar para $PastaBackupExtra`: $($_.Exception.Message)"
+            }
+        }
     } else {
         Write-Output "$(Get-Date -Format s) ERRO: pg_dump falhou (exit code $LASTEXITCODE)"
         if (Test-Path $arquivo) { Remove-Item $arquivo -Force }
     }
 
-    # Rotação: apaga backups mais velhos que $DiasRetencao dias.
-    Get-ChildItem $PastaBackup -Filter "*.backup" |
-        Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$DiasRetencao) } |
-        ForEach-Object {
-            Write-Output "$(Get-Date -Format s) Removendo backup antigo: $($_.Name)"
-            Remove-Item $_.FullName -Force
-        }
+    # Rotação: apaga backups mais velhos que $DiasRetencao dias (nas duas pastas).
+    foreach ($pasta in @($PastaBackup, $PastaBackupExtra)) {
+        if (-not $pasta -or -not (Test-Path $pasta)) { continue }
+
+        Get-ChildItem $pasta -Filter "*.backup" |
+            Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$DiasRetencao) } |
+            ForEach-Object {
+                Write-Output "$(Get-Date -Format s) Removendo backup antigo: $($_.FullName)"
+                Remove-Item $_.FullName -Force
+            }
+    }
 }
 
 Write-Output "$(Get-Date -Format s) Serviço de backup iniciado - horário diário: $HorarioBackup, retenção: $DiasRetencao dias, pasta: $PastaBackup"
