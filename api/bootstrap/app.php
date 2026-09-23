@@ -18,6 +18,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Cloudflare Tunnel termina o HTTPS na borda e repassa em texto
+        // puro pro backend - sem confiar nesse proxy, o Laravel acha que a
+        // conexão é HTTP e gera links/redirects inseguros (ex: em telas de
+        // erro de login).
+        $middleware->trustProxies(at: '*', headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO);
+
         $middleware->alias([
             'tenant' => SetTenantContext::class,
             'super_admin' => EnsureSuperAdmin::class,
@@ -27,6 +36,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Precisa rodar antes até do 'auth' padrão do Laravel - ver
         // App\Http\Middleware\BootstrapAuthDatabaseContext para o motivo.
         $middleware->prependToGroup('web', BootstrapAuthDatabaseContext::class);
+
+        // route('login') duplicaria o prefixo de APP_URL (que já inclui
+        // ROUTE_PREFIX) - usa url() como o resto das views para gerar
+        // '<APP_URL>/login' em vez de '<APP_URL>/<ROUTE_PREFIX>/login'.
+        $middleware->redirectGuestsTo(fn () => url('/login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // 'api/*' sempre em JSON (loja pública); demais rotas usam a
