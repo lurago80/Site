@@ -208,6 +208,7 @@ Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->grou
     Route::get('/empresas', [SuperAdminController::class, 'empresas']);
     Route::post('/empresas', [SuperAdminController::class, 'criarEmpresa']);
     Route::put('/empresas/{empresaId}', [SuperAdminController::class, 'atualizarEmpresa']);
+    Route::post('/empresas/{empresaId}/usuarios', [SuperAdminController::class, 'criarUsuarioEmpresa']);
     Route::get('/planos', [SuperAdminController::class, 'planos']);
     Route::post('/planos', [SuperAdminController::class, 'criarPlano']);
     Route::put('/planos/{planoId}', [SuperAdminController::class, 'atualizarPlano']);

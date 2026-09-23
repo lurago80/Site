@@ -243,6 +243,53 @@ class SuperAdminTest extends TestCase
         $response->assertStatus(403);
     }
 
+    public function test_super_admin_cria_o_primeiro_usuario_de_uma_empresa_recem_cadastrada(): void
+    {
+        $empresa = Empresa::create([
+            'razao_social' => 'Empresa Nova Sem Usuário', 'cnpj' => '55.555.555/0001-55',
+            'slug' => 'empresa-nova-sem-usuario', 'plano_id' => $this->plano->id, 'status' => 'ativa',
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)->postJson("/superadmin/empresas/{$empresa->id}/usuarios", [
+            'name' => 'Primeiro Admin',
+            'email' => 'primeiro@empresa-nova-sem-usuario.com',
+            'password' => 'senha-teste',
+            'perfil' => 'admin',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('perfil', 'admin');
+
+        // O usuário criado precisa conseguir logar de verdade - é essa a
+        // finalidade do endpoint, não só existir na tabela.
+        $login = $this->post('/login', [
+            'email' => 'primeiro@empresa-nova-sem-usuario.com',
+            'password' => 'senha-teste',
+        ]);
+        $login->assertRedirect("/dashboard/{$empresa->slug}/painel");
+    }
+
+    public function test_nao_cria_segundo_usuario_com_email_ja_usado_em_outra_empresa(): void
+    {
+        $empresaA = Empresa::create([
+            'razao_social' => 'Empresa A Email', 'cnpj' => '66.666.666/0001-66',
+            'slug' => 'empresa-a-email', 'plano_id' => $this->plano->id, 'status' => 'ativa',
+        ]);
+        $empresaB = Empresa::create([
+            'razao_social' => 'Empresa B Email', 'cnpj' => '77.777.777/0001-77',
+            'slug' => 'empresa-b-email', 'plano_id' => $this->plano->id, 'status' => 'ativa',
+        ]);
+
+        $this->actingAs($this->superAdmin)->postJson("/superadmin/empresas/{$empresaA->id}/usuarios", [
+            'name' => 'Fulano', 'email' => 'repetido@exemplo.com', 'password' => 'senha-teste', 'perfil' => 'admin',
+        ])->assertCreated();
+
+        $response = $this->actingAs($this->superAdmin)->postJson("/superadmin/empresas/{$empresaB->id}/usuarios", [
+            'name' => 'Ciclano', 'email' => 'repetido@exemplo.com', 'password' => 'senha-teste', 'perfil' => 'admin',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
     public function test_usuario_inativo_com_sessao_aberta_e_bloqueado(): void
     {
         $empresa = Empresa::create([

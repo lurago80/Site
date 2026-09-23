@@ -9,10 +9,12 @@ use App\Models\ConfigAssinatura;
 use App\Models\Empresa;
 use App\Models\IbptProduto;
 use App\Models\Plano;
+use App\Models\User;
 use App\Services\Assinatura\AssinaturaService;
 use App\Services\Fiscal\ImportadorCfopService;
 use App\Services\Ibpt\ImportadorIbptService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * Painel Super Admin (Escopo v2, seção 2.2): gestão de empresas, planos
@@ -81,6 +83,37 @@ class SuperAdminController extends Controller
         $empresa->update($dados);
 
         return response()->json($empresa->fresh());
+    }
+
+    /**
+     * Cria o primeiro usuário (normalmente admin) de uma empresa recém-
+     * cadastrada. Único jeito de "entrar" numa empresa nova: o cadastro
+     * de usuário do dashboard normal (DashboardController::criarUsuario)
+     * exige já estar logado NAQUELA empresa - o tenant vem sempre do
+     * usuário autenticado, nunca do slug da URL (ver SetTenantContext),
+     * então sem esta rota não haveria como sair do zero.
+     */
+    public function criarUsuarioEmpresa(Request $request, int $empresaId)
+    {
+        $empresa = Empresa::findOrFail($empresaId);
+
+        $dados = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+            'perfil' => ['required', 'in:admin,caixa,atendente'],
+        ]);
+
+        $usuario = User::create([
+            'name' => $dados['name'],
+            'email' => $dados['email'],
+            'password' => Hash::make($dados['password']),
+            'perfil' => $dados['perfil'],
+            'empresa_id' => $empresa->id,
+            'ativo' => true,
+        ]);
+
+        return response()->json($usuario, 201);
     }
 
     public function planos()
