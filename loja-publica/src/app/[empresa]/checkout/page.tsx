@@ -147,7 +147,11 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                     telefone: telefone || null,
                     consentimento_lgpd: lgpd,
                 },
-                itens: produtosItens.map((i) => (i.tipo === 'produto' ? { produto_id: i.produtoId, quantidade: i.quantidade } : null)),
+                itens: produtosItens.map((i) =>
+                    i.tipo === 'produto'
+                        ? { produto_id: i.produtoId, variacao_id: i.variacaoId ?? null, quantidade: i.quantidade }
+                        : null,
+                ),
                 reserva_id: reservaId,
                 forma_pagamento: formaPagamento,
                 cupom_codigo: cupomAplicado?.valido ? cupomAplicado.codigo : undefined,

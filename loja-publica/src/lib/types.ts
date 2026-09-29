@@ -1,9 +1,17 @@
 export interface EmpresaInfo {
     razao_social: string;
+    nome_fantasia: string;
     segmento: string | null;
     logo_url: string | null;
     cor_primaria: string | null;
     modulo_agendamento_ativo: boolean;
+}
+
+export interface ProdutoVariacao {
+    id: number;
+    tamanho: string;
+    estoque_atual: number;
+    ativo: boolean;
 }
 
 export interface Produto {
@@ -13,6 +21,7 @@ export interface Produto {
     preco_venda: string;
     estoque_atual: number | null;
     imagem_url: string | null;
+    variacoes?: ProdutoVariacao[];
 }
 
 export interface HorarioAgenda {
@@ -30,6 +39,8 @@ export interface ConfigPagamentoPublica {
 export interface ItemCarrinhoProduto {
     tipo: 'produto';
     produtoId: number;
+    variacaoId?: number | null;
+    tamanho?: string | null;
     nome: string;
     quantidade: number;
     valorUnitario: number;

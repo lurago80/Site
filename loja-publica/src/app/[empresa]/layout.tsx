@@ -31,6 +31,17 @@ export default async function EmpresaLayout({
                 <main className="container" style={{ flex: 1, padding: '28px 20px 60px' }}>
                     {children}
                 </main>
+                <footer
+                    style={{
+                        borderTop: '1px solid var(--cor-borda)',
+                        padding: '20px 20px',
+                        textAlign: 'center',
+                        fontSize: 12.5,
+                        color: 'var(--cor-texto-suave)',
+                    }}
+                >
+                    {info.nome_fantasia} · {info.razao_social}
+                </footer>
             </CarrinhoProvider>
         </div>
     );

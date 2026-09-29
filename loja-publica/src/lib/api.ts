@@ -44,7 +44,7 @@ export const api = {
     produtos: (empresa: string, busca?: string) =>
         requisitar<Produto[]>(`/loja/${empresa}/produtos${busca ? `?busca=${encodeURIComponent(busca)}` : ''}`),
 
-    agenda: (empresa: string) => requisitar<HorarioAgenda[]>(`/loja/${empresa}/agenda`),
+    agenda: (empresa: string) => requisitar<HorarioAgenda[]>(`/loja/${empresa}/visitas`),
 
     criarReserva: (empresa: string, dados: { agenda_visitacao_id: number; quantidade: number }) =>
         requisitar<{ reserva_id: number; quantidade: number; expira_em: string; status: string }>(

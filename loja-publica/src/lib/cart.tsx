@@ -6,7 +6,12 @@ import type { ItemCarrinho, ItemCarrinhoAgenda, ItemCarrinhoProduto } from './ty
 interface CarrinhoContexto {
     itens: ItemCarrinho[];
     total: number;
-    adicionarProduto: (produtoId: number, nome: string, valorUnitario: number) => void;
+    adicionarProduto: (
+        produtoId: number,
+        nome: string,
+        valorUnitario: number,
+        variacao?: { id: number; tamanho: string } | null,
+    ) => void;
     definirAgenda: (agendaId: number, nome: string, quantidade: number, valorUnitario: number) => void;
     removerItem: (index: number) => void;
     limpar: () => void;
@@ -36,17 +41,36 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
         localStorage.setItem(chaveStorage(empresa), JSON.stringify(itens));
     }, [empresa, itens]);
 
-    function adicionarProduto(produtoId: number, nome: string, valorUnitario: number) {
+    function adicionarProduto(
+        produtoId: number,
+        nome: string,
+        valorUnitario: number,
+        variacao?: { id: number; tamanho: string } | null,
+    ) {
         setItens((atual) => {
             const existente = atual.find(
-                (i): i is ItemCarrinhoProduto => i.tipo === 'produto' && i.produtoId === produtoId,
+                (i): i is ItemCarrinhoProduto =>
+                    i.tipo === 'produto' &&
+                    i.produtoId === produtoId &&
+                    (i.variacaoId ?? null) === (variacao?.id ?? null),
             );
             if (existente) {
                 return atual.map((i) =>
                     i === existente ? { ...existente, quantidade: existente.quantidade + 1 } : i,
                 );
             }
-            return [...atual, { tipo: 'produto', produtoId, nome, quantidade: 1, valorUnitario }];
+            return [
+                ...atual,
+                {
+                    tipo: 'produto',
+                    produtoId,
+                    variacaoId: variacao?.id ?? null,
+                    tamanho: variacao?.tamanho ?? null,
+                    nome,
+                    quantidade: 1,
+                    valorUnitario,
+                },
+            ];
         });
     }
 

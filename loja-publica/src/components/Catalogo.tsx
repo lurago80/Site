@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useCarrinho } from '@/lib/cart';
-import type { HorarioAgenda, Produto } from '@/lib/types';
+import type { HorarioAgenda, Produto, ProdutoVariacao } from '@/lib/types';
 
 function formatarMoeda(valor: string | number) {
     return `R$ ${Number(valor).toFixed(2)}`;
@@ -33,9 +33,23 @@ function IniciaisProduto({ nome }: { nome: string }) {
     );
 }
 
-function CardProduto({ produto, onAdicionar }: { produto: Produto; onAdicionar: () => void }) {
+function CardProduto({
+    produto,
+    onAdicionar,
+}: {
+    produto: Produto;
+    onAdicionar: (variacao: ProdutoVariacao | null) => void;
+}) {
     const [imagemQuebrada, setImagemQuebrada] = useState(false);
-    const semEstoque = produto.estoque_atual !== null && produto.estoque_atual <= 0;
+    const temVariacoes = !!produto.variacoes && produto.variacoes.length > 0;
+    const [tamanhoEscolhido, setTamanhoEscolhido] = useState<number | ''>('');
+    const variacaoEscolhida = temVariacoes
+        ? produto.variacoes!.find((v) => v.id === tamanhoEscolhido) ?? null
+        : null;
+    const semEstoque = temVariacoes
+        ? variacaoEscolhida !== null && variacaoEscolhida.estoque_atual <= 0
+        : produto.estoque_atual !== null && produto.estoque_atual <= 0;
+    const precisaEscolherTamanho = temVariacoes && tamanhoEscolhido === '';
 
     return (
         <div
@@ -45,6 +59,7 @@ function CardProduto({ produto, onAdicionar }: { produto: Produto; onAdicionar: 
                 flexDirection: 'column',
                 gap: 10,
                 padding: 12,
+                overflow: 'hidden',
                 transition: 'box-shadow .18s ease, transform .18s ease',
             }}
             onMouseEnter={(e) => {
@@ -56,23 +71,44 @@ function CardProduto({ produto, onAdicionar }: { produto: Produto; onAdicionar: 
                 e.currentTarget.style.transform = 'none';
             }}
         >
-            {produto.imagem_url && !imagemQuebrada ? (
-                // eslint-disable-next-line @next/next/no-img-element -- URL vem de qualquer host que o lojista cadastrar, não dá pra pré-configurar domínios do next/image
-                <img
-                    src={produto.imagem_url}
-                    alt={produto.nome}
-                    style={{
-                        width: '100%',
-                        aspectRatio: '1 / 1',
-                        objectFit: 'cover',
-                        borderRadius: 'var(--raio-sm)',
-                        background: 'var(--cor-fundo)',
-                    }}
-                    onError={() => setImagemQuebrada(true)}
-                />
-            ) : (
-                <IniciaisProduto nome={produto.nome} />
-            )}
+            <div style={{ position: 'relative', borderRadius: 'var(--raio-sm)', overflow: 'hidden' }}>
+                {produto.imagem_url && !imagemQuebrada ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- URL vem de qualquer host que o lojista cadastrar, não dá pra pré-configurar domínios do next/image
+                    <img
+                        src={produto.imagem_url}
+                        alt={produto.nome}
+                        style={{
+                            width: '100%',
+                            aspectRatio: '1 / 1',
+                            objectFit: 'cover',
+                            background: 'var(--cor-fundo)',
+                            transition: 'transform .25s ease',
+                        }}
+                        onError={() => setImagemQuebrada(true)}
+                        onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
+                    />
+                ) : (
+                    <IniciaisProduto nome={produto.nome} />
+                )}
+                {semEstoque && (
+                    <span
+                        style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            background: 'rgba(22,24,29,.75)',
+                            color: '#fff',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                        }}
+                    >
+                        Esgotado
+                    </span>
+                )}
+            </div>
 
             <div style={{ padding: '2px 4px 4px', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
                 <strong style={{ fontSize: 14, lineHeight: 1.3 }}>{produto.nome}</strong>
@@ -84,7 +120,27 @@ function CardProduto({ produto, onAdicionar }: { produto: Produto; onAdicionar: 
                     <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--cor-primaria)', letterSpacing: '-.01em' }}>
                         {formatarMoeda(produto.preco_venda)}
                     </span>
-                    <button className="botao-primario" disabled={semEstoque} onClick={onAdicionar} style={{ width: '100%' }}>
+                    {temVariacoes && (
+                        <select
+                            value={tamanhoEscolhido}
+                            onChange={(e) => setTamanhoEscolhido(e.target.value ? Number(e.target.value) : '')}
+                            style={{ width: '100%' }}
+                        >
+                            <option value="">Escolha o tamanho</option>
+                            {produto.variacoes!.map((v) => (
+                                <option key={v.id} value={v.id} disabled={v.estoque_atual <= 0}>
+                                    {v.tamanho}
+                                    {v.estoque_atual <= 0 ? ' (sem estoque)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    <button
+                        className="botao-primario"
+                        disabled={semEstoque || precisaEscolherTamanho}
+                        onClick={() => onAdicionar(variacaoEscolhida)}
+                        style={{ width: '100%' }}
+                    >
                         {semEstoque ? 'Sem estoque' : 'Adicionar ao carrinho'}
                     </button>
                 </div>
@@ -118,15 +174,22 @@ export default function Catalogo({
                     <div
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
-                            gap: 16,
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+                            gap: 20,
                         }}
                     >
                         {produtos.map((produto) => (
                             <CardProduto
                                 key={produto.id}
                                 produto={produto}
-                                onAdicionar={() => adicionarProduto(produto.id, produto.nome, Number(produto.preco_venda))}
+                                onAdicionar={(variacao) =>
+                                    adicionarProduto(
+                                        produto.id,
+                                        variacao ? `${produto.nome} (${variacao.tamanho})` : produto.nome,
+                                        Number(produto.preco_venda),
+                                        variacao ? { id: variacao.id, tamanho: variacao.tamanho } : null,
+                                    )
+                                }
                             />
                         ))}
                     </div>
@@ -193,8 +256,12 @@ export default function Catalogo({
             )}
 
             {produtos.length === 0 && agenda.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--cor-texto-suave)' }}>
-                    <p style={{ fontSize: 15 }}>Nenhum produto ou horário disponível no momento.</p>
+                <div
+                    className="cartao"
+                    style={{ textAlign: 'center', padding: '64px 20px', color: 'var(--cor-texto-suave)' }}
+                >
+                    <div style={{ fontSize: 36, marginBottom: 12 }}>🛍️</div>
+                    <p style={{ fontSize: 15, margin: 0 }}>Nenhum produto ou horário disponível no momento.</p>
                 </div>
             )}
         </div>

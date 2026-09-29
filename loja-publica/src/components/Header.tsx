@@ -34,7 +34,7 @@ export default function Header({ empresa, info }: { empresa: string; info: Empre
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={info.logo_url}
-                            alt={info.razao_social}
+                            alt={info.nome_fantasia}
                             style={{ height: 36, width: 36, borderRadius: 8, objectFit: 'cover' }}
                         />
                     ) : (
@@ -52,10 +52,10 @@ export default function Header({ empresa, info }: { empresa: string; info: Empre
                                 fontSize: 15,
                             }}
                         >
-                            {info.razao_social.charAt(0).toUpperCase()}
+                            {info.nome_fantasia.charAt(0).toUpperCase()}
                         </div>
                     )}
-                    <strong style={{ fontSize: 16, color: 'var(--cor-texto)', letterSpacing: '-.01em' }}>{info.razao_social}</strong>
+                    <strong style={{ fontSize: 16, color: 'var(--cor-texto)', letterSpacing: '-.01em' }}>{info.nome_fantasia}</strong>
                 </Link>
 
                 <Link
