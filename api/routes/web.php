@@ -242,9 +242,18 @@ Route::middleware(['auth', 'tenant', 'super_admin'])->prefix('superadmin')->grou
 */
 Route::get('/{caminho}', function (string $caminho) {
     $arquivo = public_path($caminho);
+    $realArquivo = realpath($arquivo) ?: '';
+
+    // "public/storage" é um link simbólico (storage:link) apontando para
+    // storage/app/public, fora de public/ por design - o realpath resolvido
+    // não começa com realpath(public_path()), então o check abaixo precisa
+    // aceitar também esse destino, senão todo upload (imagem de produto etc.)
+    // vira 404 quando servido por essa rota de fallback.
+    $dentroDoPublic = str_starts_with($realArquivo, realpath(public_path()));
+    $dentroDoStorageLink = str_starts_with($realArquivo, realpath(storage_path('app/public')) ?: "\0");
 
     abort_unless(
-        str_starts_with(realpath($arquivo) ?: '', realpath(public_path())) && is_file($arquivo),
+        ($dentroDoPublic || $dentroDoStorageLink) && is_file($arquivo),
         404
     );
 
