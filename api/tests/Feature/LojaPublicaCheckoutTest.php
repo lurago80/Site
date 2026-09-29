@@ -60,7 +60,7 @@ class LojaPublicaCheckoutTest extends TestCase
 
     public function test_lista_agenda_de_visitas_em_aberto(): void
     {
-        $response = $this->getJson("/api/loja/{$this->empresa->slug}/agenda");
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/visitas");
 
         $response->assertOk()->assertJsonCount(1);
         $this->assertSame(3, $response->json('0.vagas_disponiveis'));

@@ -30,6 +30,7 @@ class CatalogoController extends Controller
 
         return response()->json([
             'razao_social' => $empresaAtual->razao_social,
+            'nome_fantasia' => $empresaAtual->nome_fantasia ?? $empresaAtual->razao_social,
             'segmento' => $empresaAtual->segmento,
             'logo_url' => $empresaAtual->logo_url,
             'cor_primaria' => $empresaAtual->cor_primaria,
@@ -124,6 +125,7 @@ class CatalogoController extends Controller
     {
         return Produto::query()
             ->where('tipo', 'fisico')
+            ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
             ->orderBy('nome')
             ->get();
     }

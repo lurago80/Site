@@ -92,7 +92,7 @@ class DashboardTest extends TestCase
 
     public function test_cadastra_horario_na_agenda(): void
     {
-        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/agenda", [
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/visitas", [
             'data_hora' => now()->addDay()->toDateTimeString(),
             'vagas_total' => 10,
             'valor_visita' => 60,
@@ -108,7 +108,7 @@ class DashboardTest extends TestCase
             'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 50,
         ]);
 
-        $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/agenda");
+        $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/visitas");
 
         $response->assertOk()->assertJsonCount(1);
     }

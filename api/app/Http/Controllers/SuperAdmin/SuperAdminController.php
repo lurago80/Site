@@ -47,6 +47,7 @@ class SuperAdminController extends Controller
     {
         $dados = $request->validate([
             'razao_social' => ['required', 'string', 'max:255'],
+            'nome_fantasia' => ['nullable', 'string', 'max:255'],
             'cnpj' => ['required', 'string', 'max:18', 'unique:empresas,cnpj'],
             'slug' => ['required', 'string', 'max:255', 'unique:empresas,slug', 'regex:/^[a-z0-9-]+$/'],
             'segmento' => ['nullable', 'string', 'max:255'],
@@ -65,6 +66,7 @@ class SuperAdminController extends Controller
 
         $dados = $request->validate([
             'razao_social' => ['sometimes', 'string', 'max:255'],
+            'nome_fantasia' => ['nullable', 'string', 'max:255'],
             'segmento' => ['nullable', 'string', 'max:255'],
             'modulo_agendamento_ativo' => ['sometimes', 'boolean'],
             'plano_id' => ['sometimes', 'integer', 'exists:planos,id'],

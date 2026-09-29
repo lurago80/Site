@@ -7,6 +7,7 @@ use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\Cupom;
 use App\Models\Produto;
+use App\Models\ProdutoVariacao;
 use App\Jobs\EnviarConfirmacaoAgendamentoJob;
 use App\Models\ReservaTemporaria;
 use App\Models\Venda;
@@ -47,6 +48,7 @@ class CheckoutController extends Controller
             'reserva_id' => ['nullable', 'integer'],
             'itens' => ['nullable', 'array'],
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
+            'itens.*.variacao_id' => ['nullable', 'integer'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
             'forma_pagamento' => ['required', 'string', 'in:pix,cartao'],
             'cartao_token' => ['nullable', 'string'],
@@ -83,14 +85,14 @@ class CheckoutController extends Controller
             }
 
             foreach ($dados['itens'] ?? [] as $item) {
-                $valorTotal += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade']);
+                $valorTotal += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade'], $item['variacao_id'] ?? null);
             }
 
             $valorDesconto = 0;
             $cupomId = null;
 
             if (! empty($dados['cupom_codigo'])) {
-                [$valorDesconto, $cupomId] = $this->aplicarCupom($dados['cupom_codigo'], $valorTotal);
+                [$valorDesconto, $cupomId] = $this->aplicarCupom($dados['cupom_codigo'], $valorTotal, $cliente->id);
             }
 
             $venda->update([
@@ -143,7 +145,7 @@ class CheckoutController extends Controller
      *
      * @return array{0: float, 1: int} [valor_desconto, cupom_id]
      */
-    private function aplicarCupom(string $codigo, float $subtotal): array
+    private function aplicarCupom(string $codigo, float $subtotal, int $clienteId): array
     {
         $cupom = Cupom::whereRaw('lower(codigo) = ?', [mb_strtolower($codigo)])->lockForUpdate()->first();
 
@@ -151,6 +153,11 @@ class CheckoutController extends Controller
         abort_if($cupom->motivoInvalido() !== null, 422, $cupom->motivoInvalido());
 
         $cupom->increment('usos_realizados');
+
+        // Registra quem usou e quando - o painel de cupons importados usa isso
+        // pra mostrar o status de cada código sem precisar cruzar com vendas.
+        // Num cupom de usos múltiplos, guarda sempre o uso mais recente.
+        $cupom->update(['usado_em' => now(), 'usado_por_cliente_id' => $clienteId]);
 
         return [$cupom->calcularDesconto($subtotal), $cupom->id];
     }
@@ -205,11 +212,16 @@ class CheckoutController extends Controller
         return $valorTotal;
     }
 
-    private function gerarItemProduto(Venda $venda, int $produtoId, int $quantidade): float
+    private function gerarItemProduto(Venda $venda, int $produtoId, int $quantidade, ?int $variacaoId = null): float
     {
         $produto = Produto::findOrFail($produtoId);
+        $variacao = null;
 
-        if ($produto->estoque_atual !== null) {
+        if ($variacaoId !== null) {
+            $variacao = ProdutoVariacao::where('produto_id', $produto->id)->findOrFail($variacaoId);
+            abort_if($variacao->estoque_atual < $quantidade, 409, 'Estoque insuficiente para '.$produto->nome.' (tamanho '.$variacao->tamanho.')');
+            $variacao->decrement('estoque_atual', $quantidade);
+        } elseif ($produto->estoque_atual !== null) {
             abort_if($produto->estoque_atual < $quantidade, 409, 'Estoque insuficiente para '.$produto->nome);
             $produto->decrement('estoque_atual', $quantidade);
         }
@@ -219,6 +231,7 @@ class CheckoutController extends Controller
         $venda->itens()->create([
             'empresa_id' => $venda->empresa_id,
             'produto_id' => $produto->id,
+            'produto_variacao_id' => $variacao?->id,
             'quantidade' => $quantidade,
             'valor_unitario' => $produto->preco_venda,
             'valor_total' => $valorTotal,

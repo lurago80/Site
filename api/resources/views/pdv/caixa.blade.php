@@ -100,12 +100,26 @@
         .grid-produtos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
         .produto-btn {
             text-align: left; background: var(--bg-elev-2); border: 1px solid var(--border);
-            border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px;
+            border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px;
             transition: border-color .15s, transform .1s;
+            min-width: 0; white-space: normal;
         }
         .produto-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
         .produto-btn:active { transform: translateY(0); }
-        .produto-btn .nome { font-size: 12.5px; line-height: 1.35; }
+        .produto-btn .produto-img {
+            width: 100%; height: 90px; border-radius: 6px; object-fit: cover;
+            background: var(--bg-elev); flex-shrink: 0;
+        }
+        .produto-btn .produto-img-vazia {
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; color: var(--text-dim);
+        }
+        .produto-btn .nome {
+            font-size: 12.5px; line-height: 1.35;
+            display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden;
+            width: 100%; min-width: 0;
+        }
         .produto-btn .preco { font-size: 14px; font-weight: 700; color: var(--accent); }
 
         .agenda-item {
@@ -154,7 +168,7 @@
 <body>
     <div class="topo">
         <div class="topo-marca">
-            <img src="{{ asset('images/logo.jpg') }}" alt="Logo">
+            <img src="{{ $logoEmpresaUrl ?: asset('images/logo.jpg') }}" alt="Logo">
             <h1>PDV — Frente de Caixa <span>· {{ $empresaSlug }}</span></h1>
         </div>
         <form method="POST" action="{{ url('/logout') }}" class="topo-usuario">
@@ -250,19 +264,36 @@
 
         let carrinho = []; // { tipo: 'produto'|'agenda', id, nome, quantidade, valorUnitario }
 
+        let produtosCache = [];
+
+        function escapeHtml(texto) {
+            const div = document.createElement('div');
+            div.textContent = texto ?? '';
+            return div.innerHTML;
+        }
+
         async function carregarProdutos(busca = '') {
             const resp = await fetch(`${base}/produtos?busca=${encodeURIComponent(busca)}`);
-            const produtos = await resp.json();
-            document.getElementById('grid-produtos').innerHTML = produtos.map(p => `
-                <button class="produto-btn" onclick="adicionarProduto(${p.id}, '${p.nome.replace(/'/g, "\\'")}', ${p.preco_venda})">
-                    <span class="nome">${p.nome}</span>
+            produtosCache = await resp.json();
+            document.getElementById('grid-produtos').innerHTML = produtosCache.map(p => `
+                <button class="produto-btn" onclick="adicionarProdutoPorId(${p.id})">
+                    ${p.imagem_url
+                        ? `<img class="produto-img" src="${p.imagem_url}" alt="" loading="lazy" onerror="this.outerHTML='<span class=&quot;produto-img produto-img-vazia&quot;>Sem foto</span>'">`
+                        : '<span class="produto-img produto-img-vazia">Sem foto</span>'}
+                    <span class="nome">${escapeHtml(p.nome)}</span>
                     <span class="preco">R$ ${Number(p.preco_venda).toFixed(2)}</span>
                 </button>
             `).join('') || '<p style="color:#9aa5b1;">Nenhum produto encontrado.</p>';
         }
 
+        function adicionarProdutoPorId(id) {
+            const p = produtosCache.find(x => x.id === id);
+            if (!p) return;
+            adicionarProduto(p.id, p.nome, Number(p.preco_venda));
+        }
+
         async function carregarAgenda() {
-            const resp = await fetch(`${base}/agenda`);
+            const resp = await fetch(`${base}/visitas`);
             const horarios = await resp.json();
             document.getElementById('lista-agenda').innerHTML = horarios.map(a => `
                 <div class="agenda-item">

@@ -17,9 +17,11 @@
         <input type="hidden" id="e-id">
         <div class="linha-form">
             <div><label>Razão social</label><input type="text" id="e-razao"></div>
+            <div><label>Nome fantasia</label><input type="text" id="e-fantasia" placeholder="Nome divulgado na loja"></div>
             <div><label>CNPJ</label><input type="text" id="e-cnpj" placeholder="00.000.000/0001-00"></div>
             <div><label>Slug (URL)</label><input type="text" id="e-slug" placeholder="minha-empresa"></div>
             <div><label>Plano</label><select id="e-plano"></select></div>
+            <div style="align-self:flex-end"><label style="font-weight:normal"><input type="checkbox" id="e-agendamento"> Módulo de agendamento ativo</label></div>
             <div><button id="e-botao" onclick="salvarEmpresa()">Cadastrar empresa</button></div>
             <div><button class="secundario" onclick="limparFormularioEmpresa()" style="display:none;" id="e-cancelar">Cancelar edição</button></div>
         </div>
@@ -28,7 +30,7 @@
             mudam depois de criados (afetam URL da loja e identificação fiscal já em uso).
         </p>
         <table>
-            <thead><tr><th>Razão social</th><th>CNPJ</th><th>Slug</th><th>Plano</th><th>Status</th><th>Ação</th></tr></thead>
+            <thead><tr><th>Razão social</th><th>Nome fantasia</th><th>CNPJ</th><th>Slug</th><th>Plano</th><th>Agendamento</th><th>Status</th><th>Ação</th></tr></thead>
             <tbody id="tbody-empresas"><tr><td colspan="6">Carregando...</td></tr></tbody>
         </table>
         <p class="msg" id="msg-empresas"></p>
@@ -248,9 +250,11 @@
             tbody.innerHTML = empresasCache.map(e => `
                 <tr>
                     <td>${e.razao_social}</td>
+                    <td>${e.nome_fantasia ?? '-'}</td>
                     <td>${e.cnpj}</td>
                     <td>${e.slug}</td>
                     <td>${e.plano ? e.plano.nome : '-'}</td>
+                    <td>${e.modulo_agendamento_ativo ? 'Sim' : 'Não'}</td>
                     <td><span class="status status-${e.status}">${e.status}</span></td>
                     <td>
                         <button class="secundario" onclick="editarEmpresa(${e.id})">Editar</button>
@@ -259,7 +263,7 @@
                             : `<button onclick="mudarStatusEmpresa(${e.id}, 'ativa')">Reativar</button>`}
                     </td>
                 </tr>
-            `).join('') || '<tr><td colspan="6">Nenhuma empresa cadastrada.</td></tr>';
+            `).join('') || '<tr><td colspan="8">Nenhuma empresa cadastrada.</td></tr>';
 
             const opcoes = empresasCache.map(e => `<option value="${e.id}">${e.razao_social}</option>`).join('');
             document.getElementById('a-empresa').innerHTML = opcoes;
@@ -291,11 +295,13 @@
             if (!e) return;
             document.getElementById('e-id').value = e.id;
             document.getElementById('e-razao').value = e.razao_social;
+            document.getElementById('e-fantasia').value = e.nome_fantasia ?? '';
             document.getElementById('e-cnpj').value = e.cnpj;
             document.getElementById('e-cnpj').disabled = true;
             document.getElementById('e-slug').value = e.slug;
             document.getElementById('e-slug').disabled = true;
             document.getElementById('e-plano').value = e.plano_id ?? '';
+            document.getElementById('e-agendamento').checked = !!e.modulo_agendamento_ativo;
             document.getElementById('e-botao').textContent = 'Salvar edição';
             document.getElementById('e-cancelar').style.display = 'inline-block';
         }
@@ -303,11 +309,13 @@
         function limparFormularioEmpresa() {
             document.getElementById('e-id').value = '';
             document.getElementById('e-razao').value = '';
+            document.getElementById('e-fantasia').value = '';
             document.getElementById('e-cnpj').value = '';
             document.getElementById('e-cnpj').disabled = false;
             document.getElementById('e-slug').value = '';
             document.getElementById('e-slug').disabled = false;
             document.getElementById('e-plano').value = '';
+            document.getElementById('e-agendamento').checked = false;
             document.getElementById('e-botao').textContent = 'Cadastrar empresa';
             document.getElementById('e-cancelar').style.display = 'none';
         }
@@ -319,7 +327,9 @@
             if (id) {
                 const dados = {
                     razao_social: document.getElementById('e-razao').value,
+                    nome_fantasia: document.getElementById('e-fantasia').value || null,
                     plano_id: Number(document.getElementById('e-plano').value),
+                    modulo_agendamento_ativo: document.getElementById('e-agendamento').checked,
                 };
                 const resp = await fetch(`{{ url('/superadmin') }}/empresas/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
                 const resposta = await resp.json();
@@ -332,9 +342,11 @@
 
             const dados = {
                 razao_social: document.getElementById('e-razao').value,
+                nome_fantasia: document.getElementById('e-fantasia').value || null,
                 cnpj: document.getElementById('e-cnpj').value,
                 slug: document.getElementById('e-slug').value,
                 plano_id: Number(document.getElementById('e-plano').value),
+                modulo_agendamento_ativo: document.getElementById('e-agendamento').checked,
             };
             const resp = await fetch('{{ url('/superadmin') }}/empresas', { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();

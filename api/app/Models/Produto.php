@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'empresa_id', 'fornecedor_id', 'grupo_id', 'nome', 'codigo', 'descricao', 'categoria', 'tipo', 'unidade',
@@ -89,5 +90,10 @@ class Produto extends Model
     public function creditoPresumido(): BelongsTo
     {
         return $this->belongsTo(TabCredPres::class, 'ccredpres_id');
+    }
+
+    public function variacoes(): HasMany
+    {
+        return $this->hasMany(ProdutoVariacao::class);
     }
 }

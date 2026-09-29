@@ -20,6 +20,7 @@ use App\Models\GravaBanco;
 use App\Models\Grupo;
 use App\Models\PlanoContas;
 use App\Models\Produto;
+use App\Models\ProdutoVariacao;
 use App\Models\User;
 use App\Models\Venda;
 use App\Models\Vendedor;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use NFePHP\Common\Certificate;
 
 /**
@@ -89,19 +91,24 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            AgendaVisitacao::where('empresa_id', $empresaAtual->id)->orderByDesc('data_hora')->get()
+            AgendaVisitacao::where('empresa_id', $empresaAtual->id)
+                ->with(['vendedor:id,nome', 'atendente:id,nome'])
+                ->orderByDesc('data_hora')
+                ->get()
         );
     }
 
     public function criarAgenda(Request $request, string $empresa)
     {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
         $dados = $request->validate([
             'data_hora' => ['required', 'date'],
             'vagas_total' => ['required', 'integer', 'min:1'],
             'valor_visita' => ['required', 'numeric', 'min:0'],
+            'vendedor_id' => ['nullable', 'integer', Rule::exists('vendedores', 'id')->where('empresa_id', $empresaAtual->id)],
+            'atendente_id' => ['nullable', 'integer', Rule::exists('atendentes', 'id')->where('empresa_id', $empresaAtual->id)],
         ]);
-
-        $empresaAtual = $request->attributes->get('empresaAtual');
 
         $agenda = AgendaVisitacao::create($dados + [
             'empresa_id' => $empresaAtual->id,
@@ -112,6 +119,40 @@ class DashboardController extends Controller
         return response()->json($agenda, 201);
     }
 
+    public function atualizarAgenda(Request $request, string $empresa, int $agendaId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $dados = $request->validate([
+            'data_hora' => ['sometimes', 'date'],
+            'vagas_total' => ['sometimes', 'integer', 'min:1'],
+            'valor_visita' => ['sometimes', 'numeric', 'min:0'],
+            'status' => ['sometimes', 'in:aberta,lotada,cancelada'],
+            'vendedor_id' => ['nullable', 'integer', Rule::exists('vendedores', 'id')->where('empresa_id', $empresaAtual->id)],
+            'atendente_id' => ['nullable', 'integer', Rule::exists('atendentes', 'id')->where('empresa_id', $empresaAtual->id)],
+        ]);
+
+        $agenda = AgendaVisitacao::where('empresa_id', $empresaAtual->id)->findOrFail($agendaId);
+        $agenda->update($dados);
+
+        return response()->json($agenda);
+    }
+
+    public function excluirAgenda(Request $request, string $empresa, int $agendaId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $agenda = AgendaVisitacao::where('empresa_id', $empresaAtual->id)->findOrFail($agendaId);
+
+        if ($agenda->vagas_reservadas > 0) {
+            abort(422, 'Não é possível excluir um horário com vagas já reservadas - cancele-o em vez disso.');
+        }
+
+        $agenda->delete();
+
+        return response()->json(null, 204);
+    }
+
     // ---- Produtos ----
 
     public function produtos(Request $request, string $empresa)
@@ -120,10 +161,73 @@ class DashboardController extends Controller
 
         return response()->json(
             Produto::where('empresa_id', $empresaAtual->id)
-                ->with(['fornecedor', 'grupo', 'classTrib', 'creditoPresumido'])
+                ->with(['fornecedor', 'grupo', 'classTrib', 'creditoPresumido', 'variacoes'])
                 ->orderBy('nome')
                 ->get()
         );
+    }
+
+    /**
+     * Variações de tamanho (P/M/G/GG etc.) de um produto, cada uma com
+     * estoque próprio - usado por produtos de vestuário/suvenir.
+     */
+    public function variacoesProduto(Request $request, string $empresa, int $produtoId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
+
+        return response()->json($produto->variacoes()->orderBy('tamanho')->get());
+    }
+
+    public function criarVariacaoProduto(Request $request, string $empresa, int $produtoId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
+
+        $dados = $request->validate([
+            'tamanho' => ['required', 'string', 'max:10'],
+            'estoque_atual' => ['nullable', 'integer', 'min:0'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $variacao = ProdutoVariacao::create($dados + [
+            'empresa_id' => $empresaAtual->id,
+            'produto_id' => $produto->id,
+            'estoque_atual' => $dados['estoque_atual'] ?? 0,
+            'ativo' => $dados['ativo'] ?? true,
+        ]);
+
+        return response()->json($variacao, 201);
+    }
+
+    public function atualizarVariacaoProduto(Request $request, string $empresa, int $produtoId, int $variacaoId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $variacao = ProdutoVariacao::where('empresa_id', $empresaAtual->id)
+            ->where('produto_id', $produtoId)
+            ->findOrFail($variacaoId);
+
+        $dados = $request->validate([
+            'tamanho' => ['sometimes', 'string', 'max:10'],
+            'estoque_atual' => ['sometimes', 'integer', 'min:0'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $variacao->update($dados);
+
+        return response()->json($variacao->fresh());
+    }
+
+    public function excluirVariacaoProduto(Request $request, string $empresa, int $produtoId, int $variacaoId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $variacao = ProdutoVariacao::where('empresa_id', $empresaAtual->id)
+            ->where('produto_id', $produtoId)
+            ->findOrFail($variacaoId);
+
+        $variacao->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     /**
@@ -155,6 +259,11 @@ class DashboardController extends Controller
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
+        unset($dados['imagem']);
+        if ($request->hasFile('imagem')) {
+            $dados['imagem_url'] = $this->armazenarImagemProduto($request->file('imagem'));
+        }
+
         $produto = Produto::create($dados + [
             'empresa_id' => $empresaAtual->id,
             'unidade' => $dados['unidade'] ?? 'UN',
@@ -174,9 +283,39 @@ class DashboardController extends Controller
             ...$this->regrasFiscaisProduto(),
         ]);
 
+        unset($dados['imagem']);
+        if ($request->hasFile('imagem')) {
+            $dados['imagem_url'] = $this->armazenarImagemProduto($request->file('imagem'));
+        }
+
         $produto->update($dados);
 
         return response()->json($produto->fresh());
+    }
+
+    /**
+     * Salva o arquivo de imagem enviado no disco público (storage/app/public/produtos)
+     * e devolve a URL acessível publicamente para gravar em imagem_url.
+     */
+    private function armazenarImagemProduto(\Illuminate\Http\UploadedFile $arquivo): string
+    {
+        return $this->armazenarImagem($arquivo, 'produtos');
+    }
+
+    /**
+     * Salva o logo do emitente no disco público (storage/app/public/logos) -
+     * usado tanto no PDV (topo) quanto na loja pública (Header.tsx via logo_url).
+     */
+    private function armazenarImagemEmpresa(\Illuminate\Http\UploadedFile $arquivo): string
+    {
+        return $this->armazenarImagem($arquivo, 'logos');
+    }
+
+    private function armazenarImagem(\Illuminate\Http\UploadedFile $arquivo, string $pasta): string
+    {
+        $caminho = $arquivo->store($pasta, 'public');
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($caminho);
     }
 
     /**
@@ -201,6 +340,7 @@ class DashboardController extends Controller
             'ativo' => ['sometimes', 'boolean'],
             'pesavel' => ['sometimes', 'boolean'],
             'imagem_url' => ['nullable', 'string', 'max:255'],
+            'imagem' => ['nullable', 'file', 'image', 'max:5120'],
             'peso_liquido' => ['nullable', 'numeric', 'min:0'],
             'peso_bruto' => ['nullable', 'numeric', 'min:0'],
             'fornecedor_id' => ['nullable', 'integer'],
@@ -392,8 +532,11 @@ class DashboardController extends Controller
     {
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
-            'percentual_comissao' => ['required', 'numeric', 'min:0', 'max:100'],
+            'telefone' => ['nullable', 'string', 'max:20'],
+            'percentual_comissao' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
+
+        $dados['percentual_comissao'] ??= 5;
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
@@ -1108,8 +1251,54 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            Cupom::where('empresa_id', $empresaAtual->id)->orderBy('codigo')->get()
+            // Lotes importados (ex.: planilha de códigos promocionais) ficam de fora
+            // desta lista - são centenas/milhares de linhas, não cabem numa tela de
+            // cadastro manual. Eles têm sua própria tela, em cuponsLote().
+            Cupom::where('empresa_id', $empresaAtual->id)->where('importado', false)->orderBy('codigo')->get()
         );
+    }
+
+    /**
+     * Relatório paginado dos cupons importados em lote - mostra, pra cada
+     * código, se já foi usado, quando e por qual cliente.
+     */
+    public function cuponsLote(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $dados = $request->validate([
+            'busca' => ['nullable', 'string', 'max:40'],
+            'status' => ['nullable', 'in:todos,usados,disponiveis'],
+            'pagina' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $consulta = Cupom::where('empresa_id', $empresaAtual->id)
+            ->where('importado', true)
+            ->with('usadoPor:id,nome')
+            ->orderBy('codigo');
+
+        if (! empty($dados['busca'])) {
+            $consulta->whereRaw('codigo ILIKE ?', ['%'.$dados['busca'].'%']);
+        }
+
+        if (($dados['status'] ?? 'todos') === 'usados') {
+            $consulta->whereNotNull('usado_em');
+        } elseif (($dados['status'] ?? 'todos') === 'disponiveis') {
+            $consulta->whereNull('usado_em');
+        }
+
+        $pagina = $consulta->paginate(50, page: $dados['pagina'] ?? 1);
+
+        return response()->json([
+            'dados' => $pagina->items(),
+            'total' => $pagina->total(),
+            'pagina' => $pagina->currentPage(),
+            'ultima_pagina' => $pagina->lastPage(),
+            'resumo' => [
+                'total' => (clone $consulta)->toBase()->getCountForPagination(),
+                'usados' => Cupom::where('empresa_id', $empresaAtual->id)->where('importado', true)->whereNotNull('usado_em')->count(),
+            ],
+        ]);
     }
 
     public function criarCupom(Request $request, string $empresa)
@@ -1181,8 +1370,14 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'segmento' => ['nullable', 'string', 'max:255'],
             'logo_url' => ['nullable', 'string', 'max:255'],
+            'logo' => ['nullable', 'image', 'max:2048'],
             'cor_primaria' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
         ]);
+
+        unset($dados['logo']);
+        if ($request->hasFile('logo')) {
+            $dados['logo_url'] = $this->armazenarImagemEmpresa($request->file('logo'));
+        }
 
         $empresaAtual = $request->attributes->get('empresaAtual');
         $empresaAtual->update($dados);

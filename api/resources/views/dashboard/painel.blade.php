@@ -98,14 +98,18 @@
             <section id="secao-agenda" class="secao">
                 <h1>Agenda de Visitas</h1>
                 <div class="card">
+                    <input type="hidden" id="ag-id">
                     <div class="linha-form">
                         <div><label>Data/hora</label><input type="datetime-local" id="ag-data"></div>
                         <div><label>Vagas totais</label><input type="number" id="ag-vagas" style="width:100px"></div>
                         <div><label>Valor por visitante (R$)</label><input type="number" step="0.01" id="ag-valor" style="width:120px"></div>
-                        <div><button class="acao" onclick="criarAgenda()">Adicionar horário</button></div>
+                        <div><label>Vendedor</label><select id="ag-vendedor" style="min-width:160px"><option value="">Nenhum</option></select></div>
+                        <div><label>Atendente</label><select id="ag-atendente" style="min-width:160px"><option value="">Nenhum</option></select></div>
+                        <div><button class="acao" id="ag-botao" onclick="salvarAgenda()">Adicionar horário</button></div>
+                        <div><button class="secundario" onclick="limparFormularioAgenda()" style="display:none;" id="ag-cancelar">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Data/hora</th><th>Vagas</th><th>Valor</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Data/hora</th><th>Vagas</th><th>Valor</th><th>Vendedor</th><th>Atendente</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-agenda"></tbody>
                     </table>
                     <p class="msg" id="msg-agenda"></p>
@@ -119,6 +123,7 @@
 
                     <div class="abas-produto">
                         <button type="button" class="ativa" onclick="mostrarAbaProduto('geral', this)">Geral</button>
+                        <button type="button" onclick="mostrarAbaProduto('tamanhos', this)">Tamanhos</button>
                         <button type="button" onclick="mostrarAbaProduto('icms', this)">ICMS / PIS / COFINS / IPI</button>
                         <button type="button" onclick="mostrarAbaProduto('ibscbs', this)">IBS / CBS (novo regime)</button>
                         <button type="button" onclick="mostrarAbaProduto('is', this)">Imposto Seletivo</button>
@@ -169,10 +174,44 @@
                             <div class="linha-form">
                                 <div><label>Peso líquido (kg)</label><input type="number" step="0.001" id="pr-peso-liquido" style="width:110px"></div>
                                 <div><label>Peso bruto (kg)</label><input type="number" step="0.001" id="pr-peso-bruto" style="width:110px"></div>
-                                <div style="flex:1; min-width:220px"><label>Imagem (URL)</label><input type="text" id="pr-imagem" placeholder="https://..."></div>
+                            </div>
+                            <div class="linha-form">
+                                <div style="flex:1; min-width:280px">
+                                    <label>Imagem do produto</label>
+                                    <div style="display:flex; gap:12px; margin-bottom:6px">
+                                        <label style="font-weight:normal"><input type="radio" name="pr-imagem-origem" id="pr-imagem-origem-url" value="url" checked> Informar URL</label>
+                                        <label style="font-weight:normal"><input type="radio" name="pr-imagem-origem" id="pr-imagem-origem-arquivo" value="arquivo"> Enviar arquivo do computador</label>
+                                    </div>
+                                    <input type="text" id="pr-imagem" placeholder="https://...">
+                                    <input type="file" id="pr-imagem-arquivo" accept="image/*" style="display:none">
+                                    <img id="pr-imagem-preview" src="" alt="Pré-visualização" style="display:none; max-width:120px; max-height:120px; margin-top:8px; border-radius:4px; object-fit:cover">
+                                </div>
                             </div>
                             <div class="linha-form">
                                 <div style="flex:1"><label>Descrição</label><input type="text" id="pr-descricao"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="aba-conteudo-produto" id="aba-produto-tamanhos">
+                        <div class="grupo-campos">
+                            <h3>Tamanhos (opcional)</h3>
+                            <p style="font-size:13px; color:#666; margin:0 0 10px">
+                                Use quando o produto tem tamanhos diferentes (ex.: camisetas P, M, G, GG), cada um com estoque próprio.
+                                Se o produto não tiver tamanhos, deixe em branco e use o campo "Estoque atual" da aba Geral.
+                            </p>
+                            <p class="msg" id="msg-pr-tamanhos-aviso">Salve o produto primeiro para poder cadastrar os tamanhos.</p>
+                            <div id="bloco-pr-tamanhos" style="display:none">
+                                <table>
+                                    <thead><tr><th>Tamanho</th><th>Estoque</th><th>Ativo</th><th></th></tr></thead>
+                                    <tbody id="tbody-pr-tamanhos"></tbody>
+                                </table>
+                                <div class="linha-form" style="margin-top:10px">
+                                    <div><label>Tamanho</label><input type="text" id="pr-tam-novo-tamanho" placeholder="P, M, G, GG..." style="width:100px"></div>
+                                    <div><label>Estoque</label><input type="number" id="pr-tam-novo-estoque" min="0" value="0" style="width:90px"></div>
+                                    <div style="align-self:flex-end"><button type="button" onclick="adicionarTamanhoProduto()">Adicionar tamanho</button></div>
+                                </div>
+                                <p class="msg" id="msg-pr-tamanhos"></p>
                             </div>
                         </div>
                     </div>
@@ -558,11 +597,12 @@
                 <div class="card">
                     <div class="linha-form">
                         <div><label>Nome</label><input type="text" id="ve-nome"></div>
-                        <div><label>Comissão (%)</label><input type="number" step="0.01" id="ve-comissao" style="width:100px"></div>
+                        <div><label>Telefone</label><input type="text" id="ve-telefone" style="width:140px"></div>
+                        <div><label>Comissão (%)</label><input type="number" step="0.01" id="ve-comissao" value="5" style="width:100px"></div>
                         <div><button class="acao" onclick="criarVendedor()">Cadastrar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Nome</th><th>Comissão</th></tr></thead>
+                        <thead><tr><th>Nome</th><th>Telefone</th><th>Comissão</th></tr></thead>
                         <tbody id="tbody-vendedores"></tbody>
                     </table>
                     <p class="msg" id="msg-vendedores"></p>
@@ -630,6 +670,34 @@
                         <tbody id="tbody-cupons"></tbody>
                     </table>
                     <p class="msg" id="msg-cupons"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Lote de cupons importados</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:-6px;">
+                        Códigos gerados em massa (ex.: planilha de campanha), cada um de uso único.
+                        <span id="cpl-resumo"></span>
+                    </p>
+                    <div class="linha-form">
+                        <div><label>Buscar código</label><input type="text" id="cpl-busca" style="width:160px; text-transform:uppercase;" onkeydown="if(event.key==='Enter') carregarCuponsLote(1)"></div>
+                        <div><label>Status</label>
+                            <select id="cpl-status" onchange="carregarCuponsLote(1)">
+                                <option value="todos">Todos</option>
+                                <option value="disponiveis">Disponíveis</option>
+                                <option value="usados">Usados</option>
+                            </select>
+                        </div>
+                        <div><button class="secundario" onclick="carregarCuponsLote(1)">Buscar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Código</th><th>Desconto</th><th>Status</th><th>Usado por</th><th>Data/hora do uso</th></tr></thead>
+                        <tbody id="tbody-cupons-lote"></tbody>
+                    </table>
+                    <div class="linha-form" style="justify-content:flex-end;">
+                        <button class="secundario" id="cpl-anterior" onclick="carregarCuponsLote(cuponsLotePagina - 1)">« Anterior</button>
+                        <span id="cpl-paginacao" style="align-self:center; font-size:12px;"></span>
+                        <button class="secundario" id="cpl-proxima" onclick="carregarCuponsLote(cuponsLotePagina + 1)">Próxima »</button>
+                    </div>
                 </div>
             </section>
 
@@ -981,7 +1049,15 @@
                     </p>
                     <div class="linha-form">
                         <div><label>Segmento</label><input type="text" id="lj-segmento" placeholder="ex: cervejaria, vinícola"></div>
-                        <div style="flex:1"><label>URL do logo</label><input type="text" id="lj-logo" placeholder="https://..." style="width:100%"></div>
+                        <div>
+                            <label>Logo</label>
+                            <input type="file" id="lj-logo-arquivo" accept="image/*">
+                            <div style="margin-top:6px;">
+                                <label style="font-weight:normal"><input type="checkbox" id="lj-logo-usar-url"> Usar uma URL em vez de enviar arquivo</label>
+                            </div>
+                            <input type="text" id="lj-logo" placeholder="https://..." style="width:100%; display:none; margin-top:4px;">
+                            <img id="lj-logo-preview" src="" alt="Pré-visualização" style="display:none; max-width:100px; max-height:100px; margin-top:8px; border-radius:4px; object-fit:cover">
+                        </div>
                         <div><label>Cor primária</label><input type="color" id="lj-cor" style="width:60px; padding:2px;"></div>
                         <div><button class="acao" onclick="salvarConfigLoja()">Salvar</button></div>
                     </div>
@@ -1012,6 +1088,7 @@
 
                 <div class="card">
                     <h2>Formas de pagamento</h2>
+                    <input type="hidden" id="fp-id">
                     <div class="linha-form">
                         <div><label>Descrição</label><input type="text" id="fp-descricao"></div>
                         <div><label>Tipo</label>
@@ -1024,7 +1101,8 @@
                             </select>
                         </div>
                         <div><label>Código tPag (NFe)</label><input type="text" id="fp-codigo" style="width:70px" maxlength="2" placeholder="ex: 17"></div>
-                        <div><button class="acao" onclick="criarFormaPagamento()">Cadastrar</button></div>
+                        <div><button class="acao" id="fp-botao" onclick="salvarFormaPagamento()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioFormaPagamento()" style="display:none;" id="fp-cancelar">Cancelar edição</button></div>
                     </div>
                     <p style="font-size:11px; color:var(--cor-texto-suave); margin-top:0;">
                         Código tPag: 01=dinheiro, 03=cartão crédito, 04=cartão débito, 17=Pix, 99=outros - usado na nota fiscal.
@@ -1133,7 +1211,7 @@
             compras: carregarCompras,
             vendedores: carregarVendedores,
             atendentes: carregarAtendentes,
-            cupons: carregarCupons,
+            cupons: () => { carregarCupons(); carregarCuponsLote(1); },
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); },
@@ -1171,30 +1249,104 @@
             `).join('') || '<tr><td colspan="3">Nenhuma visita agendada.</td></tr>';
         }
 
+        let agendaCache = [];
+
+        function preencherSelectVendedorAtendente() {
+            const selVendedor = document.getElementById('ag-vendedor');
+            const selAtendente = document.getElementById('ag-atendente');
+            selVendedor.innerHTML = '<option value="">Nenhum</option>' +
+                vendedoresCache.map(v => `<option value="${v.id}">${v.nome}</option>`).join('');
+            selAtendente.innerHTML = '<option value="">Nenhum</option>' +
+                atendentesCache.map(a => `<option value="${a.id}">${a.nome}</option>`).join('');
+        }
+
         async function carregarAgenda() {
-            const resp = await fetch(`${base}/agenda`);
-            const lista = await resp.json();
-            document.getElementById('tbody-agenda').innerHTML = lista.map(a => `
+            await Promise.all([carregarVendedores(), carregarAtendentes()]);
+            const resp = await fetch(`${base}/visitas`);
+            agendaCache = await resp.json();
+            preencherSelectVendedorAtendente();
+            document.getElementById('tbody-agenda').innerHTML = agendaCache.map(a => `
                 <tr>
                     <td>${new Date(a.data_hora).toLocaleString('pt-BR')}</td>
                     <td>${a.vagas_reservadas}/${a.vagas_total}</td>
                     <td>R$ ${Number(a.valor_visita).toFixed(2)}</td>
+                    <td>${a.vendedor ? a.vendedor.nome : '-'}</td>
+                    <td>${a.atendente ? a.atendente.nome : '-'}</td>
                     <td><span class="status status-${a.status}">${a.status}</span></td>
+                    <td>
+                        <button class="secundario" onclick="editarAgenda(${a.id})">Editar</button>
+                        <button class="secundario" onclick="excluirAgenda(${a.id})">Excluir</button>
+                    </td>
                 </tr>
-            `).join('') || '<tr><td colspan="4">Nenhum horário cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="7">Nenhum horário cadastrado.</td></tr>';
         }
 
-        async function criarAgenda() {
+        function dataHoraParaInput(dataHoraIso) {
+            const d = new Date(dataHoraIso);
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        function editarAgenda(id) {
+            const a = agendaCache.find(x => x.id === id);
+            if (!a) return;
+            preencherSelectVendedorAtendente();
+            document.getElementById('ag-id').value = a.id;
+            document.getElementById('ag-data').value = dataHoraParaInput(a.data_hora);
+            document.getElementById('ag-vagas').value = a.vagas_total;
+            document.getElementById('ag-valor').value = a.valor_visita;
+            document.getElementById('ag-vendedor').value = a.vendedor_id ?? '';
+            document.getElementById('ag-atendente').value = a.atendente_id ?? '';
+            document.getElementById('ag-botao').textContent = 'Salvar edição';
+            document.getElementById('ag-cancelar').style.display = 'inline-block';
+        }
+
+        function limparFormularioAgenda() {
+            document.getElementById('ag-id').value = '';
+            document.getElementById('ag-data').value = '';
+            document.getElementById('ag-vagas').value = '';
+            document.getElementById('ag-valor').value = '';
+            document.getElementById('ag-vendedor').value = '';
+            document.getElementById('ag-atendente').value = '';
+            document.getElementById('ag-botao').textContent = 'Adicionar horário';
+            document.getElementById('ag-cancelar').style.display = 'none';
+        }
+
+        async function excluirAgenda(id) {
+            if (!confirm('Excluir este horário da agenda?')) return;
+            const resp = await fetch(`${base}/visitas/${id}`, { method: 'DELETE', headers: headersJson });
+            const msg = document.getElementById('msg-agenda');
+            if (!resp.ok) {
+                const resposta = await resp.json().catch(() => ({}));
+                msg.className = 'msg erro'; msg.textContent = resposta.message || 'Não foi possível excluir.';
+                return;
+            }
+            msg.className = 'msg ok'; msg.textContent = 'Horário excluído.';
+            carregarAgenda();
+        }
+
+        async function salvarAgenda() {
+            const id = document.getElementById('ag-id').value;
             const dados = {
-                data_hora: document.getElementById('ag-data').value,
+                // O input datetime-local não carrega fuso horário - o navegador
+                // trata o valor como hora local, mas o servidor guarda tudo em
+                // UTC (config('app.timezone') = UTC). Sem essa conversão, o
+                // texto ia direto pro backend e era interpretado como se já
+                // fosse UTC, deslocando o horário salvo (ex.: 10:00 virava
+                // 07:00 na exibição, diferença de 3h do fuso de Brasília).
+                data_hora: new Date(document.getElementById('ag-data').value).toISOString(),
                 vagas_total: Number(document.getElementById('ag-vagas').value),
                 valor_visita: Number(document.getElementById('ag-valor').value),
+                vendedor_id: document.getElementById('ag-vendedor').value || null,
+                atendente_id: document.getElementById('ag-atendente').value || null,
             };
-            const resp = await fetch(`${base}/agenda`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const url = id ? `${base}/visitas/${id}` : `${base}/visitas`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-agenda');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
-            msg.className = 'msg ok'; msg.textContent = 'Horário adicionado.';
+            msg.className = 'msg ok'; msg.textContent = id ? 'Horário atualizado.' : 'Horário adicionado.';
+            limparFormularioAgenda();
             carregarAgenda();
         }
 
@@ -1251,6 +1403,7 @@
             const p = produtosCache.find(x => x.id === id);
             if (!p) return;
             document.getElementById('pr-id').value = p.id;
+            carregarTamanhosProduto(p.id);
             // Geral
             document.getElementById('pr-codigo').value = p.codigo ?? '';
             document.getElementById('pr-codigo-barras').value = p.codigo_barras ?? '';
@@ -1271,6 +1424,11 @@
             document.getElementById('pr-peso-liquido').value = p.peso_liquido ?? '';
             document.getElementById('pr-peso-bruto').value = p.peso_bruto ?? '';
             document.getElementById('pr-imagem').value = p.imagem_url ?? '';
+            document.getElementById('pr-imagem-arquivo').value = '';
+            document.getElementById('pr-imagem-origem-url').checked = true;
+            document.getElementById('pr-imagem-origem-arquivo').checked = false;
+            alternarOrigemImagemProduto();
+            atualizarPreviewImagemProduto();
             document.getElementById('pr-descricao').value = p.descricao ?? '';
             // ICMS/PIS/COFINS/IPI
             document.getElementById('pr-ncm').value = p.ncm ?? '';
@@ -1318,6 +1476,35 @@
             document.getElementById('secao-produtos').scrollIntoView({ behavior: 'smooth' });
         }
 
+        function alternarOrigemImagemProduto() {
+            const porArquivo = document.getElementById('pr-imagem-origem-arquivo').checked;
+            document.getElementById('pr-imagem').style.display = porArquivo ? 'none' : '';
+            document.getElementById('pr-imagem-arquivo').style.display = porArquivo ? '' : 'none';
+        }
+
+        function atualizarPreviewImagemProduto() {
+            const preview = document.getElementById('pr-imagem-preview');
+            const arquivo = document.getElementById('pr-imagem-arquivo').files[0];
+            if (arquivo) {
+                preview.src = URL.createObjectURL(arquivo);
+                preview.style.display = '';
+                return;
+            }
+            const url = document.getElementById('pr-imagem').value;
+            if (url) {
+                preview.src = url;
+                preview.style.display = '';
+            } else {
+                preview.style.display = 'none';
+                preview.src = '';
+            }
+        }
+
+        document.getElementById('pr-imagem-origem-url').addEventListener('change', () => { alternarOrigemImagemProduto(); atualizarPreviewImagemProduto(); });
+        document.getElementById('pr-imagem-origem-arquivo').addEventListener('change', () => { alternarOrigemImagemProduto(); atualizarPreviewImagemProduto(); });
+        document.getElementById('pr-imagem').addEventListener('input', atualizarPreviewImagemProduto);
+        document.getElementById('pr-imagem-arquivo').addEventListener('change', atualizarPreviewImagemProduto);
+
         function limparFormularioProduto() {
             document.getElementById('pr-id').value = '';
             [
@@ -1340,8 +1527,78 @@
             document.getElementById('pr-pesavel').checked = false;
             document.getElementById('pr-ativo').checked = true;
             document.getElementById('pr-sujeito-is').checked = false;
+            document.getElementById('pr-imagem-arquivo').value = '';
+            document.getElementById('pr-imagem-origem-url').checked = true;
+            document.getElementById('pr-imagem-origem-arquivo').checked = false;
+            alternarOrigemImagemProduto();
+            atualizarPreviewImagemProduto();
             document.getElementById('pr-botao').textContent = 'Cadastrar';
             document.getElementById('pr-cancelar').style.display = 'none';
+            carregarTamanhosProduto(null);
+        }
+
+        async function carregarTamanhosProduto(produtoId) {
+            const aviso = document.getElementById('msg-pr-tamanhos-aviso');
+            const bloco = document.getElementById('bloco-pr-tamanhos');
+            if (!produtoId) {
+                aviso.style.display = 'block';
+                bloco.style.display = 'none';
+                document.getElementById('tbody-pr-tamanhos').innerHTML = '';
+                return;
+            }
+            aviso.style.display = 'none';
+            bloco.style.display = 'block';
+            bloco.dataset.produtoId = produtoId;
+            const resp = await fetch(`${base}/produtos/${produtoId}/variacoes`, { headers: headersJson });
+            const lista = await resp.json();
+            renderizarTamanhosProduto(lista);
+        }
+
+        function renderizarTamanhosProduto(lista) {
+            const tbody = document.getElementById('tbody-pr-tamanhos');
+            tbody.innerHTML = '';
+            lista.forEach((v) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${v.tamanho}</td>
+                    <td><input type="number" min="0" value="${v.estoque_atual}" style="width:90px" onchange="atualizarTamanhoProduto(${v.id}, { estoque_atual: Number(this.value) })"></td>
+                    <td><input type="checkbox" ${v.ativo ? 'checked' : ''} onchange="atualizarTamanhoProduto(${v.id}, { ativo: this.checked })"></td>
+                    <td><button type="button" onclick="removerTamanhoProduto(${v.id})">Remover</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function adicionarTamanhoProduto() {
+            const produtoId = document.getElementById('bloco-pr-tamanhos').dataset.produtoId;
+            const tamanho = document.getElementById('pr-tam-novo-tamanho').value.trim();
+            const estoque = Number(document.getElementById('pr-tam-novo-estoque').value || 0);
+            const msg = document.getElementById('msg-pr-tamanhos');
+            if (!tamanho) { msg.className = 'msg erro'; msg.textContent = 'Informe o tamanho.'; return; }
+            const resp = await fetch(`${base}/produtos/${produtoId}/variacoes`, {
+                method: 'POST', headers: headersJson,
+                body: JSON.stringify({ tamanho, estoque_atual: estoque }),
+            });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Tamanho adicionado.';
+            document.getElementById('pr-tam-novo-tamanho').value = '';
+            document.getElementById('pr-tam-novo-estoque').value = '0';
+            carregarTamanhosProduto(produtoId);
+        }
+
+        async function atualizarTamanhoProduto(variacaoId, campos) {
+            const produtoId = document.getElementById('bloco-pr-tamanhos').dataset.produtoId;
+            await fetch(`${base}/produtos/${produtoId}/variacoes/${variacaoId}`, {
+                method: 'PUT', headers: headersJson, body: JSON.stringify(campos),
+            });
+        }
+
+        async function removerTamanhoProduto(variacaoId) {
+            if (!confirm('Remover este tamanho? O estoque dele será perdido.')) return;
+            const produtoId = document.getElementById('bloco-pr-tamanhos').dataset.produtoId;
+            await fetch(`${base}/produtos/${produtoId}/variacoes/${variacaoId}`, { method: 'DELETE', headers: headersJson });
+            carregarTamanhosProduto(produtoId);
         }
 
         async function salvarProduto() {
@@ -1409,7 +1666,28 @@
                 tipo_credito: document.getElementById('pr-tipo-credito').value || null,
             };
             const url = id ? `${base}/produtos/${id}` : `${base}/produtos`;
-            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const arquivoImagem = document.getElementById('pr-imagem-origem-arquivo').checked
+                ? document.getElementById('pr-imagem-arquivo').files[0]
+                : null;
+
+            let resp;
+            if (arquivoImagem) {
+                delete dados.imagem_url;
+                const formData = new FormData();
+                Object.entries(dados).forEach(([chave, valor]) => {
+                    if (valor === null || valor === undefined) return;
+                    formData.append(chave, typeof valor === 'boolean' ? (valor ? '1' : '0') : valor);
+                });
+                formData.append('imagem', arquivoImagem);
+                if (id) formData.append('_method', 'PUT');
+                resp = await fetch(id ? `${base}/produtos/${id}` : url, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: formData,
+                });
+            } else {
+                resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            }
             const resposta = await resp.json();
             const msg = document.getElementById('msg-produtos');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
@@ -1868,18 +2146,21 @@
             carregarFornecedores();
         }
 
+        let vendedoresCache = [];
+
         async function carregarVendedores() {
             const resp = await fetch(`${base}/vendedores`);
-            const lista = await resp.json();
-            document.getElementById('tbody-vendedores').innerHTML = lista.map(v => `
-                <tr><td>${v.nome}</td><td>${v.percentual_comissao}%</td></tr>
-            `).join('') || '<tr><td colspan="2">Nenhum vendedor cadastrado.</td></tr>';
+            vendedoresCache = await resp.json();
+            document.getElementById('tbody-vendedores').innerHTML = vendedoresCache.map(v => `
+                <tr><td>${v.nome}</td><td>${v.telefone || '-'}</td><td>${v.percentual_comissao}%</td></tr>
+            `).join('') || '<tr><td colspan="3">Nenhum vendedor cadastrado.</td></tr>';
         }
 
         async function criarVendedor() {
             const dados = {
                 nome: document.getElementById('ve-nome').value,
-                percentual_comissao: Number(document.getElementById('ve-comissao').value),
+                telefone: document.getElementById('ve-telefone').value || null,
+                percentual_comissao: document.getElementById('ve-comissao').value ? Number(document.getElementById('ve-comissao').value) : 5,
             };
             const resp = await fetch(`${base}/vendedores`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
@@ -2011,6 +2292,33 @@
             msg.className = 'msg ok'; msg.textContent = id ? 'Cupom atualizado.' : 'Cupom cadastrado.';
             limparFormularioCupom();
             carregarCupons();
+        }
+
+        let cuponsLotePagina = 1;
+
+        async function carregarCuponsLote(pagina) {
+            cuponsLotePagina = Math.max(1, pagina || 1);
+            const params = new URLSearchParams({ pagina: cuponsLotePagina, status: document.getElementById('cpl-status').value });
+            const busca = document.getElementById('cpl-busca').value.trim();
+            if (busca) params.set('busca', busca);
+
+            const resp = await fetch(`${base}/cupons-lote?${params}`);
+            const resposta = await resp.json();
+
+            document.getElementById('tbody-cupons-lote').innerHTML = resposta.dados.map(c => `
+                <tr>
+                    <td>${c.codigo}</td>
+                    <td>${formatarDescontoCupom(c)}</td>
+                    <td>${c.usado_em ? 'Usado' : 'Disponível'}</td>
+                    <td>${c.usado_por ? c.usado_por.nome : '-'}</td>
+                    <td>${c.usado_em ? new Date(c.usado_em).toLocaleString('pt-BR') : '-'}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum cupom encontrado.</td></tr>';
+
+            document.getElementById('cpl-resumo').textContent = ` ${resposta.resumo.usados} de ${resposta.resumo.total} já usados.`;
+            document.getElementById('cpl-paginacao').textContent = `Página ${resposta.pagina} de ${resposta.ultima_pagina || 1}`;
+            document.getElementById('cpl-anterior').disabled = resposta.pagina <= 1;
+            document.getElementById('cpl-proxima').disabled = resposta.pagina >= resposta.ultima_pagina;
         }
 
         async function carregarContasPagar() {
@@ -2351,8 +2659,40 @@
             const dados = await resp.json();
             document.getElementById('lj-segmento').value = dados.segmento ?? '';
             document.getElementById('lj-logo').value = dados.logo_url ?? '';
+            document.getElementById('lj-logo-arquivo').value = '';
+            document.getElementById('lj-logo-usar-url').checked = false;
             document.getElementById('lj-cor').value = dados.cor_primaria ?? '#394285';
+            alternarOrigemLogo();
+            atualizarPreviewLogo();
         }
+
+        function alternarOrigemLogo() {
+            const porUrl = document.getElementById('lj-logo-usar-url').checked;
+            document.getElementById('lj-logo').style.display = porUrl ? '' : 'none';
+            document.getElementById('lj-logo-arquivo').style.display = porUrl ? 'none' : '';
+        }
+
+        function atualizarPreviewLogo() {
+            const preview = document.getElementById('lj-logo-preview');
+            const arquivo = document.getElementById('lj-logo-arquivo').files[0];
+            if (arquivo) {
+                preview.src = URL.createObjectURL(arquivo);
+                preview.style.display = '';
+                return;
+            }
+            const url = document.getElementById('lj-logo').value;
+            if (url) {
+                preview.src = url;
+                preview.style.display = '';
+            } else {
+                preview.style.display = 'none';
+                preview.src = '';
+            }
+        }
+
+        document.getElementById('lj-logo-usar-url').addEventListener('change', () => { alternarOrigemLogo(); atualizarPreviewLogo(); });
+        document.getElementById('lj-logo').addEventListener('input', atualizarPreviewLogo);
+        document.getElementById('lj-logo-arquivo').addEventListener('change', atualizarPreviewLogo);
 
         async function salvarConfigLoja() {
             const dados = {
@@ -2360,11 +2700,33 @@
                 logo_url: document.getElementById('lj-logo').value || null,
                 cor_primaria: document.getElementById('lj-cor').value || null,
             };
-            const resp = await fetch(`${base}/config-loja`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const arquivoLogo = !document.getElementById('lj-logo-usar-url').checked
+                ? document.getElementById('lj-logo-arquivo').files[0]
+                : null;
+
+            let resp;
+            if (arquivoLogo) {
+                delete dados.logo_url;
+                const formData = new FormData();
+                Object.entries(dados).forEach(([chave, valor]) => {
+                    if (valor === null || valor === undefined) return;
+                    formData.append(chave, valor);
+                });
+                formData.append('logo', arquivoLogo);
+                formData.append('_method', 'PUT');
+                resp = await fetch(`${base}/config-loja`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: formData,
+                });
+            } else {
+                resp = await fetch(`${base}/config-loja`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            }
             const resposta = await resp.json();
             const msg = document.getElementById('msg-config-loja');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Identidade visual salva.';
+            carregarConfigLoja();
         }
 
         // ---- Parâmetros operacionais (estoque, PDV, etc.) ----
@@ -2625,33 +2987,59 @@
             carregarCertificado();
         }
 
+        let formasPagamentoCache = [];
+
         async function carregarFormasPagamento() {
             const resp = await fetch(`${base}/formas-pagamento`);
-            const lista = await resp.json();
-            document.getElementById('tbody-formas-pagamento').innerHTML = lista.map(f => `
+            formasPagamentoCache = await resp.json();
+            document.getElementById('tbody-formas-pagamento').innerHTML = formasPagamentoCache.map(f => `
                 <tr>
                     <td>${f.descricao}</td>
                     <td>${f.tipo}</td>
                     <td>${f.codigo_tpag}</td>
                     <td>${f.ativo ? 'Sim' : 'Não'}</td>
-                    <td><button class="secundario" onclick="alternarFormaPagamento(${f.id}, ${!f.ativo})">${f.ativo ? 'Desativar' : 'Ativar'}</button></td>
+                    <td>
+                        <button class="secundario" onclick="editarFormaPagamento(${f.id})">Editar</button>
+                        <button class="secundario" onclick="alternarFormaPagamento(${f.id}, ${!f.ativo})">${f.ativo ? 'Desativar' : 'Ativar'}</button>
+                    </td>
                 </tr>
             `).join('') || '<tr><td colspan="5">Nenhuma forma de pagamento cadastrada.</td></tr>';
         }
 
-        async function criarFormaPagamento() {
+        function editarFormaPagamento(id) {
+            const f = formasPagamentoCache.find(x => x.id === id);
+            if (!f) return;
+            document.getElementById('fp-id').value = f.id;
+            document.getElementById('fp-descricao').value = f.descricao;
+            document.getElementById('fp-tipo').value = f.tipo;
+            document.getElementById('fp-codigo').value = f.codigo_tpag;
+            document.getElementById('fp-botao').textContent = 'Salvar edição';
+            document.getElementById('fp-cancelar').style.display = 'inline-block';
+        }
+
+        function limparFormularioFormaPagamento() {
+            document.getElementById('fp-id').value = '';
+            document.getElementById('fp-descricao').value = '';
+            document.getElementById('fp-tipo').value = 'dinheiro';
+            document.getElementById('fp-codigo').value = '';
+            document.getElementById('fp-botao').textContent = 'Cadastrar';
+            document.getElementById('fp-cancelar').style.display = 'none';
+        }
+
+        async function salvarFormaPagamento() {
+            const id = document.getElementById('fp-id').value;
             const dados = {
                 descricao: document.getElementById('fp-descricao').value,
                 tipo: document.getElementById('fp-tipo').value,
                 codigo_tpag: document.getElementById('fp-codigo').value,
             };
-            const resp = await fetch(`${base}/formas-pagamento`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const url = id ? `${base}/formas-pagamento/${id}` : `${base}/formas-pagamento`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-formas-pagamento');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
-            msg.className = 'msg ok'; msg.textContent = 'Forma de pagamento cadastrada.';
-            document.getElementById('fp-descricao').value = '';
-            document.getElementById('fp-codigo').value = '';
+            msg.className = 'msg ok'; msg.textContent = id ? 'Forma de pagamento atualizada.' : 'Forma de pagamento cadastrada.';
+            limparFormularioFormaPagamento();
             carregarFormasPagamento();
         }
 

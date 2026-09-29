@@ -32,6 +32,7 @@ class PdvController extends Controller
         return view('pdv.caixa', [
             'empresaSlug' => $empresa,
             'pdvImpressaoDireta' => $empresaAtual?->pdv_impressao_direta ?? false,
+            'logoEmpresaUrl' => $empresaAtual?->logo_url,
         ]);
     }
 

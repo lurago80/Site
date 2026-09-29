@@ -83,7 +83,7 @@ Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(functio
 Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function () {
     Route::get('/caixa', [PdvController::class, 'caixa'])->middleware('conta_ativa');
     Route::get('/produtos', [PdvController::class, 'produtos']);
-    Route::get('/agenda', [PdvController::class, 'agenda']);
+    Route::get('/visitas', [PdvController::class, 'agenda']);
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
     Route::get('/atendentes', [PdvController::class, 'atendentes']);
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
@@ -107,12 +107,18 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::get('/painel', [DashboardController::class, 'painel'])->middleware('conta_ativa');
     Route::get('/indicadores', [DashboardController::class, 'indicadores']);
 
-    Route::get('/agenda', [DashboardController::class, 'agenda']);
-    Route::post('/agenda', [DashboardController::class, 'criarAgenda']);
+    Route::get('/visitas', [DashboardController::class, 'agenda']);
+    Route::post('/visitas', [DashboardController::class, 'criarAgenda']);
+    Route::put('/visitas/{agendaId}', [DashboardController::class, 'atualizarAgenda']);
+    Route::delete('/visitas/{agendaId}', [DashboardController::class, 'excluirAgenda']);
 
     Route::get('/produtos', [DashboardController::class, 'produtos']);
     Route::post('/produtos', [DashboardController::class, 'criarProduto']);
     Route::put('/produtos/{produtoId}', [DashboardController::class, 'atualizarProduto']);
+    Route::get('/produtos/{produtoId}/variacoes', [DashboardController::class, 'variacoesProduto']);
+    Route::post('/produtos/{produtoId}/variacoes', [DashboardController::class, 'criarVariacaoProduto']);
+    Route::put('/produtos/{produtoId}/variacoes/{variacaoId}', [DashboardController::class, 'atualizarVariacaoProduto']);
+    Route::delete('/produtos/{produtoId}/variacoes/{variacaoId}', [DashboardController::class, 'excluirVariacaoProduto']);
     Route::get('/tab-cclasstrib', [DashboardController::class, 'tabClassTrib']);
     Route::get('/tab-ccredpres', [DashboardController::class, 'tabCredPres']);
 
@@ -181,6 +187,7 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::get('/cupons', [DashboardController::class, 'cupons']);
     Route::post('/cupons', [DashboardController::class, 'criarCupom']);
     Route::put('/cupons/{cupomId}', [DashboardController::class, 'atualizarCupom']);
+    Route::get('/cupons-lote', [DashboardController::class, 'cuponsLote']);
 
     Route::get('/config-loja', [DashboardController::class, 'configLoja']);
     Route::put('/config-loja', [DashboardController::class, 'atualizarConfigLoja']);

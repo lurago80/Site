@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['empresa_id', 'codigo', 'tipo', 'valor', 'valido_ate', 'limite_uso', 'usos_realizados', 'ativo'])]
+#[Fillable(['empresa_id', 'codigo', 'tipo', 'valor', 'valido_ate', 'limite_uso', 'usos_realizados', 'ativo', 'importado'])]
 class Cupom extends Model
 {
     // Eloquent pluraliza "Cupom" em inglês (cupoms) por padrão - tabela é cupons.
@@ -18,12 +18,19 @@ class Cupom extends Model
             'valor' => 'decimal:2',
             'valido_ate' => 'date',
             'ativo' => 'boolean',
+            'importado' => 'boolean',
+            'usado_em' => 'datetime',
         ];
     }
 
     public function empresa(): BelongsTo
     {
         return $this->belongsTo(Empresa::class);
+    }
+
+    public function usadoPor(): BelongsTo
+    {
+        return $this->belongsTo(Cliente::class, 'usado_por_cliente_id');
     }
 
     /**
