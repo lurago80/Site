@@ -7,3 +7,9 @@
 /api/bootstrap/cache/*.php
 /api/public/hot
 /api/public/storage
+
+# Logs, artefatos de deploy e config local
+*.log
+loja-publica/.env.production
+producao-update-*.zip
+.claude/
