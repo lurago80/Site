@@ -32,6 +32,7 @@ export default async function EmpresaLayout({
                     {children}
                 </main>
                 <footer
+                    className="sem-impressao"
                     style={{
                         borderTop: '1px solid var(--cor-borda)',
                         padding: '20px 20px',

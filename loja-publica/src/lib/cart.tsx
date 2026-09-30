@@ -11,9 +11,11 @@ interface CarrinhoContexto {
         nome: string,
         valorUnitario: number,
         variacao?: { id: number; tamanho: string } | null,
+        quantidadeMinima?: number | null,
     ) => void;
     definirAgenda: (agendaId: number, nome: string, quantidade: number, valorUnitario: number) => void;
     removerItem: (index: number) => void;
+    alterarQuantidade: (index: number, quantidade: number) => void;
     limpar: () => void;
 }
 
@@ -46,6 +48,7 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
         nome: string,
         valorUnitario: number,
         variacao?: { id: number; tamanho: string } | null,
+        quantidadeMinima?: number | null,
     ) {
         setItens((atual) => {
             const existente = atual.find(
@@ -69,6 +72,7 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
                     nome,
                     quantidade: 1,
                     valorUnitario,
+                    quantidadeMinima: quantidadeMinima ?? null,
                 },
             ];
         });
@@ -86,6 +90,11 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
         setItens((atual) => atual.filter((_, i) => i !== index));
     }
 
+    function alterarQuantidade(index: number, quantidade: number) {
+        if (quantidade < 1) return;
+        setItens((atual) => atual.map((item, i) => (i === index ? { ...item, quantidade } : item)));
+    }
+
     function limpar() {
         setItens([]);
     }
@@ -93,7 +102,7 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
     const total = itens.reduce((soma, item) => soma + item.quantidade * item.valorUnitario, 0);
 
     return (
-        <Contexto.Provider value={{ itens, total, adicionarProduto, definirAgenda, removerItem, limpar }}>
+        <Contexto.Provider value={{ itens, total, adicionarProduto, definirAgenda, removerItem, alterarQuantidade, limpar }}>
             {children}
         </Contexto.Provider>
     );

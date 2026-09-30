@@ -10,6 +10,7 @@ export default function Header({ empresa, info }: { empresa: string; info: Empre
 
     return (
         <header
+            className="sem-impressao"
             style={{
                 position: 'sticky',
                 top: 0,

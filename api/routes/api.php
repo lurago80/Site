@@ -19,6 +19,7 @@ Route::middleware(['tenant', 'throttle:60,1'])->prefix('loja/{empresa}')->group(
     Route::get('/produtos', [CatalogoController::class, 'produtos']);
     Route::get('/visitas', [CatalogoController::class, 'agenda']);
     Route::post('/cupons/validar', [CatalogoController::class, 'validarCupom']);
+    Route::get('/pedidos/{id}', [CatalogoController::class, 'pedido']);
 });
 
 // Limite bem mais apertado que o resto da loja - busca por CPF/CNPJ exato,

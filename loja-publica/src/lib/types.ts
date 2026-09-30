@@ -21,6 +21,7 @@ export interface Produto {
     preco_venda: string;
     estoque_atual: number | null;
     imagem_url: string | null;
+    quantidade_minima_venda: number | null;
     variacoes?: ProdutoVariacao[];
 }
 
@@ -44,6 +45,7 @@ export interface ItemCarrinhoProduto {
     nome: string;
     quantidade: number;
     valorUnitario: number;
+    quantidadeMinima?: number | null;
 }
 
 export interface ItemCarrinhoAgenda {
@@ -63,12 +65,38 @@ export interface Cobranca {
     expira_em: string | null;
 }
 
+export interface ItemVendaResposta {
+    id: number;
+    quantidade: number;
+    valor_unitario: string;
+    valor_total: string;
+    produto: { nome: string } | null;
+    produto_variacao: { tamanho: string } | null;
+    agenda_visitacao: { data_hora: string } | null;
+}
+
 export interface RespostaCheckout {
     id: number;
     valor_total: string;
     valor_desconto: string | null;
     status_pagamento: string;
     cobranca: Cobranca | null;
+    itens: ItemVendaResposta[];
+}
+
+export interface PedidoPublico {
+    id: number;
+    status_pagamento: string;
+    valor_total: string;
+    valor_desconto: string | null;
+    data_venda: string;
+    cliente_primeiro_nome: string | null;
+    itens: ItemVendaResposta[];
+    empresa: {
+        nome_fantasia: string;
+        logo_url: string | null;
+        cor_primaria: string | null;
+    };
 }
 
 export interface CupomValidado {

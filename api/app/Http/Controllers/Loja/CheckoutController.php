@@ -13,6 +13,7 @@ use App\Models\ReservaTemporaria;
 use App\Models\Venda;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Pagamento\PagamentoService;
+use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -35,15 +36,25 @@ class CheckoutController extends Controller
     public function __construct(
         private readonly ReservaVagaService $reservaVagaService,
         private readonly PagamentoService $pagamentoService,
+        private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
     ) {}
 
     public function store(Request $request, string $empresa)
     {
         $dados = $request->validate([
             'cliente.nome' => ['required', 'string', 'max:255'],
-            'cliente.cpf_cnpj' => ['nullable', 'string', 'max:18'],
-            'cliente.email' => ['nullable', 'email'],
-            'cliente.telefone' => ['nullable', 'string', 'max:20'],
+            'cliente.cpf_cnpj' => ['required', 'string', 'max:18'],
+            'cliente.rg' => ['nullable', 'string', 'max:20'],
+            'cliente.inscricao_estadual' => ['nullable', 'string', 'max:20'],
+            'cliente.email' => ['required', 'email'],
+            'cliente.telefone' => ['required', 'string', 'max:20'],
+            'cliente.cep' => ['nullable', 'string', 'max:9'],
+            'cliente.logradouro' => ['nullable', 'string', 'max:255'],
+            'cliente.numero' => ['nullable', 'string', 'max:20'],
+            'cliente.bairro' => ['nullable', 'string', 'max:255'],
+            'cliente.municipio' => ['nullable', 'string', 'max:255'],
+            'cliente.uf' => ['nullable', 'string', 'max:2'],
+            'cliente.codigo_ibge_municipio' => ['nullable', 'string', 'max:7'],
             'cliente.consentimento_lgpd' => ['required', 'accepted'],
             'reserva_id' => ['nullable', 'integer'],
             'itens' => ['nullable', 'array'],
@@ -63,6 +74,28 @@ class CheckoutController extends Controller
             'Informe uma reserva de vaga ou ao menos um item de produto.'
         );
 
+        $documento = preg_replace('/\D/', '', $dados['cliente']['cpf_cnpj']);
+        abort_if(! in_array(strlen($documento), [11, 14], true), 422, 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
+
+        $pessoaJuridica = strlen($documento) === 14;
+
+        if ($pessoaJuridica) {
+            abort_if(empty($dados['cliente']['inscricao_estadual'] ?? null), 422, 'Informe a Inscrição Estadual para pessoa jurídica.');
+        } else {
+            abort_if(empty($dados['cliente']['rg'] ?? null), 422, 'Informe o RG.');
+        }
+
+        // Endereço só é obrigatório quando há produto físico no carrinho
+        // (é usado para o envio) - visita agendada não precisa dele.
+        if (! empty($dados['itens'])) {
+            $camposEndereco = ['cep', 'logradouro', 'numero', 'bairro', 'municipio', 'uf', 'codigo_ibge_municipio'];
+            foreach ($camposEndereco as $campo) {
+                abort_if(empty($dados['cliente'][$campo] ?? null), 422, 'Informe o endereço completo para envio do produto.');
+            }
+        }
+
+        $this->quantidadeMinimaVendaService->validar($dados['itens'] ?? []);
+
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         $venda = DB::transaction(function () use ($dados, $empresaAtual) {
@@ -78,25 +111,32 @@ class CheckoutController extends Controller
                 'data_venda' => now(),
             ]);
 
-            $valorTotal = 0;
+            $valorVisitas = 0;
+            $quantidadeTickets = 0;
 
             if (! empty($dados['reserva_id'])) {
-                $valorTotal += $this->confirmarReservaEGerarItem($venda, $dados['reserva_id']);
+                [$valorVisitas, $quantidadeTickets] = $this->confirmarReservaEGerarItem($venda, $dados['reserva_id']);
             }
 
+            $valorProdutos = 0;
+
             foreach ($dados['itens'] ?? [] as $item) {
-                $valorTotal += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade'], $item['variacao_id'] ?? null);
+                $valorProdutos += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade'], $item['variacao_id'] ?? null);
             }
 
             $valorDesconto = 0;
             $cupomId = null;
 
+            // Cupom só desconta a parte da visita agendada, nunca produtos
+            // (regra de negócio explícita do cliente) - ver
+            // Cupom::calcularDescontoVisita para o teto por quantidade de tickets.
             if (! empty($dados['cupom_codigo'])) {
-                [$valorDesconto, $cupomId] = $this->aplicarCupom($dados['cupom_codigo'], $valorTotal, $cliente->id);
+                abort_if($quantidadeTickets === 0, 422, 'O cupom só pode ser aplicado quando há uma visita agendada no carrinho.');
+                [$valorDesconto, $cupomId] = $this->aplicarCupom($dados['cupom_codigo'], $valorVisitas, $quantidadeTickets, $cliente->id);
             }
 
             $venda->update([
-                'valor_total' => $valorTotal - $valorDesconto,
+                'valor_total' => $valorProdutos + $valorVisitas - $valorDesconto,
                 'valor_desconto' => $valorDesconto ?: null,
                 'cupom_id' => $cupomId,
             ]);
@@ -126,7 +166,7 @@ class CheckoutController extends Controller
             EnviarConfirmacaoAgendamentoJob::dispatch($venda->id);
         }
 
-        $vendaFinal = $venda->fresh()->load('itens', 'cliente');
+        $vendaFinal = $venda->fresh()->load('itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente');
         $vendaFinal->setAttribute('cobranca', $cobranca ? [
             'status' => $cobranca->status,
             'qr_code' => $cobranca->qr_code,
@@ -145,7 +185,7 @@ class CheckoutController extends Controller
      *
      * @return array{0: float, 1: int} [valor_desconto, cupom_id]
      */
-    private function aplicarCupom(string $codigo, float $subtotal, int $clienteId): array
+    private function aplicarCupom(string $codigo, float $subtotalVisitas, int $quantidadeTickets, int $clienteId): array
     {
         $cupom = Cupom::whereRaw('lower(codigo) = ?', [mb_strtolower($codigo)])->lockForUpdate()->first();
 
@@ -159,7 +199,7 @@ class CheckoutController extends Controller
         // Num cupom de usos múltiplos, guarda sempre o uso mais recente.
         $cupom->update(['usado_em' => now(), 'usado_por_cliente_id' => $clienteId]);
 
-        return [$cupom->calcularDesconto($subtotal), $cupom->id];
+        return [$cupom->calcularDescontoVisita($subtotalVisitas, $quantidadeTickets), $cupom->id];
     }
 
     private function localizarOuCriarCliente(int $empresaId, array $dadosCliente): Cliente
@@ -172,12 +212,25 @@ class CheckoutController extends Controller
             $cliente = Cliente::where('email', $dadosCliente['email'])->first();
         }
 
+        // Nem todo checkout manda endereço/RG/IE (só é obrigatório quando
+        // há produto físico ou quando aplicável ao tipo de documento) -
+        // por isso, ao atualizar um cliente já cadastrado, mantém o valor
+        // anterior no campo que não veio preenchido desta vez.
         $atributos = [
             'empresa_id' => $empresaId,
             'nome' => $dadosCliente['nome'],
-            'cpf_cnpj' => $dadosCliente['cpf_cnpj'] ?? null,
-            'email' => $dadosCliente['email'] ?? null,
-            'telefone' => $dadosCliente['telefone'] ?? null,
+            'cpf_cnpj' => $dadosCliente['cpf_cnpj'] ?? $cliente?->cpf_cnpj,
+            'rg' => $dadosCliente['rg'] ?? $cliente?->rg,
+            'inscricao_estadual' => $dadosCliente['inscricao_estadual'] ?? $cliente?->inscricao_estadual,
+            'email' => $dadosCliente['email'] ?? $cliente?->email,
+            'telefone' => $dadosCliente['telefone'] ?? $cliente?->telefone,
+            'cep' => $dadosCliente['cep'] ?? $cliente?->cep,
+            'logradouro' => $dadosCliente['logradouro'] ?? $cliente?->logradouro,
+            'numero' => $dadosCliente['numero'] ?? $cliente?->numero,
+            'bairro' => $dadosCliente['bairro'] ?? $cliente?->bairro,
+            'municipio' => $dadosCliente['municipio'] ?? $cliente?->municipio,
+            'uf' => $dadosCliente['uf'] ?? $cliente?->uf,
+            'codigo_ibge_municipio' => $dadosCliente['codigo_ibge_municipio'] ?? $cliente?->codigo_ibge_municipio,
             'consentimento_lgpd' => true,
             'consentimento_lgpd_data' => now(),
             'consentimento_lgpd_versao' => 'v1',
@@ -192,7 +245,10 @@ class CheckoutController extends Controller
         return Cliente::create($atributos);
     }
 
-    private function confirmarReservaEGerarItem(Venda $venda, int $reservaId): float
+    /**
+     * @return array{0: float, 1: int} [valor_total, quantidade_tickets]
+     */
+    private function confirmarReservaEGerarItem(Venda $venda, int $reservaId): array
     {
         $reserva = ReservaTemporaria::findOrFail($reservaId);
         $agenda = AgendaVisitacao::findOrFail($reserva->agenda_visitacao_id);
@@ -209,7 +265,7 @@ class CheckoutController extends Controller
             'valor_total' => $valorTotal,
         ]);
 
-        return $valorTotal;
+        return [$valorTotal, $reserva->quantidade];
     }
 
     private function gerarItemProduto(Venda $venda, int $produtoId, int $quantidade, ?int $variacaoId = null): float

@@ -17,6 +17,8 @@
             --accent-hover: #7c86e0;
             --danger: #ff8080;
             --ok: #6cd67a;
+            --warn: #e0b95c;
+            --warn-hover: #eac576;
         }
         * { box-sizing: border-box; }
         html, body { height: 100%; }
@@ -72,6 +74,12 @@
         button.primario:hover { background: var(--accent-hover); }
         button.secundario { background: #384656; color: var(--text); border: 1px solid var(--border-strong); }
         button.secundario:hover { background: #40505f; }
+        button.btn-verificar {
+            background: var(--warn); color: #201a08; border: none; font-weight: 700;
+            display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px;
+        }
+        button.btn-verificar:hover { background: var(--warn-hover); }
+        button.btn-verificar svg { width: 16px; height: 16px; flex-shrink: 0; }
 
         .campo { display: flex; flex-direction: column; gap: 4px; }
         .campo label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
@@ -121,6 +129,9 @@
             width: 100%; min-width: 0;
         }
         .produto-btn .preco { font-size: 14px; font-weight: 700; color: var(--accent); }
+        .produto-btn .minimo { font-size: 10.5px; color: var(--text-dim); }
+        .produto-btn select { width: 100%; font-size: 12px; padding: 6px 8px; }
+        .produto-btn button.secundario { width: 100%; font-size: 12px; padding: 6px 8px; }
 
         .agenda-item {
             background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 8px;
@@ -160,9 +171,61 @@
 
         .btn-finalizar { width: 100%; padding: 14px; font-size: 14px; margin-top: 4px; flex-shrink: 0; }
 
+        /* Barra de atalhos do operador */
+        .barra-atalhos {
+            display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+            padding: 8px 20px;
+            background: var(--bg-elev-2);
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+            font-size: 12px; color: var(--text-dim);
+        }
+        .barra-atalhos kbd {
+            display: inline-block; padding: 2px 7px; margin-right: 5px;
+            background: #2a3846; border: 1px solid var(--border-strong); border-radius: 4px;
+            font-family: inherit; font-size: 11px; font-weight: 700; color: var(--text);
+        }
+
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
+
+        /* Modal de verificação de comprovante */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,.6);
+            display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+        }
+        .modal-overlay.aberto { display: flex; }
+        .modal-verificar {
+            background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+            width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; padding: 22px;
+        }
+        .modal-verificar h2 { margin: 0 0 4px; font-size: 16px; }
+        .modal-verificar .modal-sub { font-size: 12px; color: var(--text-dim); margin: 0 0 18px; }
+        .modal-fechar { position: absolute; top: 14px; right: 16px; background: transparent; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 4px 8px; }
+        .modal-fechar:hover { color: var(--text); }
+        .modal-verificar { position: relative; }
+
+        .busca-verificar { display: flex; gap: 10px; margin-bottom: 18px; }
+        .busca-verificar input { flex: 1; font-size: 14px; padding: 11px 13px; }
+
+        .resultado-verificar { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+        .icone-status { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+        .icone-status.valido { background: rgba(108,214,122,.15); }
+        .icone-status.invalido { background: rgba(255,128,128,.15); }
+        .icone-status svg { width: 38px; height: 38px; }
+        .icone-status.valido svg { stroke: var(--ok); }
+        .icone-status.invalido svg { stroke: var(--danger); }
+        .resultado-titulo { font-size: 17px; font-weight: 700; margin: 0; }
+        .resultado-titulo.valido { color: var(--ok); }
+        .resultado-titulo.invalido { color: var(--danger); }
+        .resultado-detalhe { font-size: 13px; color: var(--text-dim); margin: 0 0 10px; }
+
+        .card-venda { width: 100%; background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 6px; text-align: left; }
+        .linha-item-v { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .linha-item-v:last-child { border-bottom: none; }
+        .titulo-secao-v { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); font-weight: 700; margin: 12px 0 4px; }
+        .rodape-total-v { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
     </style>
 </head>
 <body>
@@ -171,11 +234,20 @@
             <img src="{{ $logoEmpresaUrl ?: asset('images/logo.jpg') }}" alt="Logo">
             <h1>PDV — Frente de Caixa <span>· {{ $empresaSlug }}</span></h1>
         </div>
-        <form method="POST" action="{{ url('/logout') }}" class="topo-usuario">
-            @csrf
+        <div class="topo-usuario">
+            <button type="button" class="btn-verificar" onclick="abrirModalVerificar()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8Z"/>
+                    <path d="m9 12 2 2 4-4"/>
+                </svg>
+                Verificar Ticket (F2)
+            </button>
             <span>{{ auth()->user()->name }}</span>
-            <button type="submit" class="secundario">Sair</button>
-        </form>
+            <form method="POST" action="{{ url('/logout') }}" style="display:inline;">
+                @csrf
+                <button type="submit" class="secundario">Sair</button>
+            </form>
+        </div>
     </div>
 
     <div class="barra-caixa" id="card-caixa">
@@ -210,6 +282,8 @@
             </div>
 
             <div class="totais"><span>Total</span><span id="total">R$ 0,00</span></div>
+            <div class="totais" id="linha-desconto" style="display:none; color:#2e7d32;"><span id="rotulo-desconto">Desconto</span><span id="valor-desconto">- R$ 0,00</span></div>
+            <div class="totais" id="linha-total-final" style="display:none;"><span>Total a pagar</span><span id="total-final">R$ 0,00</span></div>
 
             <div class="linha">
                 <div class="campo">
@@ -227,8 +301,8 @@
                     <select id="vendedor"><option value="">Sem vendedor (guia)</option></select>
                 </div>
                 <div class="campo">
-                    <label for="atendente">Atendente</label>
-                    <select id="atendente"><option value="">Sem atendente</option></select>
+                    <label for="atendente">Atendente *</label>
+                    <select id="atendente"><option value="">Selecione o atendente</option></select>
                 </div>
             </div>
 
@@ -245,13 +319,47 @@
 
             <div class="linha">
                 <div class="campo">
-                    <label for="forma-pagamento">Forma de pagamento</label>
-                    <select id="forma-pagamento"><option value="">Selecione (opcional)</option></select>
+                    <label for="forma-pagamento">Forma de pagamento *</label>
+                    <select id="forma-pagamento"><option value="">Selecione a forma de pagamento</option></select>
+                </div>
+                <div class="campo">
+                    <label for="cupom-visita">Cupom (visitação)</label>
+                    <input type="text" id="cupom-visita" placeholder="Opcional - só vale para a visita">
+                </div>
+            </div>
+
+            <div class="linha">
+                <div class="campo">
+                    <label for="desconto-pdv">Desconto</label>
+                    <select id="desconto-pdv" onchange="renderizarCarrinho()"><option value="">Sem desconto</option></select>
                 </div>
             </div>
 
             <button class="primario btn-finalizar" onclick="finalizarVenda()">Finalizar Venda (F10)</button>
             <p class="msg" id="msg-venda"></p>
+        </div>
+    </div>
+
+    <div class="barra-atalhos">
+        <span><kbd>F2</kbd> Verificar comprovante</span>
+        <span><kbd>F10</kbd> Finalizar venda</span>
+        <span><kbd>Esc</kbd> Fechar janela</span>
+    </div>
+
+    <div class="modal-overlay" id="modal-verificar-overlay">
+        <div class="modal-verificar">
+            <button type="button" class="modal-fechar" onclick="fecharModalVerificar()">&times;</button>
+            <h2>Verificar comprovante</h2>
+            <p class="modal-sub">Digite o número do pedido do comprovante do cliente e confirme se está válido.</p>
+
+            <div class="busca-verificar">
+                <input type="text" id="verificar-busca-pedido" placeholder="Número do pedido (ex.: 1234)" inputmode="numeric">
+                <button class="primario" onclick="buscarTicketModal()">Buscar</button>
+            </div>
+
+            <p class="msg" id="verificar-msg"></p>
+
+            <div id="verificar-resultado"></div>
         </div>
     </div>
 
@@ -275,21 +383,76 @@
         async function carregarProdutos(busca = '') {
             const resp = await fetch(`${base}/produtos?busca=${encodeURIComponent(busca)}`);
             produtosCache = await resp.json();
-            document.getElementById('grid-produtos').innerHTML = produtosCache.map(p => `
-                <button class="produto-btn" onclick="adicionarProdutoPorId(${p.id})">
-                    ${p.imagem_url
-                        ? `<img class="produto-img" src="${p.imagem_url}" alt="" loading="lazy" onerror="this.outerHTML='<span class=&quot;produto-img produto-img-vazia&quot;>Sem foto</span>'">`
-                        : '<span class="produto-img produto-img-vazia">Sem foto</span>'}
-                    <span class="nome">${escapeHtml(p.nome)}</span>
-                    <span class="preco">R$ ${Number(p.preco_venda).toFixed(2)}</span>
-                </button>
-            `).join('') || '<p style="color:#9aa5b1;">Nenhum produto encontrado.</p>';
+            document.getElementById('grid-produtos').innerHTML = produtosCache.map(p => {
+                const temVariacoes = p.variacoes && p.variacoes.length > 0;
+                const imagemHtml = p.imagem_url
+                    ? `<img class="produto-img" src="${p.imagem_url}" alt="" loading="lazy" onerror="this.outerHTML='<span class=&quot;produto-img produto-img-vazia&quot;>Sem foto</span>'">`
+                    : '<span class="produto-img produto-img-vazia">Sem foto</span>';
+                const minimoHtml = p.quantidade_minima_venda
+                    ? `<span class="minimo">Venda mínima: ${p.quantidade_minima_venda} un. (pode misturar variações)</span>`
+                    : '';
+
+                if (temVariacoes) {
+                    const semEstoque = p.variacoes.every(v => v.estoque_atual <= 0);
+                    const opcoes = p.variacoes.map(v => `
+                        <option value="${v.id}" ${v.estoque_atual <= 0 ? 'disabled' : ''}>
+                            ${escapeHtml(v.tamanho)}${v.estoque_atual <= 0 ? ' (sem estoque)' : ''}
+                        </option>
+                    `).join('');
+
+                    return `
+                        <div class="produto-btn">
+                            ${imagemHtml}
+                            <span class="nome">${escapeHtml(p.nome)}</span>
+                            <span class="preco">R$ ${Number(p.preco_venda).toFixed(2)}</span>
+                            ${minimoHtml}
+                            <select id="variacao-${p.id}" onchange="atualizarBotaoVariacao(${p.id})" ${semEstoque ? 'disabled' : ''}>
+                                <option value="">Escolha o tamanho</option>
+                                ${opcoes}
+                            </select>
+                            <button type="button" class="secundario" id="botao-variacao-${p.id}" onclick="adicionarProdutoVariacao(${p.id})" disabled>
+                                ${semEstoque ? 'Sem estoque' : 'Adicionar'}
+                            </button>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <button class="produto-btn" onclick="adicionarProdutoPorId(${p.id})">
+                        ${imagemHtml}
+                        <span class="nome">${escapeHtml(p.nome)}</span>
+                        <span class="preco">R$ ${Number(p.preco_venda).toFixed(2)}</span>
+                        ${minimoHtml}
+                    </button>
+                `;
+            }).join('') || '<p style="color:#9aa5b1;">Nenhum produto encontrado.</p>';
         }
 
         function adicionarProdutoPorId(id) {
             const p = produtosCache.find(x => x.id === id);
             if (!p) return;
             adicionarProduto(p.id, p.nome, Number(p.preco_venda));
+        }
+
+        function atualizarBotaoVariacao(produtoId) {
+            const select = document.getElementById(`variacao-${produtoId}`);
+            const botao = document.getElementById(`botao-variacao-${produtoId}`);
+            botao.disabled = !select.value;
+        }
+
+        function adicionarProdutoVariacao(produtoId) {
+            const p = produtosCache.find(x => x.id === produtoId);
+            if (!p) return;
+
+            const select = document.getElementById(`variacao-${produtoId}`);
+            const variacaoId = Number(select.value);
+            const variacao = p.variacoes.find(v => v.id === variacaoId);
+            if (!variacao) return;
+
+            adicionarProduto(p.id, `${p.nome} (${variacao.tamanho})`, Number(p.preco_venda), variacao.id, variacao.tamanho);
+
+            select.value = '';
+            atualizarBotaoVariacao(produtoId);
         }
 
         async function carregarAgenda() {
@@ -303,18 +466,21 @@
             `).join('') || '<p style="color:#9aa5b1; font-size:12px;">Nenhum horário em aberto.</p>';
         }
 
+        let vendedoresCache = [];
+        let atendentesCache = [];
+
         async function carregarVendedores() {
             const resp = await fetch(`${base}/vendedores`);
-            const vendedores = await resp.json();
+            vendedoresCache = await resp.json();
             document.getElementById('vendedor').innerHTML = '<option value="">Sem vendedor (guia)</option>' +
-                vendedores.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('');
+                vendedoresCache.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('');
         }
 
         async function carregarAtendentes() {
             const resp = await fetch(`${base}/atendentes`);
-            const atendentes = await resp.json();
+            atendentesCache = await resp.json();
             document.getElementById('atendente').innerHTML = '<option value="">Sem atendente</option>' +
-                atendentes.map(a => `<option value="${a.id}">${a.nome}</option>`).join('');
+                atendentesCache.map(a => `<option value="${a.id}">${a.nome}</option>`).join('');
         }
 
         async function carregarFormasPagamento() {
@@ -324,10 +490,12 @@
                 formas.map(f => `<option value="${f.id}">${f.descricao}</option>`).join('');
         }
 
-        function adicionarProduto(id, nome, preco) {
-            const existente = carrinho.find(i => i.tipo === 'produto' && i.id === id);
+        function adicionarProduto(id, nome, preco, variacaoId = null, tamanho = null) {
+            const existente = carrinho.find(i =>
+                i.tipo === 'produto' && i.id === id && (i.variacaoId ?? null) === (variacaoId ?? null)
+            );
             if (existente) { existente.quantidade++; } else {
-                carrinho.push({ tipo: 'produto', id, nome, quantidade: 1, valorUnitario: preco });
+                carrinho.push({ tipo: 'produto', id, variacaoId, tamanho, nome, quantidade: 1, valorUnitario: preco });
             }
             renderizarCarrinho();
         }
@@ -356,6 +524,63 @@
 
             const total = carrinho.reduce((soma, item) => soma + item.quantidade * item.valorUnitario, 0);
             document.getElementById('total').textContent = `R$ ${total.toFixed(2)}`;
+
+            // Prévia do desconto do PDV - o servidor recalcula tudo ao finalizar.
+            const desconto = descontoSelecionado();
+            const valorDesconto = desconto ? calcularDescontoPdv(desconto) : 0;
+            document.getElementById('linha-desconto').style.display = valorDesconto > 0 ? '' : 'none';
+            document.getElementById('linha-total-final').style.display = valorDesconto > 0 ? '' : 'none';
+            if (valorDesconto > 0) {
+                document.getElementById('rotulo-desconto').textContent = desconto.descricao;
+                document.getElementById('valor-desconto').textContent = `- R$ ${valorDesconto.toFixed(2)}`;
+                document.getElementById('total-final').textContent = `R$ ${(total - valorDesconto).toFixed(2)}`;
+            }
+        }
+
+        let descontosPdvCache = [];
+
+        function descontoSelecionado() {
+            const id = Number(document.getElementById('desconto-pdv').value);
+            return descontosPdvCache.find(d => d.id === id) || null;
+        }
+
+        // Mesma regra do servidor (DescontoPdv::calcular): produtos = todo o
+        // valor dos produtos; visitas = no máximo 2 tickets por vez.
+        function calcularDescontoPdv(desconto) {
+            const percentual = Number(desconto.percentual) / 100;
+            if (desconto.aplica_em === 'visitas') {
+                const agenda = carrinho.find(i => i.tipo === 'agenda');
+                if (!agenda) return 0;
+                return Math.round(agenda.valorUnitario * Math.min(agenda.quantidade, 2) * percentual * 100) / 100;
+            }
+            const produtos = carrinho.filter(i => i.tipo === 'produto').reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+            return Math.round(produtos * percentual * 100) / 100;
+        }
+
+        async function carregarDescontosPdv() {
+            const resp = await fetch(`${base}/descontos`);
+            descontosPdvCache = await resp.json();
+            document.getElementById('desconto-pdv').innerHTML = '<option value="">Sem desconto</option>' +
+                descontosPdvCache.map(d => `<option value="${d.id}">${escapeHtml(d.descricao)} (${Number(d.percentual)}% - ${d.aplica_em === 'visitas' ? 'visitas' : 'produtos'})</option>`).join('');
+        }
+
+        // Soma a quantidade de todas as variações de um mesmo produto no
+        // carrinho e confere contra produto.quantidade_minima_venda - o
+        // cliente pode misturar variações livremente, só o total precisa
+        // bater o mínimo (ex.: caixa fechada de 6 cervejas).
+        function validarQuantidadeMinima() {
+            const totalPorProduto = {};
+            carrinho.filter(i => i.tipo === 'produto').forEach(i => {
+                totalPorProduto[i.id] = (totalPorProduto[i.id] || 0) + i.quantidade;
+            });
+
+            for (const produtoId in totalPorProduto) {
+                const p = produtosCache.find(x => x.id === Number(produtoId));
+                if (p && p.quantidade_minima_venda && totalPorProduto[produtoId] < p.quantidade_minima_venda) {
+                    return `A venda mínima de "${p.nome}" é ${p.quantidade_minima_venda} unidades (pode misturar as variações) - há apenas ${totalPorProduto[produtoId]} no carrinho.`;
+                }
+            }
+            return null;
         }
 
         async function finalizarVenda() {
@@ -368,19 +593,54 @@
                 return;
             }
 
+            if (!document.getElementById('atendente').value) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Selecione o atendente antes de finalizar.';
+                return;
+            }
+
+            if (!document.getElementById('forma-pagamento').value) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Selecione a forma de pagamento antes de finalizar.';
+                return;
+            }
+
+            const descontoPdv = descontoSelecionado();
+            if (descontoPdv && calcularDescontoPdv(descontoPdv) <= 0) {
+                msg.className = 'msg erro';
+                msg.textContent = descontoPdv.aplica_em === 'visitas'
+                    ? 'Este desconto só vale para visitas - adicione uma visita à venda ou remova o desconto.'
+                    : 'Este desconto só vale para produtos - adicione produtos à venda ou remova o desconto.';
+                return;
+            }
+            if (descontoPdv && descontoPdv.aplica_em === 'visitas' && document.getElementById('cupom-visita').value) {
+                msg.className = 'msg erro';
+                msg.textContent = 'O desconto em visitas não pode ser usado junto com cupom. Escolha um dos dois.';
+                return;
+            }
+
+            const erroMinimo = validarQuantidadeMinima();
+            if (erroMinimo) {
+                msg.className = 'msg erro';
+                msg.textContent = erroMinimo;
+                return;
+            }
+
             const agendaItem = carrinho.find(i => i.tipo === 'agenda');
             const dados = {
                 tipo_doc: document.getElementById('tipo-doc').value,
                 vendedor_id: document.getElementById('vendedor').value || null,
-                atendente_id: document.getElementById('atendente').value || null,
-                forma_pagamento_id: document.getElementById('forma-pagamento').value || null,
+                atendente_id: document.getElementById('atendente').value,
+                forma_pagamento_id: document.getElementById('forma-pagamento').value,
                 cliente: {
                     nome: document.getElementById('cliente-nome').value || null,
                     cpf_cnpj: document.getElementById('cliente-cpf').value || null,
                 },
-                itens: carrinho.filter(i => i.tipo === 'produto').map(i => ({ produto_id: i.id, quantidade: i.quantidade })),
+                itens: carrinho.filter(i => i.tipo === 'produto').map(i => ({ produto_id: i.id, variacao_id: i.variacaoId || null, quantidade: i.quantidade })),
                 agenda_visitacao_id: agendaItem ? agendaItem.id : null,
                 agenda_quantidade: agendaItem ? agendaItem.quantidade : null,
+                cupom_codigo: agendaItem ? (document.getElementById('cupom-visita').value || null) : null,
+                desconto_pdv_id: descontoPdv ? descontoPdv.id : null,
             };
 
             btn.disabled = true;
@@ -415,6 +675,9 @@
             renderizarCarrinho();
             document.getElementById('cliente-nome').value = '';
             document.getElementById('cliente-cpf').value = '';
+            document.getElementById('cupom-visita').value = '';
+            document.getElementById('desconto-pdv').value = '';
+            renderizarCarrinho();
             carregarAgenda();
         }
 
@@ -428,7 +691,9 @@
             const doc = venda.documento_fiscal;
             const dataVenda = new Date(venda.data_venda || Date.now());
             const linhaItens = (venda.itens || []).map(item => {
-                const nome = item.produto ? item.produto.nome : (item.agenda_visitacao ? `Visita agendada` : 'Item');
+                const nome = item.produto
+                    ? item.produto.nome + (item.produto_variacao ? ` (${item.produto_variacao.tamanho})` : '')
+                    : (item.agenda_visitacao ? `Visita agendada` : 'Item');
                 const qtd = Number(item.quantidade);
                 const unit = Number(item.valor_unitario);
                 const total = Number(item.valor_total);
@@ -496,6 +761,7 @@
                     <div class="sep"></div>
                     <table><tbody>${linhaItens}</tbody></table>
                     <div class="sep"></div>
+                    ${Number(venda.valor_desconto) > 0 ? `<div class="totais-cupom" style="font-weight:normal;"><span>Desconto${venda.desconto_pdv ? ' - ' + venda.desconto_pdv.descricao : ''}</span><span>- R$ ${Number(venda.valor_desconto).toFixed(2)}</span></div>` : ''}
                     <div class="totais-cupom"><span>TOTAL</span><span>R$ ${Number(venda.valor_total).toFixed(2)}</span></div>
                     ${venda.forma_pagamento ? `<div>Forma de pagamento: ${venda.forma_pagamento.descricao}</div>` : ''}
                     ${blocoFiscal}
@@ -549,14 +815,169 @@
         function caixaSuprimento() { caixaAcao('caixa-suprimento'); }
         function caixaSangria() { caixaAcao('caixa-sangria'); }
 
+        // Verificação de comprovante (F2)
+        function formatarDataHoraV(iso) { return new Date(iso).toLocaleString('pt-BR'); }
+
+        function abrirModalVerificar() {
+            document.getElementById('modal-verificar-overlay').classList.add('aberto');
+            document.getElementById('verificar-msg').textContent = '';
+            document.getElementById('verificar-msg').className = 'msg';
+            document.getElementById('verificar-resultado').innerHTML = '';
+            const input = document.getElementById('verificar-busca-pedido');
+            input.value = '';
+            input.focus();
+        }
+
+        function fecharModalVerificar() {
+            document.getElementById('modal-verificar-overlay').classList.remove('aberto');
+        }
+
+        function mostrarStatusVerificar(valido, titulo, detalhe) {
+            const iconeValido = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            const iconeInvalido = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+            return `
+                <div class="resultado-verificar">
+                    <div class="icone-status ${valido ? 'valido' : 'invalido'}">${valido ? iconeValido : iconeInvalido}</div>
+                    <p class="resultado-titulo ${valido ? 'valido' : 'invalido'}">${titulo}</p>
+                    ${detalhe ? `<p class="resultado-detalhe">${detalhe}</p>` : ''}
+                </div>
+            `;
+        }
+
+        document.getElementById('verificar-busca-pedido').addEventListener('keydown', (e) => { if (e.key === 'Enter') buscarTicketModal(); });
+
+        async function buscarTicketModal() {
+            const id = document.getElementById('verificar-busca-pedido').value.trim();
+            const msg = document.getElementById('verificar-msg');
+            const resultadoDiv = document.getElementById('verificar-resultado');
+            resultadoDiv.innerHTML = '';
+            msg.className = 'msg'; msg.textContent = '';
+
+            if (!id) { msg.className = 'msg erro'; msg.textContent = 'Informe o número do pedido.'; return; }
+
+            msg.textContent = 'Buscando...';
+
+            const resp = await fetch(`${base}/verificar/${id}`);
+            if (!resp.ok) {
+                const resposta = await resp.json().catch(() => ({}));
+                msg.textContent = '';
+                resultadoDiv.innerHTML = mostrarStatusVerificar(false, 'Comprovante inválido', resposta.message || 'Pedido não encontrado.');
+                return;
+            }
+
+            msg.textContent = '';
+            renderizarVerificar(await resp.json());
+        }
+
+        function renderizarVerificar(venda) {
+            const pago = venda.status_pagamento === 'pago';
+            const jaTeveCheckin = !!venda.check_in_em;
+            const valido = pago;
+
+            const itensProduto = (venda.itens || []).filter(i => i.produto);
+            const itensVisita = (venda.itens || []).filter(i => i.agenda_visitacao);
+
+            let tituloStatus, detalheStatus;
+            if (!pago) {
+                tituloStatus = 'Comprovante inválido';
+                detalheStatus = `Pedido #${venda.id} ainda não está pago.`;
+            } else if (jaTeveCheckin) {
+                tituloStatus = 'Entrada já confirmada';
+                detalheStatus = `Confirmado em ${formatarDataHoraV(venda.check_in_em)}${venda.check_in_usuario ? ' por ' + venda.check_in_usuario.name : ''}.` +
+                    (venda.atendente ? ` Atendente: ${venda.atendente.nome}.` : '') +
+                    (venda.vendedor ? ` Vendedor: ${venda.vendedor.nome}.` : '');
+            } else {
+                tituloStatus = 'Comprovante válido';
+                detalheStatus = `Pedido #${venda.id} pago${venda.cliente ? ' - Cliente: ' + venda.cliente.nome : ''}.`;
+            }
+
+            const itensHtml = `
+                ${itensProduto.length ? '<div class="titulo-secao-v">Produtos</div>' + itensProduto.map(i => `
+                    <div class="linha-item-v">
+                        <span>${i.quantidade}x ${i.produto?.nome ?? ''}${i.produto_variacao ? ' (' + i.produto_variacao.tamanho + ')' : ''}</span>
+                        <span>R$ ${Number(i.valor_total).toFixed(2)}</span>
+                    </div>
+                `).join('') : ''}
+                ${itensVisita.length ? '<div class="titulo-secao-v">Visitas agendadas</div>' + itensVisita.map(i => `
+                    <div class="linha-item-v">
+                        <span>${i.quantidade}x visita${i.agenda_visitacao ? ' - ' + formatarDataHoraV(i.agenda_visitacao.data_hora) : ''}</span>
+                        <span>R$ ${Number(i.valor_total).toFixed(2)}</span>
+                    </div>
+                `).join('') : ''}
+            `;
+
+            document.getElementById('verificar-resultado').innerHTML = `
+                ${mostrarStatusVerificar(valido, tituloStatus, detalheStatus)}
+                <div class="card-venda">
+                    ${itensHtml}
+                    <div class="rodape-total-v">
+                        <span>Total</span>
+                        <span>R$ ${Number(venda.valor_total).toFixed(2)}</span>
+                    </div>
+                    ${!jaTeveCheckin && pago ? `
+                        <div class="titulo-secao-v" style="margin-top:14px;">Atendimento</div>
+                        <div class="campo" style="margin-bottom:8px;">
+                            <label for="verificar-vendedor">Vendedor</label>
+                            <select id="verificar-vendedor" style="width:100%;">
+                                <option value="">Sem vendedor (guia)</option>
+                                ${vendedoresCache.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="campo" style="margin-bottom:4px;">
+                            <label for="verificar-atendente">Atendente *</label>
+                            <select id="verificar-atendente" style="width:100%;">
+                                <option value="">Selecione o atendente</option>
+                                ${atendentesCache.map(a => `<option value="${a.id}">${a.nome}</option>`).join('')}
+                            </select>
+                        </div>
+                        <button class="primario" style="width:100%; margin-top:10px;" onclick="confirmarEntradaModal(${venda.id})">Confirmar entrada</button>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        async function confirmarEntradaModal(id) {
+            const msg = document.getElementById('verificar-msg');
+            const atendenteId = document.getElementById('verificar-atendente').value;
+            const vendedorId = document.getElementById('verificar-vendedor').value;
+
+            if (!atendenteId) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Selecione o atendente antes de confirmar a entrada.';
+                return;
+            }
+
+            const resp = await fetch(`${base}/verificar/${id}/check-in`, {
+                method: 'POST',
+                headers: headersJson,
+                body: JSON.stringify({ atendente_id: Number(atendenteId), vendedor_id: vendedorId ? Number(vendedorId) : null }),
+            });
+            const resposta = await resp.json();
+
+            if (!resp.ok) {
+                msg.className = 'msg erro';
+                msg.textContent = resposta.message || 'Não foi possível confirmar a entrada.';
+                return;
+            }
+
+            msg.className = 'msg ok';
+            msg.textContent = 'Entrada confirmada com sucesso!';
+            renderizarVerificar(resposta);
+        }
+
         document.getElementById('busca').addEventListener('input', (e) => carregarProdutos(e.target.value));
-        document.addEventListener('keydown', (e) => { if (e.key === 'F10') { e.preventDefault(); finalizarVenda(); } });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F10') { e.preventDefault(); finalizarVenda(); }
+            if (e.key === 'F2') { e.preventDefault(); abrirModalVerificar(); }
+            if (e.key === 'Escape' && document.getElementById('modal-verificar-overlay').classList.contains('aberto')) { fecharModalVerificar(); }
+        });
 
         carregarProdutos();
         carregarAgenda();
         carregarVendedores();
         carregarAtendentes();
         carregarFormasPagamento();
+        carregarDescontosPdv();
         caixaAtualizarStatus();
     </script>
 </body>

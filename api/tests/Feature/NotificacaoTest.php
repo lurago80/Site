@@ -264,7 +264,14 @@ class NotificacaoTest extends TestCase
         $reserva = app(\App\Services\Agendamento\ReservaVagaService::class)->reservar($agenda->id, 1);
 
         $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
-            'cliente' => ['nome' => $this->cliente->nome, 'telefone' => $this->cliente->telefone, 'consentimento_lgpd' => true],
+            'cliente' => [
+                'nome' => $this->cliente->nome,
+                'cpf_cnpj' => $this->cliente->cpf_cnpj ?? '123.456.789-00',
+                'rg' => '11.222.333-4',
+                'email' => $this->cliente->email ?? 'cliente@example.com',
+                'telefone' => $this->cliente->telefone,
+                'consentimento_lgpd' => true,
+            ],
             'reserva_id' => $reserva->id,
             'forma_pagamento' => 'pix',
         ]);

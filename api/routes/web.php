@@ -51,7 +51,7 @@ Route::middleware('throttle:5,1')->group(function () {
 | O tenant vem sempre do usuário autenticado (ver SetTenantContext) - o
 | {empresa} na URL é só cosmético/legível, não decide o contexto.
 */
-Route::middleware(['auth', 'tenant'])->prefix('fiscal/{empresa}')->group(function () {
+Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('fiscal/{empresa}')->group(function () {
     Route::get('/painel', function (string $empresa) {
         return view('fiscal.painel', ['empresaSlug' => $empresa]);
     })->middleware('conta_ativa');
@@ -87,6 +87,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
     Route::get('/atendentes', [PdvController::class, 'atendentes']);
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
+    Route::get('/descontos', [PdvController::class, 'descontos']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
 
     Route::get('/caixa-status', [PdvController::class, 'caixaStatus']);
@@ -95,6 +96,10 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::post('/caixa-sangria', [PdvController::class, 'caixaSangria']);
     Route::post('/caixa-suprimento', [PdvController::class, 'caixaSuprimento']);
     Route::get('/caixa-extrato', [PdvController::class, 'caixaExtrato']);
+
+    Route::get('/verificar', [PdvController::class, 'verificarTicket'])->middleware('conta_ativa');
+    Route::get('/verificar/{vendaId}', [PdvController::class, 'buscarTicket']);
+    Route::post('/verificar/{vendaId}/check-in', [PdvController::class, 'confirmarCheckIn']);
 });
 
 /*
@@ -103,7 +108,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
 |--------------------------------------------------------------------------
 | O tenant vem sempre do usuário autenticado - mesmo padrão dos demais.
 */
-Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(function () {
+Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{empresa}')->group(function () {
     Route::get('/painel', [DashboardController::class, 'painel'])->middleware('conta_ativa');
     Route::get('/indicadores', [DashboardController::class, 'indicadores']);
 
@@ -128,6 +133,7 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
 
     Route::get('/vendedores', [DashboardController::class, 'vendedores']);
     Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);
+    Route::get('/vendedores-relatorio', [DashboardController::class, 'relatorioVendedores']);
 
     Route::get('/atendentes', [DashboardController::class, 'atendentes']);
     Route::post('/atendentes', [DashboardController::class, 'criarAtendente']);
@@ -188,6 +194,10 @@ Route::middleware(['auth', 'tenant'])->prefix('dashboard/{empresa}')->group(func
     Route::post('/cupons', [DashboardController::class, 'criarCupom']);
     Route::put('/cupons/{cupomId}', [DashboardController::class, 'atualizarCupom']);
     Route::get('/cupons-lote', [DashboardController::class, 'cuponsLote']);
+
+    Route::get('/descontos-pdv', [DashboardController::class, 'descontosPdv']);
+    Route::post('/descontos-pdv', [DashboardController::class, 'criarDescontoPdv']);
+    Route::put('/descontos-pdv/{descontoId}', [DashboardController::class, 'atualizarDescontoPdv']);
 
     Route::get('/config-loja', [DashboardController::class, 'configLoja']);
     Route::put('/config-loja', [DashboardController::class, 'atualizarConfigLoja']);

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\Empresa;
+use App\Models\ItemVenda;
 use App\Models\Plano;
 use App\Models\Produto;
 use App\Models\User;
@@ -176,24 +177,52 @@ class DashboardTest extends TestCase
         $atendenteModel = \App\Models\Atendente::create([
             'empresa_id' => $this->empresa->id, 'nome' => 'Atendente Relatório', 'ativo' => true,
         ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Produto Relatório',
+            'tipo' => 'fisico', 'preco_venda' => 50,
+        ]);
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 10, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 30,
+        ]);
 
-        \App\Models\Venda::create([
+        $vendaProduto = Venda::create([
             'empresa_id' => $this->empresa->id, 'atendente_id' => $atendenteModel->id,
             'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
             'valor_total' => 100, 'data_venda' => now(),
         ]);
-        \App\Models\Venda::create([
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $vendaProduto->id, 'produto_id' => $produto->id,
+            'quantidade' => 2, 'valor_unitario' => 50, 'valor_total' => 100,
+        ]);
+
+        $vendaVisita = Venda::create([
             'empresa_id' => $this->empresa->id, 'atendente_id' => $atendenteModel->id,
             'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
-            'valor_total' => 50, 'data_venda' => now(),
+            'valor_total' => 30, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $vendaVisita->id, 'agenda_visitacao_id' => $agenda->id,
+            'quantidade' => 1, 'valor_unitario' => 30, 'valor_total' => 30,
         ]);
 
         $response = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/atendentes-relatorio");
-
         $response->assertOk();
         $dados = collect($response->json())->firstWhere('nome', 'Atendente Relatório');
         $this->assertSame(2, $dados['vendas_count']);
-        $this->assertEquals(150.0, $dados['valor_total']);
+        $this->assertEquals(130.0, $dados['valor_total']);
+
+        $soProdutos = $this->actingAs($this->admin)
+            ->getJson("/dashboard/{$this->empresa->slug}/atendentes-relatorio?tipo=produtos");
+        $dadosProdutos = collect($soProdutos->json())->firstWhere('nome', 'Atendente Relatório');
+        $this->assertSame(1, $dadosProdutos['vendas_count']);
+        $this->assertEquals(100.0, $dadosProdutos['valor_total']);
+
+        $soVisitacoes = $this->actingAs($this->admin)
+            ->getJson("/dashboard/{$this->empresa->slug}/atendentes-relatorio?tipo=visitacoes");
+        $dadosVisitacoes = collect($soVisitacoes->json())->firstWhere('nome', 'Atendente Relatório');
+        $this->assertSame(1, $dadosVisitacoes['vendas_count']);
+        $this->assertEquals(30.0, $dadosVisitacoes['valor_total']);
     }
 
     public function test_lanca_conta_a_pagar_e_marca_como_paga(): void

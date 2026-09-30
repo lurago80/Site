@@ -156,3 +156,16 @@ label {
     color: var(--cor-texto-suave);
     margin-bottom: 5px;
 }
+
+@media print {
+    .sem-impressao {
+        display: none !important;
+    }
+    body {
+        background: #fff;
+    }
+    .container {
+        max-width: none !important;
+        padding: 0 !important;
+    }
+}

@@ -54,6 +54,7 @@
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
             <button onclick="mostrarSecao('cupons', this)">Cupons de Desconto</button>
+            <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
 
             <div class="grupo-label">Financeiro</div>
             <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
@@ -155,6 +156,7 @@
                                 <div style="flex:1; min-width:160px"><label>Fornecedor</label><select id="pr-fornecedor"><option value="">Nenhum</option></select></div>
                                 <label class="campo-check"><input type="checkbox" id="pr-pesavel"> Pesável</label>
                                 <label class="campo-check"><input type="checkbox" id="pr-ativo" checked> Ativo</label>
+                                <label class="campo-check"><input type="checkbox" id="pr-loja-virtual" checked> Loja virtual</label>
                             </div>
                         </div>
 
@@ -166,7 +168,15 @@
                                 <div><label>Valor atacado (R$)</label><input type="number" step="0.01" id="pr-valor-atacado" style="width:120px"></div>
                                 <div><label>Estoque atual</label><input type="number" id="pr-estoque" style="width:100px"></div>
                                 <div><label>Estoque mínimo</label><input type="number" id="pr-estoque-minimo" style="width:100px"></div>
+                                <div>
+                                    <label>Venda mínima (un.)</label>
+                                    <input type="number" id="pr-quantidade-minima-venda" min="1" style="width:110px" placeholder="Sem mínimo">
+                                </div>
                             </div>
+                            <p style="font-size:12px; color:#666; margin:4px 0 0">
+                                Se o produto tiver variações (aba "Tamanhos"), a venda mínima soma todas elas - o cliente pode misturá-las
+                                livremente (ex.: caixa fechada de 6 cervejas, escolhendo os sabores).
+                            </p>
                         </div>
 
                         <div class="grupo-campos">
@@ -195,10 +205,11 @@
 
                     <div class="aba-conteudo-produto" id="aba-produto-tamanhos">
                         <div class="grupo-campos">
-                            <h3>Tamanhos (opcional)</h3>
+                            <h3>Tamanhos / variações (opcional)</h3>
                             <p style="font-size:13px; color:#666; margin:0 0 10px">
-                                Use quando o produto tem tamanhos diferentes (ex.: camisetas P, M, G, GG), cada um com estoque próprio.
-                                Se o produto não tiver tamanhos, deixe em branco e use o campo "Estoque atual" da aba Geral.
+                                Use quando o produto tem variações diferentes (ex.: camisetas P, M, G, GG, ou sabores de cerveja
+                                Pilsen, IPA, Weiss...), cada uma com estoque próprio.
+                                Se o produto não tiver variações, deixe em branco e use o campo "Estoque atual" da aba Geral.
                             </p>
                             <p class="msg" id="msg-pr-tamanhos-aviso">Salve o produto primeiro para poder cadastrar os tamanhos.</p>
                             <div id="bloco-pr-tamanhos" style="display:none">
@@ -207,7 +218,7 @@
                                     <tbody id="tbody-pr-tamanhos"></tbody>
                                 </table>
                                 <div class="linha-form" style="margin-top:10px">
-                                    <div><label>Tamanho</label><input type="text" id="pr-tam-novo-tamanho" placeholder="P, M, G, GG..." style="width:100px"></div>
+                                    <div><label>Tamanho / sabor</label><input type="text" id="pr-tam-novo-tamanho" placeholder="P, M, G, GG ou Pilsen, IPA..." maxlength="40" style="width:170px"></div>
                                     <div><label>Estoque</label><input type="number" id="pr-tam-novo-estoque" min="0" value="0" style="width:90px"></div>
                                     <div style="align-self:flex-end"><button type="button" onclick="adicionarTamanhoProduto()">Adicionar tamanho</button></div>
                                 </div>
@@ -607,6 +618,25 @@
                     </table>
                     <p class="msg" id="msg-vendedores"></p>
                 </div>
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Relatório de vendas por vendedor</h2>
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="ver-inicio"></div>
+                        <div><label>Até</label><input type="date" id="ver-fim"></div>
+                        <div><label>Tipo</label>
+                            <select id="ver-tipo">
+                                <option value="todos">Todos (produtos + visitações)</option>
+                                <option value="produtos">Só produtos</option>
+                                <option value="visitacoes">Só visitações</option>
+                            </select>
+                        </div>
+                        <div><button class="secundario" onclick="carregarRelatorioVendedores()">Consultar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Vendedor</th><th>Vendas</th><th>Itens</th><th>Valor total</th></tr></thead>
+                        <tbody id="tbody-relatorio-vendedores"></tbody>
+                    </table>
+                </div>
             </section>
 
             <section id="secao-atendentes" class="secao">
@@ -619,11 +649,13 @@
                     <input type="hidden" id="at-id">
                     <div class="linha-form">
                         <div><label>Nome</label><input type="text" id="at-nome"></div>
+                        <div><label>Telefone</label><input type="text" id="at-telefone" style="width:140px"></div>
+                        <div><label>Comissão (%)</label><input type="number" step="0.01" id="at-comissao" value="3" style="width:100px"></div>
                         <div><button class="acao" id="at-botao" onclick="salvarAtendente()">Cadastrar</button></div>
                         <div><button class="secundario" onclick="limparFormularioAtendente()" style="display:none;" id="at-cancelar">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Nome</th><th>Ativo</th><th></th></tr></thead>
+                        <thead><tr><th>Nome</th><th>Telefone</th><th>Comissão</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-atendentes"></tbody>
                     </table>
                     <p class="msg" id="msg-atendentes"></p>
@@ -633,10 +665,17 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="atr-inicio"></div>
                         <div><label>Até</label><input type="date" id="atr-fim"></div>
+                        <div><label>Tipo</label>
+                            <select id="atr-tipo">
+                                <option value="todos">Todos (produtos + visitações)</option>
+                                <option value="produtos">Só produtos</option>
+                                <option value="visitacoes">Só visitações</option>
+                            </select>
+                        </div>
                         <div><button class="secundario" onclick="carregarRelatorioAtendentes()">Consultar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Atendente</th><th>Vendas</th><th>Valor total</th></tr></thead>
+                        <thead><tr><th>Atendente</th><th>Vendas</th><th>Itens</th><th>Valor total</th></tr></thead>
                         <tbody id="tbody-relatorio-atendentes"></tbody>
                     </table>
                 </div>
@@ -647,6 +686,9 @@
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
                     Cliente informa o código na loja pública, na hora do checkout. Cupom desativado ou
                     expirado deixa de valer sem precisar apagar (mantém o histórico de quem já usou).
+                    O cupom desconta <strong>só o valor da visitação</strong>, nunca produtos. O "teto de
+                    desconto" limita o valor em R$ quando há 2 ou mais tickets de visitação no carrinho;
+                    com exatamente 1 ticket, o teto aplicado é a metade desse valor.
                 </p>
                 <div class="card">
                     <input type="hidden" id="cp-id">
@@ -659,6 +701,7 @@
                             </select>
                         </div>
                         <div><label>Valor</label><input type="number" step="0.01" min="0.01" id="cp-valor" style="width:110px"></div>
+                        <div><label>Teto de desconto p/ visitação (R$, opcional)</label><input type="number" step="0.01" min="0" id="cp-teto" style="width:140px"></div>
                         <div><label>Válido até (opcional)</label><input type="date" id="cp-valido-ate"></div>
                         <div><label>Limite de usos (opcional)</label><input type="number" min="1" id="cp-limite" style="width:120px"></div>
                         <div class="campo-check"><label><input type="checkbox" id="cp-ativo" checked> Ativo</label></div>
@@ -698,6 +741,36 @@
                         <span id="cpl-paginacao" style="align-self:center; font-size:12px;"></span>
                         <button class="secundario" id="cpl-proxima" onclick="carregarCuponsLote(cuponsLotePagina + 1)">Próxima »</button>
                     </div>
+                </div>
+            </section>
+
+            <section id="secao-descontos-pdv" class="secao">
+                <h1>Descontos do PDV</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Opções de desconto que o operador escolhe na tela do PDV, ao lado da forma de pagamento.
+                    <strong>Não valem na loja virtual.</strong> Cada desconto incide só em
+                    <strong>produtos</strong> ou só em <strong>visitas</strong> (nas visitas, no máximo 2 tickets por vez).
+                    O desconto em visitas não pode ser usado junto com cupom.
+                </p>
+                <div class="card">
+                    <input type="hidden" id="dp-id">
+                    <div class="linha-form">
+                        <div><label>Descrição</label><input type="text" id="dp-descricao" placeholder="ex: 10% Produtos" style="width:200px"></div>
+                        <div><label>Percentual (%)</label><input type="number" step="0.01" min="0.01" max="100" id="dp-percentual" style="width:110px"></div>
+                        <div><label>Incide em</label>
+                            <select id="dp-aplica-em">
+                                <option value="produtos">Somente produtos</option>
+                                <option value="visitas">Somente visitas</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" id="dp-botao" onclick="salvarDescontoPdv()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioDescontoPdv()" style="display:none;" id="dp-cancelar">Cancelar edição</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Descrição</th><th>Percentual</th><th>Incide em</th><th>Ativo</th><th></th></tr></thead>
+                        <tbody id="tbody-descontos-pdv"></tbody>
+                    </table>
+                    <p class="msg" id="msg-descontos-pdv"></p>
                 </div>
             </section>
 
@@ -1209,9 +1282,10 @@
             clientes: carregarClientes,
             fornecedores: carregarFornecedores,
             compras: carregarCompras,
-            vendedores: carregarVendedores,
+            vendedores: () => { carregarVendedores(); carregarRelatorioVendedores(); },
             atendentes: carregarAtendentes,
             cupons: () => { carregarCupons(); carregarCuponsLote(1); },
+            'descontos-pdv': carregarDescontosPdv,
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); },
@@ -1416,11 +1490,13 @@
             document.getElementById('pr-fornecedor').value = p.fornecedor_id ?? '';
             document.getElementById('pr-pesavel').checked = !!p.pesavel;
             document.getElementById('pr-ativo').checked = !!p.ativo;
+            document.getElementById('pr-loja-virtual').checked = !!p.loja_virtual;
             document.getElementById('pr-preco').value = p.preco_venda;
             document.getElementById('pr-custo').value = p.preco_custo ?? '';
             document.getElementById('pr-valor-atacado').value = p.valor_atacado ?? '';
             document.getElementById('pr-estoque').value = p.estoque_atual ?? '';
             document.getElementById('pr-estoque-minimo').value = p.estoque_minimo ?? '';
+            document.getElementById('pr-quantidade-minima-venda').value = p.quantidade_minima_venda ?? '';
             document.getElementById('pr-peso-liquido').value = p.peso_liquido ?? '';
             document.getElementById('pr-peso-bruto').value = p.peso_bruto ?? '';
             document.getElementById('pr-imagem').value = p.imagem_url ?? '';
@@ -1509,7 +1585,7 @@
             document.getElementById('pr-id').value = '';
             [
                 'pr-codigo', 'pr-codigo-barras', 'pr-nome', 'pr-categoria', 'pr-custo', 'pr-valor-atacado',
-                'pr-estoque', 'pr-estoque-minimo', 'pr-peso-liquido', 'pr-peso-bruto', 'pr-imagem', 'pr-descricao',
+                'pr-estoque', 'pr-estoque-minimo', 'pr-quantidade-minima-venda', 'pr-peso-liquido', 'pr-peso-bruto', 'pr-imagem', 'pr-descricao',
                 'pr-ncm', 'pr-cest', 'pr-cfop', 'pr-cfop-interestadual', 'pr-cst-origem', 'pr-cst-icms',
                 'pr-aliquota-icms', 'pr-reducao-bc-icms', 'pr-fcp', 'pr-mva', 'pr-grupo-fiscal', 'pr-codigo-beneficio',
                 'pr-cst-pis', 'pr-aliquota-pis', 'pr-cst-cofins', 'pr-aliquota-cofins', 'pr-natureza-receita',
@@ -1526,6 +1602,7 @@
             document.getElementById('pr-situacao-novo-regime').value = '0';
             document.getElementById('pr-pesavel').checked = false;
             document.getElementById('pr-ativo').checked = true;
+            document.getElementById('pr-loja-virtual').checked = true;
             document.getElementById('pr-sujeito-is').checked = false;
             document.getElementById('pr-imagem-arquivo').value = '';
             document.getElementById('pr-imagem-origem-url').checked = true;
@@ -1615,11 +1692,13 @@
                 fornecedor_id: document.getElementById('pr-fornecedor').value || null,
                 pesavel: document.getElementById('pr-pesavel').checked,
                 ativo: document.getElementById('pr-ativo').checked,
+                loja_virtual: document.getElementById('pr-loja-virtual').checked,
                 preco_venda: Number(document.getElementById('pr-preco').value),
                 preco_custo: document.getElementById('pr-custo').value || null,
                 valor_atacado: document.getElementById('pr-valor-atacado').value || null,
                 estoque_atual: document.getElementById('pr-estoque').value || null,
                 estoque_minimo: document.getElementById('pr-estoque-minimo').value || null,
+                quantidade_minima_venda: document.getElementById('pr-quantidade-minima-venda').value || null,
                 peso_liquido: document.getElementById('pr-peso-liquido').value || null,
                 peso_bruto: document.getElementById('pr-peso-bruto').value || null,
                 imagem_url: document.getElementById('pr-imagem').value || null,
@@ -2178,10 +2257,12 @@
             document.getElementById('tbody-atendentes').innerHTML = atendentesCache.map(a => `
                 <tr>
                     <td>${a.nome}</td>
+                    <td>${a.telefone || '-'}</td>
+                    <td>${a.percentual_comissao}%</td>
                     <td>${a.ativo ? 'Sim' : 'Não'}</td>
                     <td><button class="secundario" onclick="editarAtendente(${a.id})">Editar</button></td>
                 </tr>
-            `).join('') || '<tr><td colspan="3">Nenhum atendente cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="5">Nenhum atendente cadastrado.</td></tr>';
         }
 
         function editarAtendente(id) {
@@ -2189,6 +2270,8 @@
             if (!a) return;
             document.getElementById('at-id').value = a.id;
             document.getElementById('at-nome').value = a.nome;
+            document.getElementById('at-telefone').value = a.telefone || '';
+            document.getElementById('at-comissao').value = a.percentual_comissao;
             document.getElementById('at-botao').textContent = 'Salvar edição';
             document.getElementById('at-cancelar').style.display = 'inline-block';
         }
@@ -2196,13 +2279,19 @@
         function limparFormularioAtendente() {
             document.getElementById('at-id').value = '';
             document.getElementById('at-nome').value = '';
+            document.getElementById('at-telefone').value = '';
+            document.getElementById('at-comissao').value = '3';
             document.getElementById('at-botao').textContent = 'Cadastrar';
             document.getElementById('at-cancelar').style.display = 'none';
         }
 
         async function salvarAtendente() {
             const id = document.getElementById('at-id').value;
-            const dados = { nome: document.getElementById('at-nome').value };
+            const dados = {
+                nome: document.getElementById('at-nome').value,
+                telefone: document.getElementById('at-telefone').value || null,
+                percentual_comissao: document.getElementById('at-comissao').value ? Number(document.getElementById('at-comissao').value) : 3,
+            };
             const url = id ? `${base}/atendentes/${id}` : `${base}/atendentes`;
             const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
@@ -2219,12 +2308,89 @@
             const fim = document.getElementById('atr-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('tipo', document.getElementById('atr-tipo').value);
 
             const resp = await fetch(`${base}/atendentes-relatorio?${params}`);
             const lista = await resp.json();
             document.getElementById('tbody-relatorio-atendentes').innerHTML = lista.map(r => `
-                <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
-            `).join('') || '<tr><td colspan="3">Nenhum atendente cadastrado.</td></tr>';
+                <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+            `).join('') || '<tr><td colspan="4">Nenhum atendente cadastrado.</td></tr>';
+        }
+
+        async function carregarRelatorioVendedores() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('ver-inicio').value;
+            const fim = document.getElementById('ver-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            params.set('tipo', document.getElementById('ver-tipo').value);
+
+            const resp = await fetch(`${base}/vendedores-relatorio?${params}`);
+            const lista = await resp.json();
+            document.getElementById('tbody-relatorio-vendedores').innerHTML = lista.map(r => `
+                <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+            `).join('') || '<tr><td colspan="4">Nenhum vendedor cadastrado.</td></tr>';
+        }
+
+        let descontosPdvCache = [];
+
+        async function carregarDescontosPdv() {
+            const resp = await fetch(`${base}/descontos-pdv`);
+            descontosPdvCache = await resp.json();
+            document.getElementById('tbody-descontos-pdv').innerHTML = descontosPdvCache.map(d => `
+                <tr>
+                    <td>${d.descricao}</td>
+                    <td>${Number(d.percentual)}%</td>
+                    <td>${d.aplica_em === 'visitas' ? 'Visitas (máx. 2 tickets)' : 'Produtos'}</td>
+                    <td>${d.ativo ? 'Sim' : 'Não'}</td>
+                    <td>
+                        <button class="secundario" onclick="editarDescontoPdv(${d.id})">Editar</button>
+                        <button class="secundario" onclick="alternarDescontoPdv(${d.id}, ${!d.ativo})">${d.ativo ? 'Desativar' : 'Ativar'}</button>
+                    </td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum desconto cadastrado.</td></tr>';
+        }
+
+        function editarDescontoPdv(id) {
+            const d = descontosPdvCache.find(x => x.id === id);
+            if (!d) return;
+            document.getElementById('dp-id').value = d.id;
+            document.getElementById('dp-descricao').value = d.descricao;
+            document.getElementById('dp-percentual').value = Number(d.percentual);
+            document.getElementById('dp-aplica-em').value = d.aplica_em;
+            document.getElementById('dp-botao').textContent = 'Salvar edição';
+            document.getElementById('dp-cancelar').style.display = 'inline-block';
+        }
+
+        function limparFormularioDescontoPdv() {
+            document.getElementById('dp-id').value = '';
+            document.getElementById('dp-descricao').value = '';
+            document.getElementById('dp-percentual').value = '';
+            document.getElementById('dp-aplica-em').value = 'produtos';
+            document.getElementById('dp-botao').textContent = 'Cadastrar';
+            document.getElementById('dp-cancelar').style.display = 'none';
+        }
+
+        async function salvarDescontoPdv() {
+            const id = document.getElementById('dp-id').value;
+            const dados = {
+                descricao: document.getElementById('dp-descricao').value,
+                percentual: Number(document.getElementById('dp-percentual').value),
+                aplica_em: document.getElementById('dp-aplica-em').value,
+            };
+            const url = id ? `${base}/descontos-pdv/${id}` : `${base}/descontos-pdv`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-descontos-pdv');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = id ? 'Desconto atualizado.' : 'Desconto cadastrado.';
+            limparFormularioDescontoPdv();
+            carregarDescontosPdv();
+        }
+
+        async function alternarDescontoPdv(id, ativo) {
+            await fetch(`${base}/descontos-pdv/${id}`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ ativo }) });
+            carregarDescontosPdv();
         }
 
         let cuponsCache = [];
@@ -2255,6 +2421,7 @@
             document.getElementById('cp-codigo').value = c.codigo;
             document.getElementById('cp-tipo').value = c.tipo;
             document.getElementById('cp-valor').value = c.valor;
+            document.getElementById('cp-teto').value = c.valor_maximo_desconto ?? '';
             document.getElementById('cp-valido-ate').value = c.valido_ate ?? '';
             document.getElementById('cp-limite').value = c.limite_uso ?? '';
             document.getElementById('cp-ativo').checked = c.ativo;
@@ -2267,6 +2434,7 @@
             document.getElementById('cp-codigo').value = '';
             document.getElementById('cp-tipo').value = 'percentual';
             document.getElementById('cp-valor').value = '';
+            document.getElementById('cp-teto').value = '';
             document.getElementById('cp-valido-ate').value = '';
             document.getElementById('cp-limite').value = '';
             document.getElementById('cp-ativo').checked = true;
@@ -2280,6 +2448,7 @@
                 codigo: document.getElementById('cp-codigo').value,
                 tipo: document.getElementById('cp-tipo').value,
                 valor: Number(document.getElementById('cp-valor').value),
+                valor_maximo_desconto: document.getElementById('cp-teto').value ? Number(document.getElementById('cp-teto').value) : null,
                 valido_ate: document.getElementById('cp-valido-ate').value || null,
                 limite_uso: document.getElementById('cp-limite').value ? Number(document.getElementById('cp-limite').value) : null,
                 ativo: document.getElementById('cp-ativo').checked,

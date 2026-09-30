@@ -179,7 +179,21 @@ class PagamentoTest extends TestCase
         $produto = \App\Models\Produto::where('empresa_id', $this->empresa->id)->where('nome', 'Produto Cartão')->first();
 
         $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
-            'cliente' => ['nome' => 'Cliente Cartão', 'consentimento_lgpd' => true],
+            'cliente' => [
+                'nome' => 'Cliente Cartão',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'email' => 'cliente.cartao@example.com',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => 'SP',
+                'codigo_ibge_municipio' => '3550308',
+                'consentimento_lgpd' => true,
+            ],
             'itens' => [['produto_id' => $produto->id, 'quantidade' => 1]],
             'forma_pagamento' => 'cartao',
             'cartao_token' => 'card-token-fake',
@@ -333,6 +347,9 @@ class PagamentoTest extends TestCase
             'tipo' => 'dinheiro', 'codigo_tpag' => '01', 'ativo' => true,
         ]);
         $produto = \App\Models\Produto::where('empresa_id', $this->empresa->id)->first();
+        $atendente = \App\Models\Atendente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Atendente Pagamento', 'ativo' => true,
+        ]);
 
         $caixa = User::create([
             'name' => 'Caixa', 'email' => 'caixa@pagamento-teste.com',
@@ -342,6 +359,7 @@ class PagamentoTest extends TestCase
         $response = $this->actingAs($caixa)->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'forma_pagamento_id' => $forma->id,
+            'atendente_id' => $atendente->id,
             'itens' => [['produto_id' => $produto->id, 'quantidade' => 1]],
         ]);
 

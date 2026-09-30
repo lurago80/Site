@@ -9,10 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'empresa_id', 'fornecedor_id', 'grupo_id', 'nome', 'codigo', 'descricao', 'categoria', 'tipo', 'unidade',
-    'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'ncm', 'cfop_padrao',
+    'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'loja_virtual', 'ncm', 'cfop_padrao',
 
     // Campos gerais
-    'estoque_minimo', 'imagem_url', 'pesavel', 'valor_atacado', 'codigo_barras',
+    'estoque_minimo', 'quantidade_minima_venda', 'imagem_url', 'pesavel', 'valor_atacado', 'codigo_barras',
     'peso_liquido', 'peso_bruto', 'tipo_produto_fiscal',
 
     // Regime antigo - ICMS
@@ -48,6 +48,7 @@ class Produto extends Model
             'peso_liquido' => 'decimal:3',
             'peso_bruto' => 'decimal:3',
             'ativo' => 'boolean',
+            'loja_virtual' => 'boolean',
             'pesavel' => 'boolean',
             'sujeito_imposto_seletivo' => 'boolean',
             'aliquota_icms' => 'decimal:2',

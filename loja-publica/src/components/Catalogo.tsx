@@ -120,6 +120,12 @@ function CardProduto({
                     <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--cor-primaria)', letterSpacing: '-.01em' }}>
                         {formatarMoeda(produto.preco_venda)}
                     </span>
+                    {!!produto.quantidade_minima_venda && (
+                        <span style={{ fontSize: 11.5, color: 'var(--cor-texto-suave)' }}>
+                            Venda mínima: {produto.quantidade_minima_venda} unidades
+                            {temVariacoes ? ' (pode misturar as variações)' : ''}
+                        </span>
+                    )}
                     {temVariacoes && (
                         <select
                             value={tamanhoEscolhido}
@@ -161,44 +167,23 @@ export default function Catalogo({
     const { adicionarProduto, definirAgenda } = useCarrinho();
     const [quantidadesAgenda, setQuantidadesAgenda] = useState<Record<number, number>>({});
 
+    const produtosComEstoque = produtos.filter((produto) => {
+        if (produto.variacoes && produto.variacoes.length > 0) {
+            return produto.variacoes.some((v) => v.estoque_atual > 0);
+        }
+        return produto.estoque_atual === null || produto.estoque_atual > 0;
+    });
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
-            {produtos.length > 0 && (
-                <section>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 18 }}>
-                        <h2 style={{ fontSize: 20, margin: 0, letterSpacing: '-.01em' }}>Produtos</h2>
-                        <span style={{ fontSize: 13, color: 'var(--cor-texto-suave)' }}>
-                            {produtos.length} {produtos.length === 1 ? 'item' : 'itens'}
-                        </span>
-                    </div>
-                    <div
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
-                            gap: 20,
-                        }}
-                    >
-                        {produtos.map((produto) => (
-                            <CardProduto
-                                key={produto.id}
-                                produto={produto}
-                                onAdicionar={(variacao) =>
-                                    adicionarProduto(
-                                        produto.id,
-                                        variacao ? `${produto.nome} (${variacao.tamanho})` : produto.nome,
-                                        Number(produto.preco_venda),
-                                        variacao ? { id: variacao.id, tamanho: variacao.tamanho } : null,
-                                    )
-                                }
-                            />
-                        ))}
-                    </div>
-                </section>
-            )}
-
-            {moduloAgendamentoAtivo && agenda.length > 0 && (
+            {moduloAgendamentoAtivo && (
                 <section>
                     <h2 style={{ fontSize: 20, margin: '0 0 18px', letterSpacing: '-.01em' }}>Agende sua visita</h2>
+                    {agenda.length === 0 && (
+                        <div className="cartao" style={{ color: 'var(--cor-texto-suave)', fontSize: 14 }}>
+                            Nenhum horário de visitação disponível no momento.
+                        </div>
+                    )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {agenda.map((horario) => {
                             const quantidade = quantidadesAgenda[horario.id] ?? 1;
@@ -255,7 +240,41 @@ export default function Catalogo({
                 </section>
             )}
 
-            {produtos.length === 0 && agenda.length === 0 && (
+            {produtosComEstoque.length > 0 && (
+                <section>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 18 }}>
+                        <h2 style={{ fontSize: 20, margin: 0, letterSpacing: '-.01em' }}>Produtos</h2>
+                        <span style={{ fontSize: 13, color: 'var(--cor-texto-suave)' }}>
+                            {produtosComEstoque.length} {produtosComEstoque.length === 1 ? 'item' : 'itens'}
+                        </span>
+                    </div>
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+                            gap: 20,
+                        }}
+                    >
+                        {produtosComEstoque.map((produto) => (
+                            <CardProduto
+                                key={produto.id}
+                                produto={produto}
+                                onAdicionar={(variacao) =>
+                                    adicionarProduto(
+                                        produto.id,
+                                        variacao ? `${produto.nome} (${variacao.tamanho})` : produto.nome,
+                                        Number(produto.preco_venda),
+                                        variacao ? { id: variacao.id, tamanho: variacao.tamanho } : null,
+                                        produto.quantidade_minima_venda,
+                                    )
+                                }
+                            />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {produtosComEstoque.length === 0 && !moduloAgendamentoAtivo && (
                 <div
                     className="cartao"
                     style={{ textAlign: 'center', padding: '64px 20px', color: 'var(--cor-texto-suave)' }}

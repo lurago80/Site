@@ -66,6 +66,25 @@ class LojaPublicaCheckoutTest extends TestCase
         $this->assertSame(3, $response->json('0.vagas_disponiveis'));
     }
 
+    public function test_produto_com_loja_virtual_desativada_nao_aparece_no_catalogo_publico(): void
+    {
+        $produtoOculto = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Produto Só PDV',
+            'tipo' => 'fisico',
+            'preco_venda' => 10.00,
+            'estoque_atual' => 5,
+            'loja_virtual' => false,
+        ]);
+
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/produtos");
+
+        $response->assertOk();
+        $nomes = collect($response->json())->pluck('nome');
+        $this->assertTrue($nomes->contains('Chopp Artesanal 500ml'));
+        $this->assertFalse($nomes->contains('Produto Só PDV'));
+    }
+
     public function test_slug_inexistente_retorna_404(): void
     {
         $this->getJson('/api/loja/loja-que-nao-existe/produtos')->assertNotFound();
@@ -121,6 +140,8 @@ class LojaPublicaCheckoutTest extends TestCase
                 'nome' => 'João Comprador',
                 'email' => 'joao@example.com',
                 'cpf_cnpj' => '123.456.789-00',
+                'rg' => '11.222.333-4',
+                'telefone' => '11988887777',
                 'consentimento_lgpd' => true,
             ],
             'reserva_id' => $reservaId,
@@ -157,6 +178,16 @@ class LojaPublicaCheckoutTest extends TestCase
             'cliente' => [
                 'nome' => 'Maria Compradora',
                 'email' => 'maria@example.com',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => 'SP',
+                'codigo_ibge_municipio' => '3550308',
                 'consentimento_lgpd' => true,
             ],
             'itens' => [
@@ -192,11 +223,79 @@ class LojaPublicaCheckoutTest extends TestCase
 
         $response = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
             'codigo' => 'bemvindo10',
-            'subtotal' => 100,
+            'subtotal_visitas' => 100,
+            'quantidade_tickets' => 2,
         ]);
 
         $response->assertOk();
         $response->assertJson(['valido' => true, 'valor_desconto' => 10]);
+    }
+
+    public function test_cupom_percentual_desconta_no_maximo_dois_tickets(): void
+    {
+        Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'QM15-TESTE',
+            'tipo' => 'percentual',
+            'valor' => 15,
+            'ativo' => true,
+        ]);
+
+        // Ticket de R$ 80: 1 ticket -> R$ 12; 2 tickets -> R$ 24; 3 tickets -> continua R$ 24.
+        foreach ([1 => 12, 2 => 24, 3 => 24, 5 => 24] as $tickets => $esperado) {
+            $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
+                'codigo' => 'QM15-TESTE',
+                'subtotal_visitas' => 80 * $tickets,
+                'quantidade_tickets' => $tickets,
+            ])->assertOk()->assertJson(['valido' => true, 'valor_desconto' => $esperado]);
+        }
+    }
+
+    public function test_cupom_com_teto_desconta_metade_com_um_unico_ticket(): void
+    {
+        // Exemplo do cliente: cupom de 30% com teto de R$48 (2+ tickets) ->
+        // R$24 com exatamente 1 ticket (metade do teto).
+        Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'DESC30',
+            'tipo' => 'percentual',
+            'valor' => 30,
+            'valor_maximo_desconto' => 48,
+            'ativo' => true,
+        ]);
+
+        $comUmTicket = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
+            'codigo' => 'DESC30',
+            'subtotal_visitas' => 100, // 30% seria R$30, mas o teto (1 ticket) é R$24
+            'quantidade_tickets' => 1,
+        ]);
+        $comUmTicket->assertOk()->assertJson(['valido' => true, 'valor_desconto' => 24]);
+
+        $comDoisTickets = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
+            'codigo' => 'DESC30',
+            'subtotal_visitas' => 200, // 30% seria R$60, teto (2+ tickets) é R$48
+            'quantidade_tickets' => 2,
+        ]);
+        $comDoisTickets->assertOk()->assertJson(['valido' => true, 'valor_desconto' => 48]);
+    }
+
+    public function test_cupom_sem_visita_no_carrinho_e_rejeitado_na_pre_validacao(): void
+    {
+        Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'SOVISITA',
+            'tipo' => 'percentual',
+            'valor' => 10,
+            'ativo' => true,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
+            'codigo' => 'SOVISITA',
+            'subtotal_visitas' => 0,
+            'quantidade_tickets' => 0,
+        ]);
+
+        $response->assertStatus(422)->assertJson(['valido' => false]);
     }
 
     public function test_cupom_expirado_e_recusado(): void
@@ -212,16 +311,68 @@ class LojaPublicaCheckoutTest extends TestCase
 
         $response = $this->postJson("/api/loja/{$this->empresa->slug}/cupons/validar", [
             'codigo' => 'VENCIDO',
-            'subtotal' => 100,
+            'subtotal_visitas' => 100,
+            'quantidade_tickets' => 1,
         ]);
 
         $response->assertStatus(422);
         $response->assertJson(['valido' => false]);
     }
 
-    public function test_checkout_aplica_o_desconto_do_cupom_e_registra_o_uso(): void
+    public function test_checkout_aplica_o_desconto_do_cupom_so_na_visita_e_registra_o_uso(): void
     {
+        // Cupom nunca desconta produto (regra de negócio explícita) - só a
+        // visita agendada. Teto de R$48 com 2+ tickets, ver
+        // Cupom::calcularDescontoVisita.
         $cupom = Cupom::create([
+            'empresa_id' => $this->empresa->id,
+            'codigo' => 'DESC30',
+            'tipo' => 'percentual',
+            'valor' => 30,
+            'valor_maximo_desconto' => 48,
+            'ativo' => true,
+        ]);
+
+        $reservaResponse = $this->postJson("/api/loja/{$this->empresa->slug}/reservas", [
+            'agenda_visitacao_id' => $this->agenda->id,
+            'quantidade' => 2,
+        ]);
+        $reservaId = $reservaResponse->json('reserva_id');
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => [
+                'nome' => 'Maria Compradora',
+                'email' => 'maria@example.com',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => 'SP',
+                'codigo_ibge_municipio' => '3550308',
+                'consentimento_lgpd' => true,
+            ],
+            'itens' => [
+                ['produto_id' => $this->produtoFisico->id, 'quantidade' => 2], // R$36, sem desconto
+            ],
+            'reserva_id' => $reservaId, // 2 × R$60 = R$120, 30% seria R$36, mas teto de R$48 (2+ tickets) não bate
+            'forma_pagamento' => 'cartao',
+            'cupom_codigo' => 'desc30',
+        ]);
+
+        $response->assertCreated();
+        // 36,00 (produto, sem desconto) + 120,00 (visita) - 36,00 (30% de 120, dentro do teto de 48) = 120,00.
+        $response->assertJsonPath('valor_total', '120.00');
+        $response->assertJsonPath('valor_desconto', '36.00');
+        $this->assertSame(1, $cupom->fresh()->usos_realizados);
+    }
+
+    public function test_checkout_cupom_sem_visita_agendada_e_rejeitado(): void
+    {
+        Cupom::create([
             'empresa_id' => $this->empresa->id,
             'codigo' => 'DESC5',
             'tipo' => 'valor_fixo',
@@ -233,6 +384,16 @@ class LojaPublicaCheckoutTest extends TestCase
             'cliente' => [
                 'nome' => 'Maria Compradora',
                 'email' => 'maria@example.com',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => 'SP',
+                'codigo_ibge_municipio' => '3550308',
                 'consentimento_lgpd' => true,
             ],
             'itens' => [
@@ -242,11 +403,7 @@ class LojaPublicaCheckoutTest extends TestCase
             'cupom_codigo' => 'desc5',
         ]);
 
-        $response->assertCreated();
-        // 2 × 18,00 = 36,00 - 5,00 de desconto = 31,00.
-        $response->assertJsonPath('valor_total', '31.00');
-        $response->assertJsonPath('valor_desconto', '5.00');
-        $this->assertSame(1, $cupom->fresh()->usos_realizados);
+        $response->assertStatus(422);
     }
 
     public function test_checkout_recusa_cupom_que_atingiu_o_limite_de_usos(): void
@@ -265,6 +422,16 @@ class LojaPublicaCheckoutTest extends TestCase
             'cliente' => [
                 'nome' => 'Maria Compradora',
                 'email' => 'maria@example.com',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => 'SP',
+                'codigo_ibge_municipio' => '3550308',
                 'consentimento_lgpd' => true,
             ],
             'itens' => [
@@ -314,5 +481,135 @@ class LojaPublicaCheckoutTest extends TestCase
 
         $response->assertOk();
         $response->assertJson(['encontrado' => false]);
+    }
+
+    public function test_recibo_publico_do_pedido_traz_itens_e_dados_da_empresa(): void
+    {
+        $this->empresa->update(['nome_fantasia' => 'Cervejaria Fantasia', 'logo_url' => 'https://exemplo.com/logo.png']);
+
+        $reservaResponse = $this->postJson("/api/loja/{$this->empresa->slug}/reservas", [
+            'agenda_visitacao_id' => $this->agenda->id,
+            'quantidade' => 2,
+        ]);
+        $reservaId = $reservaResponse->json('reserva_id');
+
+        $checkout = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => [
+                'nome' => 'Ana Silva',
+                'email' => 'ana@example.com',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => 'SP',
+                'codigo_ibge_municipio' => '3550308',
+                'consentimento_lgpd' => true,
+            ],
+            'itens' => [['produto_id' => $this->produtoFisico->id, 'quantidade' => 1]],
+            'reserva_id' => $reservaId,
+            'forma_pagamento' => 'pix',
+        ]);
+        $vendaId = $checkout->json('id');
+
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/pedidos/{$vendaId}");
+
+        $response->assertOk();
+        $response->assertJsonPath('cliente_primeiro_nome', 'Ana');
+        $response->assertJsonPath('empresa.nome_fantasia', 'Cervejaria Fantasia');
+        $response->assertJsonPath('empresa.logo_url', 'https://exemplo.com/logo.png');
+        $this->assertCount(2, $response->json('itens'));
+    }
+
+    public function test_recibo_publico_de_outra_empresa_retorna_404(): void
+    {
+        $response = $this->getJson("/api/loja/{$this->empresa->slug}/pedidos/999999");
+
+        $response->assertStatus(404);
+    }
+
+    private function dadosClienteCompletos(): array
+    {
+        return [
+            'nome' => 'Maria Compradora',
+            'email' => 'maria@example.com',
+            'cpf_cnpj' => '987.654.321-00',
+            'rg' => '22.333.444-5',
+            'telefone' => '11977776666',
+            'cep' => '01310-100',
+            'logradouro' => 'Av. Paulista',
+            'numero' => '1000',
+            'bairro' => 'Bela Vista',
+            'municipio' => 'São Paulo',
+            'uf' => 'SP',
+            'codigo_ibge_municipio' => '3550308',
+            'consentimento_lgpd' => true,
+        ];
+    }
+
+    public function test_checkout_abaixo_da_quantidade_minima_e_recusado(): void
+    {
+        $cerveja = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Cerveja Pilsen 600ml',
+            'tipo' => 'fisico',
+            'loja_virtual' => true,
+            'preco_venda' => 12.00,
+            'quantidade_minima_venda' => 6,
+        ]);
+        $sabor1 = \App\Models\ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'Pilsen', 'estoque_atual' => 20,
+        ]);
+        $sabor2 = \App\Models\ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'IPA', 'estoque_atual' => 20,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => $this->dadosClienteCompletos(),
+            'itens' => [
+                ['produto_id' => $cerveja->id, 'variacao_id' => $sabor1->id, 'quantidade' => 2],
+                ['produto_id' => $cerveja->id, 'variacao_id' => $sabor2->id, 'quantidade' => 1],
+            ],
+            'forma_pagamento' => 'pix',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(20, $sabor1->fresh()->estoque_atual);
+        $this->assertSame(20, $sabor2->fresh()->estoque_atual);
+    }
+
+    public function test_checkout_com_variacoes_misturadas_bate_a_quantidade_minima(): void
+    {
+        $cerveja = Produto::create([
+            'empresa_id' => $this->empresa->id,
+            'nome' => 'Cerveja Pilsen 600ml',
+            'tipo' => 'fisico',
+            'loja_virtual' => true,
+            'preco_venda' => 12.00,
+            'quantidade_minima_venda' => 6,
+        ]);
+        $sabor1 = \App\Models\ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'Pilsen', 'estoque_atual' => 20,
+        ]);
+        $sabor2 = \App\Models\ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'IPA', 'estoque_atual' => 20,
+        ]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", [
+            'cliente' => $this->dadosClienteCompletos(),
+            'itens' => [
+                ['produto_id' => $cerveja->id, 'variacao_id' => $sabor1->id, 'quantidade' => 4],
+                ['produto_id' => $cerveja->id, 'variacao_id' => $sabor2->id, 'quantidade' => 2],
+            ],
+            'forma_pagamento' => 'pix',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('valor_total', '72.00');
+        $this->assertSame(16, $sabor1->fresh()->estoque_atual);
+        $this->assertSame(18, $sabor2->fresh()->estoque_atual);
     }
 }

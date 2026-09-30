@@ -16,8 +16,18 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
 
     const [nome, setNome] = useState('');
     const [cpfCnpj, setCpfCnpj] = useState('');
+    const [rg, setRg] = useState('');
+    const [inscricaoEstadual, setInscricaoEstadual] = useState('');
     const [email, setEmail] = useState('');
     const [telefone, setTelefone] = useState('');
+    const [cep, setCep] = useState('');
+    const [logradouro, setLogradouro] = useState('');
+    const [numero, setNumero] = useState('');
+    const [bairro, setBairro] = useState('');
+    const [municipio, setMunicipio] = useState('');
+    const [uf, setUf] = useState('');
+    const [codigoIbgeMunicipio, setCodigoIbgeMunicipio] = useState('');
+    const [buscandoCep, setBuscandoCep] = useState(false);
     const [lgpd, setLgpd] = useState(false);
     const [formaPagamento, setFormaPagamento] = useState<'pix' | 'cartao'>('pix');
 
@@ -49,6 +59,15 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 setNome((atual) => atual || resultado.nome || '');
                 setEmail((atual) => atual || resultado.email || '');
                 setTelefone((atual) => atual || resultado.telefone || '');
+                setRg((atual) => atual || resultado.rg || '');
+                setInscricaoEstadual((atual) => atual || resultado.inscricao_estadual || '');
+                setCep((atual) => atual || resultado.cep || '');
+                setLogradouro((atual) => atual || resultado.logradouro || '');
+                setNumero((atual) => atual || resultado.numero || '');
+                setBairro((atual) => atual || resultado.bairro || '');
+                setMunicipio((atual) => atual || resultado.municipio || '');
+                setUf((atual) => atual || resultado.uf || '');
+                setCodigoIbgeMunicipio((atual) => atual || resultado.codigo_ibge_municipio || '');
                 setClienteEncontrado(true);
             }
         } catch {
@@ -56,6 +75,30 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
             // não deve impedir o cliente de continuar digitando na mão.
         } finally {
             setBuscandoCliente(false);
+        }
+    }
+
+    async function buscarEnderecoPorCep() {
+        const cepLimpo = cep.replace(/\D/g, '');
+        if (cepLimpo.length !== 8) return;
+
+        setBuscandoCep(true);
+
+        try {
+            const resposta = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+            const dados = await resposta.json();
+            if (!dados.erro) {
+                setLogradouro((atual) => atual || dados.logradouro || '');
+                setBairro((atual) => atual || dados.bairro || '');
+                setMunicipio(dados.localidade || '');
+                setUf(dados.uf || '');
+                setCodigoIbgeMunicipio(dados.ibge || '');
+            }
+        } catch {
+            // Falha silenciosa - conveniência de preenchimento; o cliente
+            // ainda pode completar o endereço manualmente.
+        } finally {
+            setBuscandoCep(false);
         }
     }
     const [dadosCartao, setDadosCartao] = useState<{ token: string; installments: number; payment_type_id: string } | null>(
@@ -88,6 +131,33 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     const desconto = cupomAplicado?.valido ? (cupomAplicado.valor_desconto ?? 0) : 0;
     const totalComDesconto = Math.max(0, total - desconto);
 
+    // Cupom só desconta a visita agendada, nunca produtos - por isso o
+    // botão de aplicar cupom só aparece quando há uma visita no carrinho.
+    const itemAgendaCarrinho = itens.find((i) => i.tipo === 'agenda');
+    const subtotalVisitas = itemAgendaCarrinho ? itemAgendaCarrinho.valorUnitario * itemAgendaCarrinho.quantidade : 0;
+    const quantidadeTicketsCarrinho = itemAgendaCarrinho ? itemAgendaCarrinho.quantidade : 0;
+
+    // Endereço só é obrigatório quando há produto físico no carrinho - é
+    // usado para o envio; visita agendada sozinha não precisa dele.
+    const temProdutoFisico = itens.some((i) => i.tipo === 'produto');
+    const documentoLimpo = cpfCnpj.replace(/\D/g, '');
+    const pessoaJuridica = documentoLimpo.length === 14;
+
+    const totalPorProduto = new Map<number, number>();
+    const minimoPorProduto = new Map<number, number>();
+    itens.forEach((item) => {
+        if (item.tipo !== 'produto') return;
+        totalPorProduto.set(item.produtoId, (totalPorProduto.get(item.produtoId) ?? 0) + item.quantidade);
+        if (item.quantidadeMinima) minimoPorProduto.set(item.produtoId, item.quantidadeMinima);
+    });
+    const avisosMinimo = Array.from(minimoPorProduto.entries())
+        .filter(([produtoId, minimo]) => (totalPorProduto.get(produtoId) ?? 0) < minimo)
+        .map(([produtoId, minimo]) => {
+            const item = itens.find((i) => i.tipo === 'produto' && i.produtoId === produtoId);
+            const nomeBase = item?.nome.replace(/\s*\([^)]*\)\s*$/, '') ?? '';
+            return `${nomeBase}: venda mínima de ${minimo} unidades (faltam ${minimo - (totalPorProduto.get(produtoId) ?? 0)}).`;
+        });
+
     async function aplicarCupom() {
         if (!codigoCupom.trim()) return;
 
@@ -95,7 +165,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
         setValidandoCupom(true);
 
         try {
-            const resposta = await api.validarCupom(empresa, codigoCupom.trim(), total);
+            const resposta = await api.validarCupom(empresa, codigoCupom.trim(), subtotalVisitas, quantidadeTicketsCarrinho);
             setCupomAplicado(resposta);
         } catch (e) {
             setCupomAplicado(null);
@@ -114,8 +184,33 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     async function finalizarPedido() {
         setErro(null);
 
-        if (!nome.trim() || !lgpd) {
-            setErro('Preencha seu nome e aceite o termo de consentimento para continuar.');
+        if (!nome.trim() || !cpfCnpj.trim() || !email.trim() || !telefone.trim() || !lgpd) {
+            setErro('Preencha nome, CPF/CNPJ, e-mail, telefone e aceite o termo de consentimento para continuar.');
+            return;
+        }
+
+        if (documentoLimpo.length !== 11 && documentoLimpo.length !== 14) {
+            setErro('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
+            return;
+        }
+
+        if (pessoaJuridica && !inscricaoEstadual.trim()) {
+            setErro('Informe a Inscrição Estadual para pessoa jurídica.');
+            return;
+        }
+
+        if (!pessoaJuridica && !rg.trim()) {
+            setErro('Informe o RG.');
+            return;
+        }
+
+        if (temProdutoFisico && (!cep.trim() || !logradouro.trim() || !numero.trim() || !bairro.trim() || !municipio.trim() || !uf.trim())) {
+            setErro('Informe o endereço completo para envio do produto.');
+            return;
+        }
+
+        if (avisosMinimo.length > 0) {
+            setErro(avisosMinimo[0]);
             return;
         }
 
@@ -142,9 +237,18 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
             const payload: Record<string, unknown> = {
                 cliente: {
                     nome,
-                    cpf_cnpj: cpfCnpj || null,
-                    email: email || null,
-                    telefone: telefone || null,
+                    cpf_cnpj: cpfCnpj,
+                    rg: rg || null,
+                    inscricao_estadual: inscricaoEstadual || null,
+                    email,
+                    telefone,
+                    cep: cep || null,
+                    logradouro: logradouro || null,
+                    numero: numero || null,
+                    bairro: bairro || null,
+                    municipio: municipio || null,
+                    uf: uf || null,
+                    codigo_ibge_municipio: codigoIbgeMunicipio || null,
                     consentimento_lgpd: lgpd,
                 },
                 itens: produtosItens.map((i) =>
@@ -185,7 +289,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                         <input value={nome} onChange={(e) => setNome(e.target.value)} required />
                     </div>
                     <div>
-                        <label>CPF/CNPJ (opcional)</label>
+                        <label>CPF/CNPJ</label>
                         <input
                             value={cpfCnpj}
                             onChange={(e) => {
@@ -193,6 +297,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                                 setClienteEncontrado(false);
                             }}
                             onBlur={buscarClientePorCpf}
+                            required
                         />
                         {buscandoCliente && (
                             <span style={{ fontSize: 12, color: 'var(--cor-texto-suave)' }}>Verificando cadastro...</span>
@@ -203,13 +308,24 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                             </span>
                         )}
                     </div>
+                    {pessoaJuridica ? (
+                        <div>
+                            <label>Inscrição Estadual</label>
+                            <input value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} required />
+                        </div>
+                    ) : (
+                        <div>
+                            <label>RG</label>
+                            <input value={rg} onChange={(e) => setRg(e.target.value)} required />
+                        </div>
+                    )}
                     <div>
-                        <label>E-mail (opcional)</label>
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                        <label>E-mail</label>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
                     </div>
                     <div>
-                        <label>Telefone (opcional)</label>
-                        <input value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+                        <label>Telefone</label>
+                        <input value={telefone} onChange={(e) => setTelefone(e.target.value)} required />
                     </div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                         <input type="checkbox" style={{ width: 'auto' }} checked={lgpd} onChange={(e) => setLgpd(e.target.checked)} />
@@ -217,6 +333,53 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                     </label>
                 </div>
             </div>
+
+            {temProdutoFisico && (
+                <div className="cartao" style={{ marginBottom: 16 }}>
+                    <h2 style={{ fontSize: 14, marginTop: 0 }}>Endereço de entrega</h2>
+                    <p style={{ fontSize: 12, color: 'var(--cor-texto-suave)', marginTop: -6 }}>
+                        Necessário para o envio do produto.
+                    </p>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                        <div>
+                            <label>CEP</label>
+                            <input
+                                value={cep}
+                                onChange={(e) => setCep(e.target.value)}
+                                onBlur={buscarEnderecoPorCep}
+                                required
+                            />
+                            {buscandoCep && (
+                                <span style={{ fontSize: 12, color: 'var(--cor-texto-suave)' }}>Buscando endereço...</span>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <div style={{ flex: 3 }}>
+                                <label>Logradouro</label>
+                                <input value={logradouro} onChange={(e) => setLogradouro(e.target.value)} required />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label>Número</label>
+                                <input value={numero} onChange={(e) => setNumero(e.target.value)} required />
+                            </div>
+                        </div>
+                        <div>
+                            <label>Bairro</label>
+                            <input value={bairro} onChange={(e) => setBairro(e.target.value)} required />
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <div style={{ flex: 3 }}>
+                                <label>Cidade</label>
+                                <input value={municipio} onChange={(e) => setMunicipio(e.target.value)} required />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label>UF</label>
+                                <input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} maxLength={2} required />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="cartao" style={{ marginBottom: 16 }}>
                 <h2 style={{ fontSize: 14, marginTop: 0 }}>Forma de pagamento</h2>
@@ -269,32 +432,48 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 )}
             </div>
 
-            <div className="cartao" style={{ marginBottom: 16 }}>
-                <h2 style={{ fontSize: 14, marginTop: 0 }}>Cupom de desconto</h2>
+            {itemAgendaCarrinho && (
+                <div className="cartao" style={{ marginBottom: 16 }}>
+                    <h2 style={{ fontSize: 14, marginTop: 0 }}>Cupom de desconto</h2>
+                    <p style={{ fontSize: 12, color: 'var(--cor-texto-suave)', marginTop: -6 }}>
+                        O cupom desconta só o valor da visitação, não os produtos.
+                    </p>
 
-                {cupomAplicado?.valido ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <span className="msg-ok" style={{ flex: 1 }}>
-                            Cupom <strong>{cupomAplicado.codigo}</strong> aplicado - desconto de R$ {desconto.toFixed(2)}.
-                        </span>
-                        <button className="botao-secundario" onClick={removerCupom}>Remover</button>
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', gap: 10 }}>
-                        <input
-                            value={codigoCupom}
-                            onChange={(e) => setCodigoCupom(e.target.value)}
-                            placeholder="Código do cupom"
-                            style={{ textTransform: 'uppercase' }}
-                            onKeyDown={(e) => e.key === 'Enter' && aplicarCupom()}
-                        />
-                        <button className="botao-secundario" onClick={aplicarCupom} disabled={validandoCupom || !codigoCupom.trim()} style={{ flexShrink: 0 }}>
-                            {validandoCupom ? 'Validando...' : 'Aplicar'}
-                        </button>
-                    </div>
-                )}
-                {erroCupom && <p className="msg-erro" style={{ marginTop: 10 }}>{erroCupom}</p>}
-            </div>
+                    {cupomAplicado?.valido ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                            <span className="msg-ok" style={{ flex: 1 }}>
+                                Cupom <strong>{cupomAplicado.codigo}</strong> aplicado - desconto de R$ {desconto.toFixed(2)}.
+                            </span>
+                            <button className="botao-secundario" onClick={removerCupom}>Remover</button>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <input
+                                value={codigoCupom}
+                                onChange={(e) => setCodigoCupom(e.target.value)}
+                                placeholder="Código do cupom"
+                                style={{ textTransform: 'uppercase' }}
+                                onKeyDown={(e) => e.key === 'Enter' && aplicarCupom()}
+                            />
+                            <button className="botao-secundario" onClick={aplicarCupom} disabled={validandoCupom || !codigoCupom.trim()} style={{ flexShrink: 0 }}>
+                                {validandoCupom ? 'Validando...' : 'Aplicar'}
+                            </button>
+                        </div>
+                    )}
+                    {erroCupom && <p className="msg-erro" style={{ marginTop: 10 }}>{erroCupom}</p>}
+                </div>
+            )}
+
+            {avisosMinimo.length > 0 && (
+                <div className="cartao msg-erro" style={{ marginBottom: 16 }}>
+                    <strong style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+                        Complete a quantidade mínima para continuar:
+                    </strong>
+                    {avisosMinimo.map((aviso) => (
+                        <div key={aviso} style={{ fontSize: 13 }}>{aviso}</div>
+                    ))}
+                </div>
+            )}
 
             {erro && <p className="msg-erro" style={{ marginBottom: 12 }}>{erro}</p>}
 
@@ -317,7 +496,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 </div>
             </div>
 
-            <button className="botao-primario" onClick={finalizarPedido} disabled={enviando} style={{ width: '100%' }}>
+            <button className="botao-primario" onClick={finalizarPedido} disabled={enviando || avisosMinimo.length > 0} style={{ width: '100%' }}>
                 {enviando ? 'Enviando...' : 'Finalizar pedido'}
             </button>
         </div>
@@ -326,11 +505,68 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
 
 function TelaConfirmacao({ empresa, resultado }: { empresa: string; resultado: RespostaCheckout }) {
     const pago = resultado.status_pagamento === 'pago';
+    const itens = resultado.itens ?? [];
+    const itensProduto = itens.filter((i) => i.produto);
+    const itensVisita = itens.filter((i) => i.agenda_visitacao);
 
     return (
         <div>
             <h1 style={{ fontSize: 20 }}>{pago ? 'Pedido confirmado!' : 'Pedido recebido'}</h1>
             <p>Pedido #{resultado.id} - total R$ {Number(resultado.valor_total).toFixed(2)}</p>
+
+            {itens.length > 0 && (
+                <div className="cartao" style={{ marginTop: 16 }}>
+                    <h2 style={{ fontSize: 14, marginTop: 0 }}>Recibo do pedido</h2>
+
+                    {itensProduto.length > 0 && (
+                        <>
+                            <h3 style={{ fontSize: 12, textTransform: 'uppercase', color: 'var(--cor-texto-suave)', marginBottom: 6 }}>
+                                Produtos
+                            </h3>
+                            {itensProduto.map((item) => (
+                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                                    <span>
+                                        {item.quantidade}x {item.produto?.nome}
+                                        {item.produto_variacao ? ` (${item.produto_variacao.tamanho})` : ''}
+                                    </span>
+                                    <span>R$ {Number(item.valor_total).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+
+                    {itensVisita.length > 0 && (
+                        <>
+                            <h3 style={{ fontSize: 12, textTransform: 'uppercase', color: 'var(--cor-texto-suave)', marginTop: itensProduto.length ? 12 : 0, marginBottom: 6 }}>
+                                Visitas agendadas
+                            </h3>
+                            {itensVisita.map((item) => (
+                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                                    <span>
+                                        {item.quantidade}x visita
+                                        {item.agenda_visitacao
+                                            ? ` - ${new Date(item.agenda_visitacao.data_hora).toLocaleString('pt-BR')}`
+                                            : ''}
+                                    </span>
+                                    <span>R$ {Number(item.valor_total).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+
+                    {resultado.valor_desconto && Number(resultado.valor_desconto) > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 10, color: 'var(--cor-ok-texto)' }}>
+                            <span>Desconto do cupom</span>
+                            <span>- R$ {Number(resultado.valor_desconto).toFixed(2)}</span>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--cor-borda)' }}>
+                        <span>Total</span>
+                        <span>R$ {Number(resultado.valor_total).toFixed(2)}</span>
+                    </div>
+                </div>
+            )}
 
             {!pago && resultado.cobranca?.qr_code && (
                 <div className="cartao" style={{ marginTop: 16 }}>
@@ -352,9 +588,14 @@ function TelaConfirmacao({ empresa, resultado }: { empresa: string; resultado: R
 
             {pago && <p className="msg-ok">Pagamento confirmado - obrigado pela compra!</p>}
 
-            <Link href={`/${empresa}`} className="botao-secundario" style={{ display: 'inline-block', textDecoration: 'none', marginTop: 16 }}>
-                Voltar à loja
-            </Link>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                <Link href={`/${empresa}/pedido/${resultado.id}`} className="botao-primario" style={{ textDecoration: 'none' }}>
+                    Ver recibo completo
+                </Link>
+                <Link href={`/${empresa}`} className="botao-secundario" style={{ textDecoration: 'none' }}>
+                    Voltar à loja
+                </Link>
+            </div>
         </div>
     );
 }

@@ -3,6 +3,7 @@ import type {
     CupomValidado,
     EmpresaInfo,
     HorarioAgenda,
+    PedidoPublico,
     Produto,
     RespostaCheckout,
 } from './types';
@@ -58,17 +59,32 @@ export const api = {
             body: JSON.stringify(dados),
         }),
 
-    validarCupom: (empresa: string, codigo: string, subtotal: number) =>
+    // Cupom só desconta a visita agendada, nunca produtos - por isso pede
+    // o subtotal e a quantidade de tickets separados do restante do carrinho.
+    validarCupom: (empresa: string, codigo: string, subtotalVisitas: number, quantidadeTickets: number) =>
         requisitar<CupomValidado>(`/loja/${empresa}/cupons/validar`, {
             method: 'POST',
-            body: JSON.stringify({ codigo, subtotal }),
+            body: JSON.stringify({ codigo, subtotal_visitas: subtotalVisitas, quantidade_tickets: quantidadeTickets }),
         }),
 
+    pedido: (empresa: string, id: number) => requisitar<PedidoPublico>(`/loja/${empresa}/pedidos/${id}`),
+
     buscarCliente: (empresa: string, cpfCnpj: string) =>
-        requisitar<{ encontrado: boolean; nome?: string; email?: string | null; telefone?: string | null }>(
-            `/loja/${empresa}/clientes/buscar`,
-            { method: 'POST', body: JSON.stringify({ cpf_cnpj: cpfCnpj }) },
-        ),
+        requisitar<{
+            encontrado: boolean;
+            nome?: string;
+            email?: string | null;
+            telefone?: string | null;
+            rg?: string | null;
+            inscricao_estadual?: string | null;
+            cep?: string | null;
+            logradouro?: string | null;
+            numero?: string | null;
+            bairro?: string | null;
+            municipio?: string | null;
+            uf?: string | null;
+            codigo_ibge_municipio?: string | null;
+        }>(`/loja/${empresa}/clientes/buscar`, { method: 'POST', body: JSON.stringify({ cpf_cnpj: cpfCnpj }) }),
 };
 
 export { ErroApi };

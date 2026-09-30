@@ -6,7 +6,24 @@ import { useCarrinho } from '@/lib/cart';
 
 export default function PaginaCarrinho({ params }: { params: Promise<{ empresa: string }> }) {
     const { empresa } = use(params);
-    const { itens, total, removerItem } = useCarrinho();
+    const { itens, total, removerItem, alterarQuantidade } = useCarrinho();
+
+    // Soma a quantidade de todas as variações de um mesmo produto - a venda
+    // mínima é por produto, não por variação (o cliente pode misturar).
+    const totalPorProduto = new Map<number, number>();
+    const minimoPorProduto = new Map<number, number>();
+    itens.forEach((item) => {
+        if (item.tipo !== 'produto') return;
+        totalPorProduto.set(item.produtoId, (totalPorProduto.get(item.produtoId) ?? 0) + item.quantidade);
+        if (item.quantidadeMinima) minimoPorProduto.set(item.produtoId, item.quantidadeMinima);
+    });
+    const avisosMinimo = Array.from(minimoPorProduto.entries())
+        .filter(([produtoId, minimo]) => (totalPorProduto.get(produtoId) ?? 0) < minimo)
+        .map(([produtoId, minimo]) => {
+            const item = itens.find((i) => i.tipo === 'produto' && i.produtoId === produtoId);
+            const nomeBase = item?.nome.replace(/\s*\([^)]*\)\s*$/, '') ?? '';
+            return `${nomeBase}: venda mínima de ${minimo} unidades (faltam ${minimo - (totalPorProduto.get(produtoId) ?? 0)}).`;
+        });
 
     if (itens.length === 0) {
         return (
@@ -36,8 +53,29 @@ export default function PaginaCarrinho({ params }: { params: Promise<{ empresa: 
                                 {item.nome}
                             </strong>
                             <div style={{ fontSize: 12.5, color: 'var(--cor-texto-suave)', marginTop: 3 }}>
-                                {item.quantidade} × R$ {item.valorUnitario.toFixed(2)}
+                                R$ {item.valorUnitario.toFixed(2)} cada
                             </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <button
+                                className="botao-secundario"
+                                onClick={() => alterarQuantidade(index, item.quantidade - 1)}
+                                disabled={item.quantidade <= 1}
+                                style={{ padding: '6px 10px', lineHeight: 1 }}
+                                aria-label={`Diminuir quantidade de ${item.nome}`}
+                            >
+                                −
+                            </button>
+                            <span style={{ fontSize: 14, minWidth: 20, textAlign: 'center' }}>{item.quantidade}</span>
+                            <button
+                                className="botao-secundario"
+                                onClick={() => alterarQuantidade(index, item.quantidade + 1)}
+                                style={{ padding: '6px 10px', lineHeight: 1 }}
+                                aria-label={`Aumentar quantidade de ${item.nome}`}
+                            >
+                                +
+                            </button>
                         </div>
 
                         <strong style={{ fontSize: 15, whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -63,6 +101,17 @@ export default function PaginaCarrinho({ params }: { params: Promise<{ empresa: 
                 ))}
             </div>
 
+            {avisosMinimo.length > 0 && (
+                <div className="cartao msg-erro" style={{ marginBottom: 20 }}>
+                    <strong style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+                        Complete a quantidade mínima para continuar:
+                    </strong>
+                    {avisosMinimo.map((aviso) => (
+                        <div key={aviso} style={{ fontSize: 13 }}>{aviso}</div>
+                    ))}
+                </div>
+            )}
+
             <div className="cartao" style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <span style={{ fontSize: 15, color: 'var(--cor-texto-suave)' }}>Total</span>
@@ -71,13 +120,24 @@ export default function PaginaCarrinho({ params }: { params: Promise<{ empresa: 
             </div>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Link
-                    href={`/${empresa}/checkout`}
-                    className="botao-primario"
-                    style={{ display: 'inline-block', textDecoration: 'none', flex: 1, textAlign: 'center' }}
-                >
-                    Continuar para o checkout
-                </Link>
+                {avisosMinimo.length > 0 ? (
+                    <button
+                        className="botao-primario"
+                        disabled
+                        style={{ flex: 1, opacity: 0.5, cursor: 'not-allowed' }}
+                        title="Complete a quantidade mínima dos produtos acima para continuar"
+                    >
+                        Continuar para o checkout
+                    </button>
+                ) : (
+                    <Link
+                        href={`/${empresa}/checkout`}
+                        className="botao-primario"
+                        style={{ display: 'inline-block', textDecoration: 'none', flex: 1, textAlign: 'center' }}
+                    >
+                        Continuar para o checkout
+                    </Link>
+                )}
                 <Link
                     href={`/${empresa}`}
                     className="botao-secundario"

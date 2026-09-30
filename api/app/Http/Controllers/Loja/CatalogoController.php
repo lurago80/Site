@@ -8,6 +8,7 @@ use App\Models\Cliente;
 use App\Models\ConfigPagamento;
 use App\Models\Cupom;
 use App\Models\Produto;
+use App\Models\Venda;
 use Illuminate\Http\Request;
 
 /**
@@ -35,6 +36,36 @@ class CatalogoController extends Controller
             'logo_url' => $empresaAtual->logo_url,
             'cor_primaria' => $empresaAtual->cor_primaria,
             'modulo_agendamento_ativo' => $empresaAtual->modulo_agendamento_ativo,
+        ]);
+    }
+
+    /**
+     * Recibo público do pedido - o cliente acessa pelo link salvo/compartilhado
+     * depois do checkout, para imprimir ou mostrar no celular na chegada da
+     * visita. Só expõe o primeiro nome do cliente (não o documento nem
+     * contato completo) - o link em si (id sequencial) não é um segredo
+     * forte, então evitamos vazar dado pessoal sensível por ele.
+     */
+    public function pedido(Request $request, string $empresa, int $id)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $venda = Venda::with(['itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'id' => $venda->id,
+            'status_pagamento' => $venda->status_pagamento,
+            'valor_total' => $venda->valor_total,
+            'valor_desconto' => $venda->valor_desconto,
+            'data_venda' => $venda->data_venda,
+            'cliente_primeiro_nome' => $venda->cliente ? explode(' ', trim($venda->cliente->nome))[0] : null,
+            'itens' => $venda->itens,
+            'empresa' => [
+                'nome_fantasia' => $empresaAtual->nome_fantasia ?? $empresaAtual->razao_social,
+                'logo_url' => $empresaAtual->logo_url,
+                'cor_primaria' => $empresaAtual->cor_primaria,
+            ],
         ]);
     }
 
@@ -71,8 +102,16 @@ class CatalogoController extends Controller
     {
         $dados = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
-            'subtotal' => ['required', 'numeric', 'min:0'],
+            // Subtotal e quantidade só da visita agendada - o cupom nunca
+            // desconta produtos (regra de negócio explícita do cliente),
+            // ver Cupom::calcularDescontoVisita.
+            'subtotal_visitas' => ['required', 'numeric', 'min:0'],
+            'quantidade_tickets' => ['required', 'integer', 'min:0'],
         ]);
+
+        if ($dados['quantidade_tickets'] === 0) {
+            return response()->json(['valido' => false, 'message' => 'O cupom só pode ser aplicado quando há uma visita agendada no carrinho.'], 422);
+        }
 
         $cupom = Cupom::whereRaw('lower(codigo) = ?', [mb_strtolower($dados['codigo'])])->first();
 
@@ -84,7 +123,7 @@ class CatalogoController extends Controller
             return response()->json(['valido' => false, 'message' => $motivo], 422);
         }
 
-        $desconto = $cupom->calcularDesconto((float) $dados['subtotal']);
+        $desconto = $cupom->calcularDescontoVisita((float) $dados['subtotal_visitas'], (int) $dados['quantidade_tickets']);
 
         return response()->json([
             'valido' => true,
@@ -118,6 +157,15 @@ class CatalogoController extends Controller
             'nome' => $cliente->nome,
             'email' => $cliente->email,
             'telefone' => $cliente->telefone,
+            'rg' => $cliente->rg,
+            'inscricao_estadual' => $cliente->inscricao_estadual,
+            'cep' => $cliente->cep,
+            'logradouro' => $cliente->logradouro,
+            'numero' => $cliente->numero,
+            'bairro' => $cliente->bairro,
+            'municipio' => $cliente->municipio,
+            'uf' => $cliente->uf,
+            'codigo_ibge_municipio' => $cliente->codigo_ibge_municipio,
         ]);
     }
 
@@ -125,6 +173,7 @@ class CatalogoController extends Controller
     {
         return Produto::query()
             ->where('tipo', 'fisico')
+            ->where('loja_virtual', true)
             ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
             ->orderBy('nome')
             ->get();

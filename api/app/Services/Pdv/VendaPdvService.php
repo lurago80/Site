@@ -5,9 +5,12 @@ namespace App\Services\Pdv;
 use App\Models\AgendaVisitacao;
 use App\Models\Atendente;
 use App\Models\Cliente;
+use App\Models\Cupom;
+use App\Models\DescontoPdv;
 use App\Models\Empresa;
 use App\Models\FormaPagamento;
 use App\Models\Produto;
+use App\Models\ProdutoVariacao;
 use App\Models\Venda;
 use App\Models\Vendedor;
 use App\Services\Agendamento\ReservaVagaService;
@@ -60,10 +63,16 @@ class VendaPdvService
 
             $valorTotal = 0;
             $comissaoTotal = 0;
+            $valorDesconto = 0;
+            $cupomId = null;
+            $valorProdutos = 0;
+            $valorVisitas = 0;
+            $quantidadeTickets = 0;
 
             foreach ($dados['itens'] ?? [] as $item) {
                 [$valorItem, $comissaoItem] = $this->criarItemProduto($venda, $item, $vendedor, $empresa);
                 $valorTotal += $valorItem;
+                $valorProdutos += $valorItem;
                 $comissaoTotal += $comissaoItem;
             }
 
@@ -75,20 +84,60 @@ class VendaPdvService
                     $vendedor,
                 );
                 $valorTotal += $valorItem;
+                $valorVisitas = $valorItem;
+                $quantidadeTickets = (int) $dados['agenda_quantidade'];
                 $comissaoTotal += $comissaoItem;
+
+                // Cupom só se aplica sobre a visita agendada (pedido do
+                // cliente) - uma venda com produto + visita desconta só a
+                // parte da visita, não o carrinho inteiro.
+                if (! empty($dados['cupom_codigo'])) {
+                    [$valorDesconto, $cupomId] = $this->aplicarCupomNaVisita(
+                        $dados['cupom_codigo'],
+                        $valorItem,
+                        (int) $dados['agenda_quantidade'],
+                        $cliente?->id,
+                    );
+                }
             }
 
+            // Desconto manual do PDV (só produtos ou só visitas, conforme o
+            // cadastro). Nunca combina com cupom na visita - o controller já
+            // recusa essa combinação; aqui só calcula.
+            $descontoPdvId = null;
+
+            if (! empty($dados['desconto_pdv_id'])) {
+                $descontoPdv = DescontoPdv::where('ativo', true)->find($dados['desconto_pdv_id']);
+
+                abort_if($descontoPdv === null, 422, 'Desconto não encontrado ou desativado.');
+                abort_if(
+                    $descontoPdv->aplicaEmVisitas() ? $valorVisitas <= 0 : $valorProdutos <= 0,
+                    422,
+                    $descontoPdv->aplicaEmVisitas()
+                        ? 'Este desconto só pode ser usado quando há uma visita na venda.'
+                        : 'Este desconto só pode ser usado quando há produtos na venda.'
+                );
+
+                $valorDesconto += $descontoPdv->calcular($valorProdutos, $valorVisitas, $quantidadeTickets);
+                $descontoPdvId = $descontoPdv->id;
+            }
+
+            $valorDesconto = min($valorDesconto, $valorTotal);
+
             $venda->update([
-                'valor_total' => $valorTotal,
+                'valor_total' => $valorTotal - $valorDesconto,
                 'comissao' => $comissaoTotal > 0 ? $comissaoTotal : null,
+                'cupom_id' => $cupomId,
+                'desconto_pdv_id' => $descontoPdvId,
+                'valor_desconto' => $valorDesconto ?: null,
             ]);
 
             $formaPagamento = ! empty($dados['forma_pagamento_id'])
                 ? FormaPagamento::find($dados['forma_pagamento_id'])
                 : null;
 
-            if ($formaPagamento?->tipo === 'dinheiro' && $valorTotal > 0) {
-                $this->caixaService->registrarVenda($empresa, $usuarioId, $valorTotal, "Venda #{$venda->id}");
+            if ($formaPagamento?->tipo === 'dinheiro' && $valorTotal - $valorDesconto > 0) {
+                $this->caixaService->registrarVenda($empresa, $usuarioId, $valorTotal - $valorDesconto, "Venda #{$venda->id}");
             }
 
             if ($dados['tipo_doc'] === 'fiscal') {
@@ -96,8 +145,8 @@ class VendaPdvService
             }
 
             return $venda->fresh([
-                'itens.produto', 'itens.agendaVisitacao', 'cliente', 'vendedor',
-                'atendente', 'formaPagamento', 'empresa', 'documentoFiscal',
+                'itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'vendedor',
+                'atendente', 'formaPagamento', 'descontoPdv', 'empresa', 'documentoFiscal',
             ]);
         });
     }
@@ -110,7 +159,16 @@ class VendaPdvService
         $produto = Produto::findOrFail($item['produto_id']);
         $quantidade = (int) $item['quantidade'];
 
-        if ($produto->estoque_atual !== null) {
+        $variacao = null;
+        if (! empty($item['variacao_id'])) {
+            $variacao = ProdutoVariacao::where('produto_id', $produto->id)->findOrFail($item['variacao_id']);
+            abort_if(
+                ! $empresa->estoque_permite_negativo && $variacao->estoque_atual < $quantidade,
+                409,
+                "Estoque insuficiente para {$produto->nome} ({$variacao->tamanho})."
+            );
+            $variacao->decrement('estoque_atual', $quantidade);
+        } elseif ($produto->estoque_atual !== null) {
             abort_if(
                 ! $empresa->estoque_permite_negativo && $produto->estoque_atual < $quantidade,
                 409,
@@ -125,6 +183,7 @@ class VendaPdvService
         $venda->itens()->create([
             'empresa_id' => $venda->empresa_id,
             'produto_id' => $produto->id,
+            'produto_variacao_id' => $variacao?->id,
             'quantidade' => $quantidade,
             'valor_unitario' => $produto->preco_venda,
             'valor_total' => $valorItem,
@@ -158,6 +217,27 @@ class VendaPdvService
         ]);
 
         return [$valorItem, $comissaoItem];
+    }
+
+    /**
+     * Mesma regra de validação/consumo do cupom usada no checkout da loja
+     * pública (CheckoutController::aplicarCupom) - trava a linha para
+     * evitar que duas vendas simultâneas consumam o último uso disponível
+     * de um cupom limitado.
+     *
+     * @return array{0: float, 1: int} [valor_desconto, cupom_id]
+     */
+    private function aplicarCupomNaVisita(string $codigo, float $subtotalVisita, int $quantidadeTickets, ?int $clienteId): array
+    {
+        $cupom = Cupom::whereRaw('lower(codigo) = ?', [mb_strtolower($codigo)])->lockForUpdate()->first();
+
+        abort_if($cupom === null, 422, 'Cupom não encontrado.');
+        abort_if($cupom->motivoInvalido() !== null, 422, $cupom->motivoInvalido());
+
+        $cupom->increment('usos_realizados');
+        $cupom->update(['usado_em' => now(), 'usado_por_cliente_id' => $clienteId]);
+
+        return [$cupom->calcularDescontoVisita($subtotalVisita, $quantidadeTickets), $cupom->id];
     }
 
     private function localizarOuCriarCliente(int $empresaId, array $dadosCliente): Cliente

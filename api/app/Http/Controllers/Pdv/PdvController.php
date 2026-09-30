@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Pdv;
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
 use App\Models\Atendente;
+use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
 use App\Models\Produto;
 use App\Models\Vendedor;
+use App\Models\Venda;
 use App\Services\Pdv\CaixaService;
 use App\Services\Pdv\VendaPdvService;
+use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
 
 /**
@@ -23,6 +26,7 @@ class PdvController extends Controller
     public function __construct(
         private readonly VendaPdvService $vendaPdvService,
         private readonly CaixaService $caixaService,
+        private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
     ) {}
 
     public function caixa(Request $request, string $empresa)
@@ -36,6 +40,49 @@ class PdvController extends Controller
         ]);
     }
 
+    // ---- Verificação de ticket/recibo na chegada da visita (check-in) ----
+
+    public function verificarTicket(string $empresa)
+    {
+        return view('pdv.verificar', ['empresaSlug' => $empresa]);
+    }
+
+    public function buscarTicket(Request $request, string $empresa, int $vendaId)
+    {
+        $venda = Venda::with(['itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'checkInUsuario', 'vendedor', 'atendente'])
+            ->find($vendaId);
+
+        abort_if($venda === null, 404, 'Pedido não encontrado nesta empresa.');
+
+        return response()->json($venda);
+    }
+
+    public function confirmarCheckIn(Request $request, string $empresa, int $vendaId)
+    {
+        $dados = $request->validate([
+            'vendedor_id' => ['nullable', 'integer'],
+            'atendente_id' => ['required', 'integer'],
+        ]);
+
+        $venda = Venda::find($vendaId);
+        abort_if($venda === null, 404, 'Pedido não encontrado nesta empresa.');
+
+        abort_if($venda->status_pagamento !== 'pago', 422, 'Este pedido ainda não está pago - não é possível confirmar a entrada.');
+
+        if ($venda->check_in_em !== null) {
+            abort(422, 'Este ticket já teve entrada confirmada em '.$venda->check_in_em->format('d/m/Y H:i').'.');
+        }
+
+        $venda->update([
+            'vendedor_id' => $dados['vendedor_id'] ?? $venda->vendedor_id,
+            'atendente_id' => $dados['atendente_id'],
+            'check_in_em' => now(),
+            'check_in_usuario_id' => $request->user()->id,
+        ]);
+
+        return response()->json($venda->fresh(['checkInUsuario', 'vendedor', 'atendente']));
+    }
+
     public function produtos(Request $request, string $empresa)
     {
         $busca = $request->query('busca');
@@ -44,6 +91,7 @@ class PdvController extends Controller
             Produto::query()
                 ->where('tipo', 'fisico')
                 ->when($busca, fn ($q, $termo) => $q->where('nome', 'ilike', "%{$termo}%"))
+                ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
                 ->orderBy('nome')
                 ->get()
         );
@@ -87,21 +135,31 @@ class PdvController extends Controller
         );
     }
 
+    public function descontos(Request $request, string $empresa)
+    {
+        return response()->json(
+            DescontoPdv::where('ativo', true)->orderBy('descricao')->get()
+        );
+    }
+
     public function finalizar(Request $request, string $empresa)
     {
         $dados = $request->validate([
             'tipo_doc' => ['required', 'in:fiscal,nao_fiscal'],
             'vendedor_id' => ['nullable', 'integer'],
-            'atendente_id' => ['nullable', 'integer'],
-            'forma_pagamento_id' => ['nullable', 'integer'],
+            'atendente_id' => ['required', 'integer'],
+            'forma_pagamento_id' => ['required', 'integer'],
             'cliente.nome' => ['nullable', 'string', 'max:255'],
             'cliente.cpf_cnpj' => ['nullable', 'string', 'max:18'],
             'cliente.telefone' => ['nullable', 'string', 'max:20'],
             'itens' => ['nullable', 'array'],
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
+            'itens.*.variacao_id' => ['nullable', 'integer'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
             'agenda_visitacao_id' => ['nullable', 'integer'],
             'agenda_quantidade' => ['nullable', 'required_with:agenda_visitacao_id', 'integer', 'min:1'],
+            'cupom_codigo' => ['nullable', 'string', 'max:40'],
+            'desconto_pdv_id' => ['nullable', 'integer'],
         ]);
 
         abort_if(
@@ -109,6 +167,26 @@ class PdvController extends Controller
             422,
             'Adicione ao menos um produto ou uma visita à venda.'
         );
+
+        abort_if(
+            ! empty($dados['cupom_codigo']) && empty($dados['agenda_visitacao_id']),
+            422,
+            'O cupom só pode ser aplicado quando há uma visita agendada no carrinho.'
+        );
+
+        // Desconto que incide em visitas não combina com cupom (ambos
+        // descontam a visita) - regra de negócio explícita do cliente.
+        if (! empty($dados['desconto_pdv_id']) && ! empty($dados['cupom_codigo'])) {
+            $descontoPdv = DescontoPdv::where('ativo', true)->find($dados['desconto_pdv_id']);
+
+            abort_if(
+                $descontoPdv?->aplicaEmVisitas(),
+                422,
+                'O desconto em visitas não pode ser usado junto com cupom. Escolha um dos dois.'
+            );
+        }
+
+        $this->quantidadeMinimaVendaService->validar($dados['itens'] ?? []);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 

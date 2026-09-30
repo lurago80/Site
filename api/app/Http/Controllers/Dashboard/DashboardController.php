@@ -14,10 +14,13 @@ use App\Models\ConfigWhatsapp;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\Cupom;
+use App\Models\Empresa;
+use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
 use App\Models\GravaBanco;
 use App\Models\Grupo;
+use App\Models\ItemVenda;
 use App\Models\PlanoContas;
 use App\Models\Produto;
 use App\Models\ProdutoVariacao;
@@ -168,8 +171,9 @@ class DashboardController extends Controller
     }
 
     /**
-     * Variações de tamanho (P/M/G/GG etc.) de um produto, cada uma com
-     * estoque próprio - usado por produtos de vestuário/suvenir.
+     * Variações de um produto (tamanho P/M/G/GG, sabor, etc.), cada uma
+     * com estoque próprio - usado por vestuário/suvenir e por produtos
+     * vendidos em caixa fechada com sabores variados (ex.: cerveja).
      */
     public function variacoesProduto(Request $request, string $empresa, int $produtoId)
     {
@@ -185,7 +189,7 @@ class DashboardController extends Controller
         $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
 
         $dados = $request->validate([
-            'tamanho' => ['required', 'string', 'max:10'],
+            'tamanho' => ['required', 'string', 'max:40'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
             'ativo' => ['sometimes', 'boolean'],
         ]);
@@ -208,7 +212,7 @@ class DashboardController extends Controller
             ->findOrFail($variacaoId);
 
         $dados = $request->validate([
-            'tamanho' => ['sometimes', 'string', 'max:10'],
+            'tamanho' => ['sometimes', 'string', 'max:40'],
             'estoque_atual' => ['sometimes', 'integer', 'min:0'],
             'ativo' => ['sometimes', 'boolean'],
         ]);
@@ -268,6 +272,7 @@ class DashboardController extends Controller
             'empresa_id' => $empresaAtual->id,
             'unidade' => $dados['unidade'] ?? 'UN',
             'ativo' => $dados['ativo'] ?? true,
+            'loja_virtual' => $dados['loja_virtual'] ?? true,
         ]);
 
         return response()->json($produto, 201);
@@ -337,7 +342,9 @@ class DashboardController extends Controller
             'valor_atacado' => ['nullable', 'numeric', 'min:0'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
             'estoque_minimo' => ['nullable', 'integer', 'min:0'],
+            'quantidade_minima_venda' => ['nullable', 'integer', 'min:1'],
             'ativo' => ['sometimes', 'boolean'],
+            'loja_virtual' => ['sometimes', 'boolean'],
             'pesavel' => ['sometimes', 'boolean'],
             'imagem_url' => ['nullable', 'string', 'max:255'],
             'imagem' => ['nullable', 'file', 'image', 'max:5120'],
@@ -562,7 +569,11 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
+            'telefone' => ['nullable', 'string', 'max:20'],
+            'percentual_comissao' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
+
+        $dados['percentual_comissao'] ??= 3;
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
@@ -577,6 +588,8 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'nome' => ['sometimes', 'string', 'max:255'],
+            'telefone' => ['nullable', 'string', 'max:20'],
+            'percentual_comissao' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'ativo' => ['sometimes', 'boolean'],
         ]);
 
@@ -587,35 +600,75 @@ class DashboardController extends Controller
     }
 
     /**
-     * Relatório simples: quantidade de vendas e valor total processado
-     * por atendente (quem operou o caixa), dentro de um período opcional.
+     * Relatório simples: quantidade de itens vendidos e valor total
+     * processado por atendente (quem operou o caixa), dentro de um período
+     * opcional - com filtro por tipo de item (produto físico e/ou visita
+     * agendada), já que uma venda pode misturar os dois.
      */
     public function relatorioAtendentes(Request $request, string $empresa)
     {
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        $relatorio = Atendente::where('empresa_id', $empresaAtual->id)
+        return response()->json(
+            $this->relatorioVendasPorPessoa('atendente_id', Atendente::class, $empresaAtual, $dados)
+        );
+    }
+
+    /**
+     * Mesmo relatório do atendente, mas para o vendedor (guia da visita,
+     * recebe comissão) - ver DashboardController::relatorioAtendentes.
+     */
+    public function relatorioVendedores(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            $this->relatorioVendasPorPessoa('vendedor_id', Vendedor::class, $empresaAtual, $dados)
+        );
+    }
+
+    /**
+     * Agrega itens_venda (não vendas inteiras) por pessoa, porque uma
+     * mesma venda pode ter produtos físicos e visitas agendadas ao mesmo
+     * tempo - o filtro "tipo" (produtos/visitações) só faz sentido no
+     * nível do item, não da venda como um todo.
+     */
+    private function relatorioVendasPorPessoa(string $colunaPessoa, string $modeloPessoa, Empresa $empresaAtual, array $dados)
+    {
+        $tipo = $dados['tipo'] ?? 'todos';
+
+        return $modeloPessoa::where('empresa_id', $empresaAtual->id)
             ->orderBy('nome')
             ->get()
-            ->map(function (Atendente $atendente) use ($dados) {
-                $query = Venda::where('atendente_id', $atendente->id)
-                    ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', $d))
-                    ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', $d));
+            ->map(function ($pessoa) use ($colunaPessoa, $dados, $tipo) {
+                $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoa, $dados) {
+                    $q->where($colunaPessoa, $pessoa->id)
+                        ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', $d))
+                        ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', $d));
+                })
+                    ->when($tipo === 'produtos', fn ($q) => $q->whereNotNull('produto_id'))
+                    ->when($tipo === 'visitacoes', fn ($q) => $q->whereNotNull('agenda_visitacao_id'));
 
                 return [
-                    'id' => $atendente->id,
-                    'nome' => $atendente->nome,
-                    'vendas_count' => (clone $query)->count(),
-                    'valor_total' => (clone $query)->sum('valor_total'),
+                    'id' => $pessoa->id,
+                    'nome' => $pessoa->nome,
+                    'vendas_count' => (clone $itens)->distinct('venda_id')->count('venda_id'),
+                    'itens_count' => (clone $itens)->sum('quantidade'),
+                    'valor_total' => (clone $itens)->sum('valor_total'),
                 ];
             });
-
-        return response()->json($relatorio);
     }
 
     // ---- Financeiro ----
@@ -1309,6 +1362,7 @@ class DashboardController extends Controller
             'codigo' => ['required', 'string', 'max:40'],
             'tipo' => ['required', 'in:percentual,valor_fixo'],
             'valor' => ['required', 'numeric', 'min:0.01'],
+            'valor_maximo_desconto' => ['nullable', 'numeric', 'min:0'],
             'valido_ate' => ['nullable', 'date'],
             'limite_uso' => ['nullable', 'integer', 'min:1'],
         ]);
@@ -1336,6 +1390,7 @@ class DashboardController extends Controller
             'codigo' => ['sometimes', 'string', 'max:40'],
             'tipo' => ['sometimes', 'in:percentual,valor_fixo'],
             'valor' => ['sometimes', 'numeric', 'min:0.01'],
+            'valor_maximo_desconto' => ['nullable', 'numeric', 'min:0'],
             'valido_ate' => ['nullable', 'date'],
             'limite_uso' => ['nullable', 'integer', 'min:1'],
             'ativo' => ['sometimes', 'boolean'],
@@ -1352,6 +1407,52 @@ class DashboardController extends Controller
         $cupom->update($dados);
 
         return response()->json($cupom->fresh());
+    }
+
+    // ---- Descontos do PDV (só frente de caixa, nunca loja virtual) ----
+
+    public function descontosPdv(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            DescontoPdv::where('empresa_id', $empresaAtual->id)->orderBy('descricao')->get()
+        );
+    }
+
+    public function criarDescontoPdv(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'descricao' => ['required', 'string', 'max:255'],
+            'percentual' => ['required', 'numeric', 'min:0.01', 'max:100'],
+            'aplica_em' => ['required', 'in:produtos,visitas'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $desconto = DescontoPdv::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
+
+        return response()->json($desconto, 201);
+    }
+
+    public function atualizarDescontoPdv(Request $request, string $empresa, int $descontoId)
+    {
+        $this->exigirAdmin($request);
+
+        $desconto = DescontoPdv::findOrFail($descontoId);
+
+        $dados = $request->validate([
+            'descricao' => ['sometimes', 'string', 'max:255'],
+            'percentual' => ['sometimes', 'numeric', 'min:0.01', 'max:100'],
+            'aplica_em' => ['sometimes', 'in:produtos,visitas'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        $desconto->update($dados);
+
+        return response()->json($desconto->fresh());
     }
 
     // ---- Identidade visual da loja pública ----
