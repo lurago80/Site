@@ -320,6 +320,8 @@ class CheckoutController extends Controller
     {
         $produto = Produto::findOrFail($produtoId);
 
+        abort_if(! $produto->ativo, 422, "\"{$produto->nome}\" não está mais disponível.");
+
         if ($produto->eh_kit) {
             $composicao = $this->kitService->consumir($produto, $quantidade, $escolhas);
             $valorTotal = $produto->preco_venda * $quantidade;

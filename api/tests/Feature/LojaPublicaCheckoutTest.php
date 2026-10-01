@@ -891,4 +891,19 @@ class LojaPublicaCheckoutTest extends TestCase
             $this->assertSame('Chopp Artesanal 500ml', $resposta['itens'][0]['produto']['nome']);
         }
     }
+
+    public function test_produto_desativado_some_da_loja_e_nao_pode_ser_comprado(): void
+    {
+        $this->produtoFisico->update(['ativo' => false]);
+
+        $ids = collect($this->getJson("/api/loja/{$this->empresa->slug}/produtos")->assertOk()->json())->pluck('id')->all();
+        $this->assertNotContains($this->produtoFisico->id, $ids);
+
+        // quem já tinha o produto no carrinho recebe um aviso claro
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto())
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn ($m) => str_contains($m, 'não está mais disponível'));
+
+        $this->assertSame(10, $this->produtoFisico->fresh()->estoque_atual);
+    }
 }

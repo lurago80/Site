@@ -127,6 +127,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::post('/produtos/{produtoId}/variacoes', [DashboardController::class, 'criarVariacaoProduto']);
     Route::put('/produtos/{produtoId}/variacoes/{variacaoId}', [DashboardController::class, 'atualizarVariacaoProduto']);
     Route::delete('/produtos/{produtoId}/variacoes/{variacaoId}', [DashboardController::class, 'excluirVariacaoProduto']);
+    Route::delete('/produtos/{produtoId}', [DashboardController::class, 'excluirProduto']);
     Route::get('/produtos/{produtoId}/kit', [DashboardController::class, 'kitProduto']);
     Route::put('/produtos/{produtoId}/kit', [DashboardController::class, 'atualizarKitProduto']);
     Route::get('/tab-cclasstrib', [DashboardController::class, 'tabClassTrib']);

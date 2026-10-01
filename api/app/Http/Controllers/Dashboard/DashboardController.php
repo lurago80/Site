@@ -407,6 +407,48 @@ class DashboardController extends Controller
     }
 
     /**
+     * Exclui o produto quando não há movimento; com movimento (vendas, compras,
+     * notas fiscais, agenda ou uso como componente de kit) só desativa - assim o
+     * histórico fica intacto e o produto sai da loja e do PDV.
+     */
+    public function excluirProduto(Request $request, string $empresa, int $produtoId)
+    {
+        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem excluir produtos.');
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
+
+        $motivo = $produto->motivoDeNaoPoderExcluir();
+
+        if ($motivo === null) {
+            try {
+                // variações e a composição do próprio kit saem em cascata
+                DB::transaction(fn () => $produto->delete());
+
+                return response()->json(['acao' => 'excluido', 'message' => 'Produto excluído.']);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // 23503 = violação de chave estrangeira: surgiu um vínculo entre a checagem e a exclusão
+                if ($e->getCode() !== '23503') {
+                    throw $e;
+                }
+
+                $motivo = 'vínculo com outros registros';
+            }
+        }
+
+        $jaDesativado = ! $produto->ativo;
+        $produto->update(['ativo' => false]);
+
+        return response()->json([
+            'acao' => 'desativado',
+            'motivo' => $motivo,
+            'message' => $jaDesativado
+                ? "Produto com movimento ({$motivo}): não pode ser excluído e já estava desativado."
+                : "Produto com movimento ({$motivo}): não pode ser excluído, então foi desativado.",
+        ]);
+    }
+
+    /**
      * Salva o arquivo de imagem enviado no disco público (storage/app/public/produtos)
      * e devolve a URL acessível publicamente para gravar em imagem_url.
      */

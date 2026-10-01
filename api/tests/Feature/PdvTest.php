@@ -126,6 +126,22 @@ class PdvTest extends TestCase
         $this->assertSame(10, $produto->fresh()->estoque_atual);
     }
 
+    public function test_produto_desativado_some_do_pdv_e_nao_pode_ser_vendido(): void
+    {
+        $this->produto->update(['ativo' => false]);
+
+        $this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=chopp")->assertOk()->assertJsonCount(0);
+
+        $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ])->assertStatus(422);
+
+        $this->assertSame(10, $this->produto->fresh()->estoque_atual);
+    }
+
     public function test_venda_nao_fiscal_de_produto_debita_estoque(): void
     {
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [

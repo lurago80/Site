@@ -204,6 +204,7 @@ class CatalogoController extends Controller
     {
         return Produto::query()
             ->where('tipo', 'fisico')
+            ->where('ativo', true)
             ->where('loja_virtual', true)
             ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
             ->orderBy('nome')

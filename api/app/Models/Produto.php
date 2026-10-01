@@ -104,4 +104,29 @@ class Produto extends Model
     {
         return $this->hasMany(KitComponente::class, 'kit_id');
     }
+
+    /**
+     * Onde o produto já foi usado (movimento). Se devolver algo, o produto não
+     * pode ser excluído - só desativado - para não apagar histórico nem
+     * desmontar kits que o usam como componente.
+     */
+    public function motivoDeNaoPoderExcluir(): ?string
+    {
+        $usos = [
+            'vendas' => ItemVenda::where('produto_id', $this->id),
+            'compras' => ItemCompra::where('produto_id', $this->id),
+            'documentos fiscais' => DocumentoFiscalItem::where('produto_id', $this->id),
+            'agenda de visitas' => AgendaVisitacao::where('produto_id', $this->id),
+            'composição de kits' => KitComponente::where('produto_id', $this->id),
+        ];
+
+        $encontrados = [];
+        foreach ($usos as $rotulo => $consulta) {
+            if ($consulta->exists()) {
+                $encontrados[] = $rotulo;
+            }
+        }
+
+        return $encontrados === [] ? null : implode(', ', $encontrados);
+    }
 }

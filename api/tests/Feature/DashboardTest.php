@@ -6,6 +6,7 @@ use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\Empresa;
 use App\Models\ItemVenda;
+use App\Models\KitComponente;
 use App\Models\Plano;
 use App\Models\Produto;
 use App\Models\ProdutoVariacao;
@@ -466,6 +467,100 @@ class DashboardTest extends TestCase
 
         $catalogo = $this->getJson("/api/loja/{$this->empresa->slug}/produtos")->assertOk()->json();
         $this->assertContains($id, collect($catalogo)->pluck('id')->all());
+    }
+
+    private function produtoParaExcluir(string $nome = 'Produto Descartável'): Produto
+    {
+        return Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => $nome, 'tipo' => 'fisico', 'preco_venda' => 10, 'estoque_atual' => 5,
+        ]);
+    }
+
+    private function urlProduto(Produto $produto): string
+    {
+        return "/dashboard/{$this->empresa->slug}/produtos/{$produto->id}";
+    }
+
+    public function test_produto_sem_movimento_e_excluido_com_suas_variacoes(): void
+    {
+        $produto = $this->produtoParaExcluir();
+        $variacao = ProdutoVariacao::create(['empresa_id' => $this->empresa->id, 'produto_id' => $produto->id, 'tamanho' => 'P', 'estoque_atual' => 2]);
+
+        $this->actingAs($this->admin)->deleteJson($this->urlProduto($produto))
+            ->assertOk()->assertJsonPath('acao', 'excluido');
+
+        $this->assertNull(Produto::find($produto->id));
+        $this->assertNull(ProdutoVariacao::find($variacao->id));
+    }
+
+    public function test_produto_com_venda_nao_e_excluido_apenas_desativado(): void
+    {
+        $produto = $this->produtoParaExcluir();
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 10, 'data_venda' => now(),
+        ]);
+        ItemVenda::create(['empresa_id' => $this->empresa->id, 'venda_id' => $venda->id, 'produto_id' => $produto->id, 'quantidade' => 1, 'valor_unitario' => 10, 'valor_total' => 10]);
+
+        $resposta = $this->actingAs($this->admin)->deleteJson($this->urlProduto($produto))->assertOk();
+
+        $resposta->assertJsonPath('acao', 'desativado');
+        $this->assertStringContainsString('vendas', $resposta->json('motivo'));
+        $this->assertFalse($produto->fresh()->ativo);
+        $this->assertSame(1, ItemVenda::where('produto_id', $produto->id)->count()); // histórico intacto
+
+        // repetir a ação continua só desativando, avisando que já estava
+        $this->actingAs($this->admin)->deleteJson($this->urlProduto($produto))
+            ->assertOk()->assertJsonPath('acao', 'desativado')
+            ->assertJsonPath('message', fn ($m) => str_contains($m, 'já estava desativado'));
+    }
+
+    public function test_componente_de_kit_e_desativado_e_nao_excluido_para_nao_desmontar_o_kit(): void
+    {
+        $caneca = $this->produtoParaExcluir('Caneca');
+        $kit = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Kit', 'tipo' => 'fisico', 'preco_venda' => 50, 'eh_kit' => true]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $caneca->id, 'tipo' => 'fixo', 'quantidade' => 1]);
+
+        $resposta = $this->actingAs($this->admin)->deleteJson($this->urlProduto($caneca))->assertOk();
+
+        $resposta->assertJsonPath('acao', 'desativado');
+        $this->assertStringContainsString('composição de kits', $resposta->json('motivo'));
+        $this->assertFalse($caneca->fresh()->ativo);
+        $this->assertSame(1, KitComponente::where('kit_id', $kit->id)->count());
+    }
+
+    public function test_kit_sem_movimento_e_excluido_e_seus_componentes_sao_preservados(): void
+    {
+        $caneca = $this->produtoParaExcluir('Caneca');
+        $kit = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Kit', 'tipo' => 'fisico', 'preco_venda' => 50, 'eh_kit' => true]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $caneca->id, 'tipo' => 'fixo', 'quantidade' => 1]);
+
+        $this->actingAs($this->admin)->deleteJson($this->urlProduto($kit))->assertOk()->assertJsonPath('acao', 'excluido');
+
+        $this->assertNull(Produto::find($kit->id));
+        $this->assertSame(0, KitComponente::count());
+        $this->assertNotNull(Produto::find($caneca->id));
+        $this->assertTrue($caneca->fresh()->ativo);
+    }
+
+    public function test_apenas_admin_exclui_produto_e_produto_de_outra_empresa_nao_e_encontrado(): void
+    {
+        $produto = $this->produtoParaExcluir();
+
+        $this->actingAs($this->atendente)->deleteJson($this->urlProduto($produto))->assertStatus(403);
+        $this->assertNotNull(Produto::find($produto->id));
+
+        $this->asSuperAdmin();
+        $outraEmpresa = Empresa::create([
+            'razao_social' => 'Outra Empresa', 'cnpj' => '22.222.222/0001-22', 'slug' => 'outra-empresa',
+            'plano_id' => $this->empresa->plano_id, 'status' => 'ativa',
+        ]);
+        $alheio = Produto::create(['empresa_id' => $outraEmpresa->id, 'nome' => 'Alheio', 'tipo' => 'fisico', 'preco_venda' => 1]);
+        $this->asEmpresa($this->empresa->id);
+
+        $this->actingAs($this->admin)->deleteJson("/dashboard/{$this->empresa->slug}/produtos/{$alheio->id}")->assertNotFound();
+        $this->asSuperAdmin();
+        $this->assertNotNull(Produto::find($alheio->id));
     }
 
     public function test_cor_primaria_invalida_e_rejeitada(): void

@@ -456,6 +456,7 @@
                         <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>Fornecedor</th><th>NCM</th><th>CFOP</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-produtos"></tbody>
                     </table>
+                    <p class="msg" id="msg-produtos-lista"></p>
                     <p class="msg" id="msg-produtos"></p>
                 </div>
             </section>
@@ -1650,7 +1651,7 @@
             document.getElementById('tbody-produtos').innerHTML = produtosCache.map(p => `
                 <tr>
                     <td>${p.codigo ?? '-'}</td>
-                    <td>${p.nome}</td>
+                    <td>${esc(p.nome)}${p.eh_kit ? ' <em>(kit)</em>' : ''}${p.somente_loja_virtual ? ' <em>(só loja virtual)</em>' : ''}</td>
                     <td>${p.categoria ?? '-'}</td>
                     <td>${p.tipo}</td>
                     <td>R$ ${Number(p.preco_venda).toFixed(2)}</td>
@@ -1659,9 +1660,29 @@
                     <td>${p.ncm ?? '-'}</td>
                     <td>${p.cfop_padrao ?? '-'}</td>
                     <td>${p.ativo ? 'Sim' : 'Não'}</td>
-                    <td><button class="secundario" onclick="editarProduto(${p.id})">Editar</button></td>
+                    <td>
+                        <button class="secundario" onclick="editarProduto(${p.id})">Editar</button>
+                        <button class="perigo" onclick="excluirProduto(${p.id})">Excluir</button>
+                    </td>
                 </tr>
             `).join('') || '<tr><td colspan="11">Nenhum produto cadastrado.</td></tr>';
+        }
+
+        // Sem movimento: exclui. Com movimento (vendas, compras, notas, agenda, kit): desativa.
+        async function excluirProduto(id) {
+            const p = produtosCache.find(x => x.id === id);
+            if (!p) return;
+            if (!confirm(`Excluir "${p.nome}"?\n\nSe o produto já tiver movimento (vendas, compras, notas fiscais, agenda ou uso em kit), ele não é apagado: fica apenas desativado.`)) return;
+
+            const resp = await fetch(`${base}/produtos/${id}`, { method: 'DELETE', headers: headersJson });
+            const dados = await resp.json();
+            const msg = document.getElementById('msg-produtos-lista');
+            msg.className = resp.ok ? (dados.acao === 'excluido' ? 'msg ok' : 'msg') : 'msg erro';
+            msg.textContent = dados.message || JSON.stringify(dados.errors);
+            if (resp.ok) {
+                if (document.getElementById('pr-id').value == id) limparFormularioProduto();
+                carregarProdutos();
+            }
         }
 
         async function carregarFornecedoresParaSelect() {
