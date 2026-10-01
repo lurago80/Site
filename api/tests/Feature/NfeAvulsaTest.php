@@ -12,6 +12,8 @@ use App\Models\Produto;
 use App\Models\ProdutoVariacao;
 use App\Models\User;
 use App\Models\Venda;
+use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
+use App\Services\Fiscal\FiscalGatewayInterface;
 use App\Services\Fiscal\NfePhpFiscalGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use NFePHP\Common\Validator;
@@ -220,9 +222,9 @@ class NfeAvulsaTest extends TestCase
         $this->assertSame(0, DocumentoFiscal::count());
     }
 
-    public function test_regime_normal_e_recusado_por_enquanto(): void
+    public function test_regime_fora_do_simples_e_do_normal_e_recusado(): void
     {
-        ConfigFiscal::first()->update(['crt' => '3']);
+        ConfigFiscal::first()->update(['crt' => '4']);
 
         $this->getJson($this->url('/opcoes'))->assertJsonPath('regime_suportado', false);
         $this->postJson($this->url(), $this->payload())->assertStatus(422);
@@ -341,5 +343,195 @@ class NfeAvulsaTest extends TestCase
             );
             $this->assertSame([], array_values($outros), 'XML da NFe inválido no schema: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Troca o gateway simulado por um que monta o XML de verdade (calculando os
+     * impostos) mas não fala com a SEFAZ: devolve "autorizada" na hora.
+     */
+    private function usarGeradorDeXmlReal(): void
+    {
+        $this->app->instance(FiscalGatewayInterface::class, new class extends NfePhpFiscalGateway {
+            public function emitir($documento, $itens, $empresa, $configFiscal, $certificado): ResultadoEmissaoFiscal
+            {
+                $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfe'))
+                    ->invoke($this, $documento, $itens, $empresa, $configFiscal);
+
+                return new ResultadoEmissaoFiscal('autorizada', str_repeat('1', 44), 'PROTOCOLO-TESTE', $xml);
+            }
+        });
+    }
+
+    public function test_config_fiscal_guarda_a_exclusao_do_icms_da_base_de_pis_cofins(): void
+    {
+        $url = "/dashboard/{$this->empresa->slug}/config-fiscal";
+
+        $this->assertTrue((bool) ConfigFiscal::first()->pis_cofins_exclui_icms); // padrão ligado
+
+        $this->putJson($url, ['ambiente_ativo' => 'homologacao', 'crt' => '3', 'pis_cofins_exclui_icms' => false])->assertOk();
+
+        $this->assertFalse((bool) ConfigFiscal::first()->fresh()->pis_cofins_exclui_icms);
+        $this->getJson($url)->assertJsonPath('config_fiscal.pis_cofins_exclui_icms', false);
+    }
+
+    private function ativarRegimeNormal(): void
+    {
+        $this->usarGeradorDeXmlReal();
+        ConfigFiscal::first()->update(['crt' => '3']);
+
+        $this->produto->update([
+            'cst_origem' => '0', 'cst_icms' => '00', 'aliquota_icms' => 18,
+            'cst_pis' => '01', 'aliquota_pis' => 0.65, 'cst_cofins' => '01', 'aliquota_cofins' => 3,
+            'cst_ipi' => '50', 'aliquota_ipi' => 10, 'codigo_enquadramento_ipi' => '999',
+        ]);
+    }
+
+    public function test_regime_normal_calcula_e_grava_os_impostos_e_o_ipi_soma_ao_total(): void
+    {
+        $this->ativarRegimeNormal();
+
+        // cliente contribuinte (tem IE): IPI fica fora da base do ICMS
+        $resposta = $this->postJson($this->url(), $this->payload());
+
+        $resposta->assertCreated()
+            ->assertJsonPath('status', 'autorizada')
+            ->assertJsonPath('valor_icms', '7.20')      // 18% de 40,00
+            ->assertJsonPath('total', '44.00')          // 40,00 + IPI 4,00
+            ->assertJsonPath('itens.0.cst_csosn', '00')
+            ->assertJsonPath('itens.0.base_calculo_icms', '40.00')
+            ->assertJsonPath('itens.0.valor_icms', '7.20');
+    }
+
+    public function test_regime_normal_recusa_produto_sem_cadastro_fiscal_sem_consumir_numeracao(): void
+    {
+        $this->usarGeradorDeXmlReal();
+        ConfigFiscal::first()->update(['crt' => '3']); // produto sem CST de ICMS/PIS/COFINS
+
+        $this->postJson($this->url(), $this->payload())
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Produto "Cerveja Pilsen 600ml" sem CST de ICMS cadastrado (obrigatório no regime normal).');
+
+        $this->assertSame(0, ConfigFiscal::first()->numero_nfe_atual);
+    }
+
+    public function test_regime_normal_recusa_st_com_mensagem_clara(): void
+    {
+        $this->ativarRegimeNormal();
+        $this->produto->update(['cst_icms' => '60']);
+
+        $mensagem = $this->postJson($this->url(), $this->payload())->assertStatus(422)->json('message');
+
+        $this->assertStringContainsString('CST de ICMS 60', $mensagem);
+        $this->assertStringContainsString('Substituição tributária', $mensagem);
+    }
+
+    public function test_xml_do_regime_normal_traz_icms_ipi_pis_cofins_e_e_valido_no_schema(): void
+    {
+        $this->ativarRegimeNormal();
+
+        $consumidor = Cliente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Maria Consumidora', 'cpf_cnpj' => '12345678909',
+            'uf' => 'SP', 'municipio' => 'São Paulo', 'codigo_ibge_municipio' => '3550308', 'cep' => '01000-000',
+            'logradouro' => 'Rua Teste', 'numero' => '10', 'bairro' => 'Centro', 'consentimento_lgpd' => true,
+        ]);
+
+        $documento = new DocumentoFiscal([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $consumidor->id, 'tipo_operacao' => 'venda',
+            'modelo' => 55, 'serie' => '1', 'numero' => 2, 'ambiente' => 'homologacao',
+            'natureza_operacao' => 'Venda de mercadoria', 'valor_produtos' => 100, 'frete' => 10, 'total' => 110,
+            'modalidade_frete' => 0, 'indicador_presenca' => 2, 'tpag' => '17',
+        ]);
+        $documento->setRelation('cliente', $consumidor);
+
+        $item = new DocumentoFiscalItem([
+            'produto_id' => $this->produto->id, 'descricao' => 'Cerveja Pilsen 600ml', 'ncm' => '22030000', 'cfop' => '5102',
+            'quantidade' => 5, 'valor_unitario' => 20, 'valor_total' => 100, 'valor_frete' => 10,
+        ]);
+        $item->setRelation('produto', $this->produto->fresh());
+
+        $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfe'))
+            ->invoke(new NfePhpFiscalGateway(), $documento, collect([$item]), $this->empresa, ConfigFiscal::first());
+
+        // consumidor final: IPI (11,00) entra na base do ICMS => 100 + 10 + 11 = 121,00; ICMS 18% = 21,78
+        $this->assertStringContainsString('<ICMS00>', $xml);
+        $this->assertStringContainsString('<vBC>121.00</vBC>', $xml);
+        $this->assertStringContainsString('<vICMS>21.78</vICMS>', $xml);
+        $this->assertStringContainsString('<IPITrib>', $xml);
+        $this->assertStringContainsString('<vIPI>11.00</vIPI>', $xml);
+        $this->assertStringContainsString('<vNF>121.00</vNF>', $xml); // 100 + frete 10 + IPI 11
+        $this->assertStringContainsString('<vPag>121.00</vPag>', $xml);
+        $this->assertStringNotContainsString('<CSOSN>', $xml);
+        $this->assertEquals(121.0, (float) $documento->total);
+
+        $this->validarNoSchema($xml);
+    }
+
+    /** Valida no XSD oficial; o XML ainda não está assinado, então só a falta de ds:Signature é tolerada. */
+    private function validarNoSchema(string $xml): void
+    {
+        try {
+            Validator::isValid($xml, base_path('vendor/nfephp-org/sped-nfe/schemes/PL_010_V1.30/nfe_v4.00.xsd'));
+        } catch (\Throwable $e) {
+            $outros = array_filter(
+                preg_split('/\R/', $e->getMessage()),
+                fn ($linha) => trim($linha) !== '' && ! str_contains($linha, 'Signature')
+                    && ! str_contains($linha, 'XML não foi validado') && ! str_contains($linha, 'xmldsig')
+            );
+            $this->assertSame([], array_values($outros), 'XML da NFe inválido no schema: '.$e->getMessage());
+        }
+    }
+
+    public function test_kit_na_nfe_do_pedido_abre_em_componentes_com_o_valor_rateado(): void
+    {
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca', 'tipo' => 'fisico', 'preco_venda' => 30, 'ncm' => '69111010', 'cfop_padrao' => '5102',
+        ]);
+        $cerveja = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Artesanal', 'tipo' => 'fisico', 'preco_venda' => 18, 'ncm' => '22030000', 'cfop_padrao' => '5102',
+        ]);
+        $ipa = ProdutoVariacao::create(['empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'IPA', 'estoque_atual' => 5]);
+        $pilsen = ProdutoVariacao::create(['empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'Pilsen', 'estoque_atual' => 5]);
+        $kit = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Kit Caneca + 3 Cervejas', 'tipo' => 'fisico', 'preco_venda' => 80, 'eh_kit' => true]);
+
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $this->cliente->id, 'canal' => 'site',
+            'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago', 'valor_total' => 90, 'data_venda' => now(),
+            'tipo_entrega' => 'entrega', 'valor_frete' => 10, 'status_envio' => 'a_separar',
+            'endereco_entrega' => [
+                'cep' => '01000-000', 'logradouro' => 'Rua Teste', 'numero' => '100', 'bairro' => 'Centro',
+                'municipio' => 'São Paulo', 'uf' => 'SP', 'codigo_ibge_municipio' => '3550308',
+            ],
+        ]);
+        $itemKit = $venda->itens()->create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $kit->id, 'quantidade' => 1,
+            'valor_unitario' => 80, 'valor_total' => 80,
+            'composicao' => [
+                ['produto_id' => $caneca->id, 'nome' => 'Caneca', 'variacao_id' => null, 'tamanho' => null, 'quantidade' => 1],
+                ['produto_id' => $cerveja->id, 'nome' => 'Cerveja Artesanal', 'variacao_id' => $ipa->id, 'tamanho' => 'IPA', 'quantidade' => 2],
+                ['produto_id' => $cerveja->id, 'nome' => 'Cerveja Artesanal', 'variacao_id' => $pilsen->id, 'tamanho' => 'Pilsen', 'quantidade' => 1],
+            ],
+        ]);
+
+        $resposta = $this->postJson("/fiscal/{$this->empresa->slug}/vendas/{$venda->id}/nfe-pedido-loja")->assertCreated();
+
+        $itens = collect($resposta->json('itens'));
+        $this->assertCount(3, $itens);
+
+        // pesos pelo preço de tabela: caneca 30 + IPA 2x18 + Pilsen 18 = 84; kit = 80
+        $this->assertEqualsWithDelta(80.0, $itens->sum(fn ($i) => (float) $i['valor_total']), 0.001);
+        $this->assertEqualsWithDelta(10.0, $itens->sum(fn ($i) => (float) $i['valor_frete']), 0.001);
+        $this->assertSame(['Caneca', 'Cerveja Artesanal (IPA)', 'Cerveja Artesanal (Pilsen)'], $itens->pluck('descricao')->all());
+        $this->assertSame('28.57', $itens[0]['valor_total']);
+        $this->assertSame('34.29', $itens[1]['valor_total']);
+        $this->assertSame('17.14', $itens[2]['valor_total']);
+        $this->assertSame([$itemKit->id], $itens->pluck('item_venda_id')->unique()->all());
+        $this->assertSame('69111010', $itens[0]['ncm']);
+
+        $resposta->assertJsonPath('total', '90.00');
+
+        // IPA: 2 un por 34,29 => 17,145 por unidade; o XML precisa declarar o unitário exato
+        $item = DocumentoFiscalItem::find($itens[1]['id']);
+        $unitario = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'valorUnitarioExato'))->invoke(new NfePhpFiscalGateway(), $item);
+        $this->assertEqualsWithDelta(17.145, $unitario, 0.0000001);
     }
 }

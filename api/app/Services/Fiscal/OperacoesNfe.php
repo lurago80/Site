@@ -54,6 +54,6 @@ final class OperacoesNfe
         9 => 'Sem frete',
     ];
 
-    /** CRT 1 e 2 = Simples Nacional - único regime que o gerador de impostos da NFe cobre hoje. */
-    public const CRT_SUPORTADOS = ['1', '2'];
+    /** CRT 1 e 2 = Simples Nacional (CSOSN); CRT 3 = regime normal, Lucro Presumido/Real (CST, ver ImpostosNfeService). */
+    public const CRT_SUPORTADOS = ['1', '2', '3'];
 }

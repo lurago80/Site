@@ -641,20 +641,23 @@ class EmissaoFiscalService
                 'tpag' => $tpag,
             ]);
 
-            $fretes = $this->ratearFrete($itensProduto->map(fn ($i) => (float) $i->valor_total)->all(), $frete);
+            // Kit vira uma linha por componente (caneca + cada cerveja escolhida),
+            // com o valor do kit rateado entre eles.
+            $linhas = $itensProduto->flatMap(fn ($item) => $this->linhasDoItemDoPedido($item))->values();
+            $fretes = $this->ratearFrete($linhas->pluck('valor_total')->map(fn ($v) => (float) $v)->all(), $frete);
 
-            $itensEmMemoria = $itensProduto->map(fn ($item, int $i) => new DocumentoFiscalItem([
+            $itensEmMemoria = $linhas->map(fn (array $linha, int $i) => new DocumentoFiscalItem([
                 'empresa_id' => $empresa->id,
                 'documento_fiscal_id' => $documento->id,
-                'item_venda_id' => $item->id,
-                'produto_id' => $item->produto_id,
-                'variacao_id' => $item->produto_variacao_id,
-                'descricao' => $this->descricaoItem($item->produto, $item->produtoVariacao),
-                'ncm' => $item->produto?->ncm,
-                'cfop' => $this->cfopResolver->ajustarPorDestino($item->produto?->cfop_padrao ?: '5102', $interno),
-                'quantidade' => $item->quantidade,
-                'valor_unitario' => $item->valor_unitario,
-                'valor_total' => $item->valor_total,
+                'item_venda_id' => $linha['item_venda_id'],
+                'produto_id' => $linha['produto']?->id,
+                'variacao_id' => $linha['variacao_id'],
+                'descricao' => $linha['descricao'],
+                'ncm' => $linha['produto']?->ncm,
+                'cfop' => $this->cfopResolver->ajustarPorDestino($linha['produto']?->cfop_padrao ?: '5102', $interno),
+                'quantidade' => $linha['quantidade'],
+                'valor_unitario' => $linha['valor_unitario'],
+                'valor_total' => $linha['valor_total'],
                 'valor_frete' => $fretes[$i],
             ]));
 
@@ -666,6 +669,55 @@ class EmissaoFiscalService
 
             return $documento->fresh(['itens', 'cliente']);
         });
+    }
+
+    /**
+     * Linhas de NFe de um item do pedido. Item comum: uma linha. Kit: uma linha
+     * por componente gravado em `composicao`, com o valor do kit rateado na
+     * proporção do preço de tabela de cada componente (sem preço, na proporção
+     * das quantidades); a soma das linhas fecha exatamente com o valor do kit.
+     *
+     * @return array<int, array{item_venda_id: int, produto: ?Produto, variacao_id: ?int, descricao: string, quantidade: float, valor_unitario: float, valor_total: float}>
+     */
+    private function linhasDoItemDoPedido(\App\Models\ItemVenda $item): array
+    {
+        if (empty($item->composicao)) {
+            return [[
+                'item_venda_id' => $item->id,
+                'produto' => $item->produto,
+                'variacao_id' => $item->produto_variacao_id,
+                'descricao' => $this->descricaoItem($item->produto, $item->produtoVariacao),
+                'quantidade' => (float) $item->quantidade,
+                'valor_unitario' => (float) $item->valor_unitario,
+                'valor_total' => (float) $item->valor_total,
+            ]];
+        }
+
+        $componentes = collect($item->composicao);
+        $produtos = Produto::whereIn('id', $componentes->pluck('produto_id'))->get()->keyBy('id');
+
+        $pesos = $componentes->map(fn (array $c) => (float) ($produtos[$c['produto_id']]->preco_venda ?? 0) * $c['quantidade'])->all();
+
+        if (array_sum($pesos) <= 0) {
+            $pesos = $componentes->map(fn (array $c) => (float) $c['quantidade'])->all();
+        }
+
+        $totais = $this->ratearFrete($pesos, round((float) $item->valor_total, 2));
+
+        return $componentes->values()->map(function (array $c, int $i) use ($item, $produtos, $totais) {
+            $quantidade = (float) $c['quantidade'];
+            $nome = $c['nome'];
+
+            return [
+                'item_venda_id' => $item->id,
+                'produto' => $produtos[$c['produto_id']] ?? null,
+                'variacao_id' => $c['variacao_id'] ?? null,
+                'descricao' => ! empty($c['tamanho']) ? "{$nome} ({$c['tamanho']})" : $nome,
+                'quantidade' => $quantidade,
+                'valor_unitario' => $quantidade > 0 ? round($totais[$i] / $quantidade, 2) : 0.0,
+                'valor_total' => $totais[$i],
+            ];
+        })->all();
     }
 
     private function configFiscalParaNfe(Empresa $empresa): ConfigFiscal

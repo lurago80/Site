@@ -6,6 +6,7 @@ use App\Models\CertificadoDigital;
 use App\Models\Cliente;
 use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
+use App\Models\DocumentoFiscalItem;
 use App\Models\Empresa;
 use App\Models\Fornecedor;
 use App\Models\Produto;
@@ -38,7 +39,10 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 {
     private const NCM_GENERICO_TODO = '22030000';
 
-    public function __construct(private readonly CfopResolver $cfopResolver = new CfopResolver()) {}
+    public function __construct(
+        private readonly CfopResolver $cfopResolver = new CfopResolver(),
+        private readonly ImpostosNfeService $impostosNfe = new ImpostosNfeService(),
+    ) {}
 
     public function emitir(
         DocumentoFiscal $documento,
@@ -431,6 +435,17 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $std->xPais = 'Brasil';
         $nfe->tagenderDest($std);
 
+        // Regime normal (CRT 3): ICMS/IPI/PIS/COFINS calculados do cadastro do produto.
+        $regimeNormal = (string) $configFiscal->crt === '3';
+        $contextoImpostos = [
+            'interno' => $interno,
+            'uf_emitente' => (string) $empresa->uf,
+            'uf_destino' => (string) $destinatario->uf,
+            'destinatario_contribuinte' => ! empty($destinatario->inscricao_estadual),
+            'exclui_icms_pis_cofins' => (bool) ($configFiscal->pis_cofins_exclui_icms ?? true),
+        ];
+        $totaisImpostos = ['vBC' => 0.0, 'vICMS' => 0.0, 'vFCP' => 0.0, 'vIPI' => 0.0, 'vPIS' => 0.0, 'vCOFINS' => 0.0];
+
         $valorTotal = 0;
 
         foreach ($itens->values() as $index => $item) {
@@ -456,34 +471,62 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $std->CFOP = $cfop;
             $std->uCom = 'UN';
             $std->qCom = (float) $item->quantidade;
-            $std->vUnCom = (float) $item->valor_unitario;
+            $std->vUnCom = $this->valorUnitarioExato($item);
             $std->vProd = $valorItem;
             $std->cEANTrib = 'SEM GTIN';
             $std->uTrib = 'UN';
             $std->qTrib = (float) $item->quantidade;
-            $std->vUnTrib = (float) $item->valor_unitario;
+            $std->vUnTrib = $this->valorUnitarioExato($item);
             if ((float) $item->valor_frete > 0) {
                 $std->vFrete = (float) $item->valor_frete;
             }
             $std->indTot = 1;
             $nfe->tagprod($std);
 
-            $std = new \stdClass();
-            $std->item = $numeroItem;
-            $std->orig = 0;
-            $std->CSOSN = '102';
-            $nfe->tagICMSSN($std);
+            if ($regimeNormal) {
+                if ($item->produto === null) {
+                    throw new \RuntimeException('Item sem produto vinculado: não é possível calcular os impostos do regime normal.');
+                }
 
-            $std = new \stdClass();
-            $std->item = $numeroItem;
-            $std->vTotTrib = 0;
-            $nfe->tagimposto($std);
+                $impostos = $this->impostosNfe->calcularItem($item->produto, $valorItem, (float) $item->valor_frete, $contextoImpostos);
+                $this->tagsImpostosRegimeNormal($nfe, $numeroItem, $impostos);
+                $this->acumularImpostos($totaisImpostos, $impostos);
 
-            $this->tagPisCofinsIsento($nfe, $numeroItem);
+                // Guarda no item o que foi calculado (fica gravado junto do documento).
+                $item->cst_csosn = $impostos['icms']['cst'];
+                $item->base_calculo_icms = $impostos['icms']['vBC'];
+                $item->aliquota_icms = $impostos['icms']['pICMS'];
+                $item->valor_icms = $impostos['icms']['vICMS'];
+                $item->valor_pis = $impostos['pis']['valor'] ?? 0;
+                $item->valor_cofins = $impostos['cofins']['valor'] ?? 0;
+            } else {
+                $std = new \stdClass();
+                $std->item = $numeroItem;
+                $std->orig = 0;
+                $std->CSOSN = '102';
+                $nfe->tagICMSSN($std);
+
+                $std = new \stdClass();
+                $std->item = $numeroItem;
+                $std->vTotTrib = 0;
+                $nfe->tagimposto($std);
+
+                $this->tagPisCofinsIsento($nfe, $numeroItem);
+            }
+
             $this->tagIBSCBS($nfe, $numeroItem, $valorItem, $item->produto);
         }
 
-        $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento);
+        if ($regimeNormal) {
+            // Totais calculados ficam no documento (gravados pelo serviço de emissão).
+            $documento->valor_icms = $totaisImpostos['vICMS'];
+            $documento->valor_pis = $totaisImpostos['vPIS'];
+            $documento->valor_cofins = $totaisImpostos['vCOFINS'];
+            // O IPI soma ao valor da nota (vNF).
+            $documento->total = round($valorTotal + (float) $documento->frete + $totaisImpostos['vIPI'], 2);
+        }
+
+        $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento, $totaisImpostos);
 
         $xml = $nfe->montaNFe();
 
@@ -589,6 +632,98 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
     }
 
     /**
+     * Valor unitário a declarar: o cadastrado, a menos que quantidade x valor
+     * não feche com o total do item (ex.: kit aberto com valor rateado) - aí
+     * usa total/quantidade com até 10 casas, como a NFe permite.
+     */
+    private function valorUnitarioExato(DocumentoFiscalItem $item): float
+    {
+        $quantidade = (float) $item->quantidade;
+        $unitario = (float) $item->valor_unitario;
+
+        if ($quantidade > 0 && abs($quantidade * $unitario - (float) $item->valor_total) > 0.005) {
+            return round((float) $item->valor_total / $quantidade, 10);
+        }
+
+        return $unitario;
+    }
+
+    /**
+     * ICMS (00/20/40/41/50), IPI, PIS e COFINS do item - regime normal.
+     *
+     * @param  array<string, mixed>  $impostos  retorno de ImpostosNfeService::calcularItem()
+     */
+    private function tagsImpostosRegimeNormal(Make $nfe, int $numeroItem, array $impostos): void
+    {
+        $std = new \stdClass();
+        $std->item = $numeroItem;
+        $std->vTotTrib = 0;
+        $nfe->tagimposto($std);
+
+        $icms = $impostos['icms'];
+        $std = new \stdClass();
+        $std->item = $numeroItem;
+        $std->orig = $impostos['orig'];
+        $std->CST = $icms['cst'];
+        if (in_array($icms['cst'], ['00', '20'], true)) {
+            $std->modBC = $icms['modBC'];
+            if ($icms['cst'] === '20') {
+                $std->pRedBC = $icms['pRedBC'];
+            }
+            $std->vBC = $icms['vBC'];
+            $std->pICMS = $icms['pICMS'];
+            $std->vICMS = $icms['vICMS'];
+            if (isset($icms['vFCP'])) {
+                $std->vBCFCP = $icms['vBCFCP'];
+                $std->pFCP = $icms['pFCP'];
+                $std->vFCP = $icms['vFCP'];
+            }
+        }
+        $nfe->tagICMS($std);
+
+        if ($impostos['ipi'] !== null) {
+            $ipi = $impostos['ipi'];
+            $std = new \stdClass();
+            $std->item = $numeroItem;
+            $std->cEnq = $ipi['cEnq'];
+            $std->CST = $ipi['cst'];
+            if (isset($ipi['vBC'])) {
+                $std->vBC = $ipi['vBC'];
+                $std->pIPI = $ipi['pIPI'];
+                $std->vIPI = $ipi['vIPI'];
+            }
+            $nfe->tagIPI($std);
+        }
+
+        foreach (['pis' => ['tagPIS', 'pPIS'], 'cofins' => ['tagCOFINS', 'pCOFINS']] as $chave => [$metodo, $campoAliquota]) {
+            $dados = $impostos[$chave];
+            $std = new \stdClass();
+            $std->item = $numeroItem;
+            $std->CST = $dados['cst'];
+            if (isset($dados['vBC'])) {
+                $std->vBC = $dados['vBC'];
+                $std->{$campoAliquota} = $dados['pAliq'];
+                $std->{$chave === 'pis' ? 'vPIS' : 'vCOFINS'} = $dados['valor'];
+            }
+            $nfe->{$metodo}($std);
+        }
+    }
+
+    /**
+     * @param  array<string, float>  $totais
+     * @param  array<string, mixed>  $impostos
+     */
+    private function acumularImpostos(array &$totais, array $impostos): void
+    {
+        $totais['vBC'] += $impostos['icms']['vBC'];
+        $totais['vICMS'] += $impostos['icms']['vICMS'];
+        $totais['vFCP'] += $impostos['icms']['vFCP'] ?? 0;
+        $totais['vIPI'] += $impostos['ipi']['vIPI'] ?? 0;
+        $totais['vPIS'] += $impostos['pis']['valor'] ?? 0;
+        $totais['vCOFINS'] += $impostos['cofins']['valor'] ?? 0;
+    }
+
+    /**
      * PIS/COFINS não tributados (CST 07) - regime Simples Nacional não
      * destaca PIS/COFINS por fora (já estão dentro do DAS unificado),
      * mas a SEFAZ exige os grupos mesmo assim, com CST 07 (PISNT/COFINSNT).
@@ -641,23 +776,28 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $nfe->tagIBSCBS($std);
     }
 
-    private function finalizarTotaisETransporte(Make $nfe, float $valorTotal, DocumentoFiscal $documento): void
+    /**
+     * @param  array<string, float>  $totaisImpostos  vBC, vICMS, vFCP, vIPI, vPIS, vCOFINS (zeros no Simples Nacional)
+     */
+    private function finalizarTotaisETransporte(Make $nfe, float $valorTotal, DocumentoFiscal $documento, array $totaisImpostos = []): void
     {
         $frete = round((float) $documento->frete, 2);
-        $valorNota = round($valorTotal + $frete, 2);
+        $vIpi = round((float) ($totaisImpostos['vIPI'] ?? 0), 2);
+        $valorNota = round($valorTotal + $frete + $vIpi, 2);
 
         $std = new \stdClass();
-        $std->vBC = 0;
-        $std->vICMS = 0;
+        $std->vBC = round((float) ($totaisImpostos['vBC'] ?? 0), 2);
+        $std->vICMS = round((float) ($totaisImpostos['vICMS'] ?? 0), 2);
         $std->vICMSDeson = 0;
+        $std->vFCP = round((float) ($totaisImpostos['vFCP'] ?? 0), 2);
         $std->vProd = $valorTotal;
         $std->vFrete = $frete;
         $std->vSeg = 0;
         $std->vDesc = 0;
         $std->vII = 0;
-        $std->vIPI = 0;
-        $std->vPIS = 0;
-        $std->vCOFINS = 0;
+        $std->vIPI = $vIpi;
+        $std->vPIS = round((float) ($totaisImpostos['vPIS'] ?? 0), 2);
+        $std->vCOFINS = round((float) ($totaisImpostos['vCOFINS'] ?? 0), 2);
         $std->vOutro = 0;
         $std->vNF = $valorNota;
         $std->vTotTrib = 0;

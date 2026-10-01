@@ -1248,6 +1248,7 @@ class DashboardController extends Controller
             'ambiente_ativo' => ['required', 'in:producao,homologacao'],
             'csc_nfce' => ['nullable', 'string', 'max:255'],
             'id_token_csc' => ['nullable', 'string', 'max:255'],
+            'pis_cofins_exclui_icms' => ['sometimes', 'boolean'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -1259,7 +1260,7 @@ class DashboardController extends Controller
         $config = ConfigFiscal::updateOrCreate(
             ['empresa_id' => $empresaAtual->id],
             array_intersect_key($dados, array_flip([
-                'crt', 'inscricao_estadual', 'inscricao_municipal', 'ambiente_ativo', 'csc_nfce', 'id_token_csc',
+                'crt', 'inscricao_estadual', 'inscricao_municipal', 'ambiente_ativo', 'csc_nfce', 'id_token_csc', 'pis_cofins_exclui_icms',
             ]))
         );
 

@@ -1291,6 +1291,11 @@
                         </div>
                     </div>
                     <div class="linha-form">
+                        <div><label style="font-weight:normal"><input type="checkbox" id="cf-pis-cofins-exclui-icms"> Excluir o ICMS da base de PIS/COFINS (regime normal)</label>
+                            <div style="font-size:11.5px; color:var(--cor-texto-suave);">Tese do STF; confirme com o contador. Só vale para empresas do regime normal.</div>
+                        </div>
+                    </div>
+                    <div class="linha-form">
                         <div><label>CSC (NFC-e)</label><input type="text" id="cf-csc"></div>
                         <div><label>ID do token CSC</label><input type="text" id="cf-csc-id" style="width:100px"></div>
                         <div><button class="acao" onclick="salvarConfigFiscal()">Salvar</button></div>
@@ -3232,7 +3237,7 @@
                 banner.innerHTML = '<strong style="color:#b7791f;">AMBIENTE DE HOMOLOGAÇÃO</strong> - notas de teste, sem valor fiscal.';
             }
             if (op.configurado && !op.regime_suportado) {
-                banner.innerHTML += '<br><strong style="color:#c81e1e;">Atenção:</strong> a emissão por esta tela está disponível apenas para empresas do Simples Nacional.';
+                banner.innerHTML += '<br><strong style="color:#c81e1e;">Atenção:</strong> o regime tributário configurado não é suportado por esta tela (Simples Nacional ou Regime Normal).';
             }
 
             const [clientes, produtos, formas] = await Promise.all([
@@ -3889,6 +3894,7 @@
             document.getElementById('cf-ambiente').value = c.ambiente_ativo ?? 'homologacao';
             document.getElementById('cf-csc').value = c.csc_nfce ?? '';
             document.getElementById('cf-csc-id').value = c.id_token_csc ?? '';
+            document.getElementById('cf-pis-cofins-exclui-icms').checked = c.pis_cofins_exclui_icms ?? true;
         }
 
         async function salvarConfigFiscal() {
@@ -3906,6 +3912,7 @@
                 ambiente_ativo: document.getElementById('cf-ambiente').value,
                 csc_nfce: document.getElementById('cf-csc').value || null,
                 id_token_csc: document.getElementById('cf-csc-id').value || null,
+                pis_cofins_exclui_icms: document.getElementById('cf-pis-cofins-exclui-icms').checked,
             };
             const resp = await fetch(`${base}/config-fiscal`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
