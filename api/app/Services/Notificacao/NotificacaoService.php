@@ -40,6 +40,37 @@ class NotificacaoService
         return $this->enviar($venda->empresa_id, $venda->cliente, $venda, 'confirmacao_agendamento', $mensagem);
     }
 
+    /**
+     * Pedido da loja virtual despachado: entrega (com rastreio, se houver)
+     * ou pronto para retirada (com as instruções da loja).
+     */
+    public function enviarPedidoEnviado(Venda $venda): ?Notificacao
+    {
+        $venda->loadMissing(['cliente', 'empresa']);
+
+        if (empty($venda->cliente?->telefone) || ! in_array($venda->tipo_entrega, ['entrega', 'retirada'], true)) {
+            return null;
+        }
+
+        $nome = explode(' ', trim($venda->cliente->nome))[0];
+
+        if ($venda->tipo_entrega === 'retirada') {
+            $mensagem = "Olá, {$nome}! Seu pedido #{$venda->id} está pronto para retirada.";
+
+            if (! empty($venda->empresa->instrucoes_retirada)) {
+                $mensagem .= " {$venda->empresa->instrucoes_retirada}";
+            }
+        } else {
+            $mensagem = "Olá, {$nome}! Seu pedido #{$venda->id} foi enviado.";
+
+            if (! empty($venda->codigo_rastreio)) {
+                $mensagem .= " Código de rastreio: {$venda->codigo_rastreio}.";
+            }
+        }
+
+        return $this->enviar($venda->empresa_id, $venda->cliente, $venda, 'pedido_enviado', $mensagem);
+    }
+
     public function enviarLembreteVisita(AgendaVisitacao $agenda, Cliente $cliente, string $telefone): ?Notificacao
     {
         $dataFormatada = $agenda->data_hora->format('d/m/Y \à\s H:i');

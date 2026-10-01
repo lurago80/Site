@@ -14,6 +14,7 @@ use App\Models\ConfigWhatsapp;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\Cupom;
+use App\Jobs\EnviarPedidoEnviadoJob;
 use App\Models\Empresa;
 use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
@@ -1552,10 +1553,18 @@ class DashboardController extends Controller
             ->whereNotNull('tipo_entrega')
             ->findOrFail($vendaId);
 
+        $jaEstavaEnviado = $venda->status_envio === 'enviado';
+
         $venda->update([
             'status_envio' => $dados['status_envio'],
             'codigo_rastreio' => $venda->tipo_entrega === 'entrega' ? ($dados['codigo_rastreio'] ?? null) : null,
         ]);
+
+        // Avisa o cliente só na virada para "enviado" (não a cada salvar) -
+        // evita mensagem repetida se o lojista só ajustar o rastreio.
+        if ($dados['status_envio'] === 'enviado' && ! $jaEstavaEnviado) {
+            EnviarPedidoEnviadoJob::dispatch($venda->id);
+        }
 
         return response()->json($venda->fresh()->only(['id', 'status_envio', 'codigo_rastreio']));
     }

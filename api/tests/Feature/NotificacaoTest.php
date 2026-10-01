@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Console\Commands\EnviarLembretesVisita;
 use App\Jobs\EnviarConfirmacaoAgendamentoJob;
+use App\Jobs\EnviarPedidoEnviadoJob;
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\ConfigWhatsapp;
@@ -306,5 +307,71 @@ class NotificacaoTest extends TestCase
 
         $this->asSuperAdmin();
         $this->assertSame(1, Notificacao::where('tipo', 'confirmacao_agendamento')->count());
+    }
+
+    private function pedidoDaLoja(string $tipoEntrega, ?Cliente $cliente = null): Venda
+    {
+        return Venda::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => ($cliente ?? $this->cliente)->id,
+            'canal' => 'site', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
+            'valor_total' => 50, 'data_venda' => now(),
+            'tipo_entrega' => $tipoEntrega, 'status_envio' => 'a_separar',
+        ]);
+    }
+
+    public function test_mensagem_de_pedido_enviado_inclui_o_rastreio(): void
+    {
+        $venda = $this->pedidoDaLoja('entrega');
+        $venda->update(['codigo_rastreio' => 'BR123456789']);
+
+        $notificacao = app(NotificacaoService::class)->enviarPedidoEnviado($venda);
+
+        $this->assertSame('pedido_enviado', $notificacao->tipo);
+        $this->assertStringContainsString("pedido #{$venda->id} foi enviado", $notificacao->mensagem);
+        $this->assertStringContainsString('BR123456789', $notificacao->mensagem);
+        $this->assertStringContainsString('Olá, Cliente!', $notificacao->mensagem);
+    }
+
+    public function test_mensagem_de_retirada_usa_as_instrucoes_da_loja(): void
+    {
+        $this->empresa->update(['instrucoes_retirada' => 'Rua A, 10 - seg a sex']);
+
+        $notificacao = app(NotificacaoService::class)->enviarPedidoEnviado($this->pedidoDaLoja('retirada'));
+
+        $this->assertStringContainsString('pronto para retirada', $notificacao->mensagem);
+        $this->assertStringContainsString('Rua A, 10 - seg a sex', $notificacao->mensagem);
+    }
+
+    public function test_pedido_enviado_sem_telefone_nao_notifica(): void
+    {
+        $semFone = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Sem Fone', 'consentimento_lgpd' => true]);
+
+        $this->assertNull(app(NotificacaoService::class)->enviarPedidoEnviado($this->pedidoDaLoja('entrega', $semFone)));
+        $this->assertSame(0, Notificacao::count());
+    }
+
+    public function test_painel_dispara_aviso_so_na_virada_para_enviado(): void
+    {
+        Queue::fake();
+        $venda = $this->pedidoDaLoja('entrega');
+        $url = "/dashboard/{$this->empresa->slug}/pedidos-loja/{$venda->id}/envio";
+
+        $this->actingAs($this->admin)->putJson($url, ['status_envio' => 'enviado', 'codigo_rastreio' => 'AA1'])->assertOk();
+        Queue::assertPushed(EnviarPedidoEnviadoJob::class, 1);
+
+        // Só ajustar o rastreio ou marcar como entregue não reenvia a mensagem.
+        $this->actingAs($this->admin)->putJson($url, ['status_envio' => 'enviado', 'codigo_rastreio' => 'AA2'])->assertOk();
+        $this->actingAs($this->admin)->putJson($url, ['status_envio' => 'entregue'])->assertOk();
+        Queue::assertPushed(EnviarPedidoEnviadoJob::class, 1);
+    }
+
+    public function test_job_de_pedido_enviado_processado_cria_a_notificacao(): void
+    {
+        $venda = $this->pedidoDaLoja('entrega');
+
+        (new EnviarPedidoEnviadoJob($venda->id))->handle(app(NotificacaoService::class));
+
+        $this->asSuperAdmin();
+        $this->assertSame(1, Notificacao::where('tipo', 'pedido_enviado')->where('venda_id', $venda->id)->count());
     }
 }
