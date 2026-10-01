@@ -157,6 +157,7 @@ class VendaPdvService
     private function criarItemProduto(Venda $venda, array $item, ?Vendedor $vendedor, Empresa $empresa): array
     {
         $produto = Produto::findOrFail($item['produto_id']);
+        abort_if($produto->eh_kit, 422, "O kit \"{$produto->nome}\" só é vendido na loja virtual.");
         $quantidade = (int) $item['quantidade'];
 
         $variacao = null;

@@ -89,6 +89,23 @@ class PdvTest extends TestCase
         $response->assertOk()->assertJsonCount(1);
     }
 
+    public function test_kit_nao_aparece_nem_e_vendido_no_pdv(): void
+    {
+        $kit = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Chopp Caneca',
+            'tipo' => 'fisico', 'preco_venda' => 90.00, 'eh_kit' => true,
+        ]);
+
+        $this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=Kit Chopp")->assertOk()->assertJsonCount(0);
+
+        $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $kit->id, 'quantidade' => 1]],
+        ])->assertStatus(422);
+    }
+
     public function test_venda_nao_fiscal_de_produto_debita_estoque(): void
     {
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [

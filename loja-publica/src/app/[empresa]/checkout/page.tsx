@@ -273,7 +273,12 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 },
                 itens: produtosItens.map((i) =>
                     i.tipo === 'produto'
-                        ? { produto_id: i.produtoId, variacao_id: i.variacaoId ?? null, quantidade: i.quantidade }
+                        ? {
+                              produto_id: i.produtoId,
+                              variacao_id: i.variacaoId ?? null,
+                              quantidade: i.quantidade,
+                              escolhas: i.escolhas?.map((e) => ({ variacao_id: e.variacaoId, quantidade: e.quantidade })),
+                          }
                         : null,
                 ),
                 reserva_id: reservaId,
@@ -601,6 +606,13 @@ function TelaConfirmacao({ empresa, resultado }: { empresa: string; resultado: R
                                     <span>
                                         {item.quantidade}x {item.produto?.nome}
                                         {item.produto_variacao ? ` (${item.produto_variacao.tamanho})` : ''}
+                                        {item.composicao && (
+                                            <ul style={{ margin: '2px 0 0', paddingLeft: 16, fontSize: 12, color: 'var(--cor-texto-suave)' }}>
+                                                {item.composicao.map((c, idx) => (
+                                                    <li key={idx}>{c.quantidade}x {c.nome}{c.tamanho ? ` - ${c.tamanho}` : ''}</li>
+                                                ))}
+                                            </ul>
+                                        )}
                                     </span>
                                     <span>R$ {Number(item.valor_total).toFixed(2)}</span>
                                 </div>

@@ -14,6 +14,7 @@ use App\Models\Venda;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Pagamento\PagamentoService;
 use App\Services\Vendas\FreteService;
+use App\Services\Vendas\KitService;
 use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,7 @@ class CheckoutController extends Controller
         private readonly PagamentoService $pagamentoService,
         private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
         private readonly FreteService $freteService,
+        private readonly KitService $kitService,
     ) {}
 
     public function store(Request $request, string $empresa)
@@ -63,6 +65,9 @@ class CheckoutController extends Controller
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
             'itens.*.variacao_id' => ['nullable', 'integer'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
+            'itens.*.escolhas' => ['nullable', 'array'],
+            'itens.*.escolhas.*.variacao_id' => ['required', 'integer'],
+            'itens.*.escolhas.*.quantidade' => ['required', 'integer', 'min:1'],
             'forma_pagamento' => ['required', 'string', 'in:pix,cartao'],
             'cartao_token' => ['nullable', 'string'],
             'cartao_parcelas' => ['nullable', 'integer', 'min:1'],
@@ -133,7 +138,7 @@ class CheckoutController extends Controller
             $valorProdutos = 0;
 
             foreach ($dados['itens'] ?? [] as $item) {
-                $valorProdutos += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade'], $item['variacao_id'] ?? null);
+                $valorProdutos += $this->gerarItemProduto($venda, $item['produto_id'], $item['quantidade'], $item['variacao_id'] ?? null, $item['escolhas'] ?? []);
             }
 
             $valorDesconto = 0;
@@ -298,9 +303,26 @@ class CheckoutController extends Controller
         return [$valorTotal, $reserva->quantidade];
     }
 
-    private function gerarItemProduto(Venda $venda, int $produtoId, int $quantidade, ?int $variacaoId = null): float
+    private function gerarItemProduto(Venda $venda, int $produtoId, int $quantidade, ?int $variacaoId = null, array $escolhas = []): float
     {
         $produto = Produto::findOrFail($produtoId);
+
+        if ($produto->eh_kit) {
+            $composicao = $this->kitService->consumir($produto, $quantidade, $escolhas);
+            $valorTotal = $produto->preco_venda * $quantidade;
+
+            $venda->itens()->create([
+                'empresa_id' => $venda->empresa_id,
+                'produto_id' => $produto->id,
+                'quantidade' => $quantidade,
+                'valor_unitario' => $produto->preco_venda,
+                'valor_total' => $valorTotal,
+                'composicao' => $composicao,
+            ]);
+
+            return $valorTotal;
+        }
+
         $variacao = null;
 
         if ($variacaoId !== null) {

@@ -20,6 +20,7 @@ use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
 use App\Models\FreteRegra;
+use App\Models\KitComponente;
 use App\Models\GravaBanco;
 use App\Models\Grupo;
 use App\Models\ItemVenda;
@@ -234,6 +235,97 @@ class DashboardController extends Controller
         $variacao->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Composição do kit (ex.: 1 caneca + 3 cervejas à escolha). Itens "fixos"
+     * vêm sempre; em "escolha" o cliente distribui `quantidade` unidades entre
+     * as variações do produto (pode repetir). O preço é o do próprio produto-kit.
+     */
+    public function kitProduto(Request $request, string $empresa, int $produtoId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
+
+        return response()->json($this->payloadKit($produto));
+    }
+
+    public function atualizarKitProduto(Request $request, string $empresa, int $produtoId)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
+
+        $dados = $request->validate([
+            'eh_kit' => ['required', 'boolean'],
+            'componentes' => ['present', 'array'],
+            'componentes.*.tipo' => ['required', 'string', 'in:fixo,escolha'],
+            'componentes.*.produto_id' => ['required', 'integer'],
+            'componentes.*.quantidade' => ['required', 'integer', 'min:1', 'max:99'],
+        ]);
+
+        if ($dados['eh_kit']) {
+            abort_if($dados['componentes'] === [], 422, 'Informe ao menos um item do kit.');
+            abort_if($produto->variacoes()->exists(), 422, 'Um kit não pode ter variações próprias - remova os tamanhos deste produto.');
+
+            $ids = collect($dados['componentes'])->pluck('produto_id');
+            abort_if($ids->count() !== $ids->unique()->count(), 422, 'Há produto repetido na composição do kit.');
+            abort_if($ids->contains($produto->id), 422, 'O kit não pode conter ele mesmo.');
+
+            $componentes = Produto::where('empresa_id', $empresaAtual->id)->whereIn('id', $ids)->withCount([
+                'variacoes as variacoes_ativas_count' => fn ($q) => $q->where('ativo', true),
+            ])->get()->keyBy('id');
+
+            foreach ($dados['componentes'] as $componente) {
+                $item = $componentes->get($componente['produto_id']);
+
+                abort_if($item === null, 422, 'Produto do kit não encontrado.');
+                abort_if($item->eh_kit, 422, "\"{$item->nome}\" é um kit e não pode compor outro kit.");
+                abort_if(
+                    $componente['tipo'] === 'escolha' && $item->variacoes_ativas_count === 0,
+                    422,
+                    "\"{$item->nome}\" precisa ter variações (sabores/tamanhos) para ser escolhido no kit."
+                );
+                abort_if(
+                    $componente['tipo'] === 'fixo' && $item->variacoes_ativas_count > 0,
+                    422,
+                    "\"{$item->nome}\" tem variações - use o tipo \"escolha\" para ele."
+                );
+            }
+        }
+
+        DB::transaction(function () use ($dados, $produto, $empresaAtual) {
+            $produto->update(['eh_kit' => $dados['eh_kit']]);
+            KitComponente::where('kit_id', $produto->id)->delete();
+
+            if (! $dados['eh_kit']) {
+                return;
+            }
+
+            foreach ($dados['componentes'] as $componente) {
+                KitComponente::create([
+                    'empresa_id' => $empresaAtual->id,
+                    'kit_id' => $produto->id,
+                    'produto_id' => $componente['produto_id'],
+                    'tipo' => $componente['tipo'],
+                    'quantidade' => $componente['quantidade'],
+                ]);
+            }
+        });
+
+        return response()->json($this->payloadKit($produto->fresh()));
+    }
+
+    private function payloadKit(Produto $produto): array
+    {
+        return [
+            'eh_kit' => $produto->eh_kit,
+            'componentes' => $produto->componentes()->with('produto:id,nome')->get()->map(fn ($c) => [
+                'tipo' => $c->tipo,
+                'produto_id' => $c->produto_id,
+                'nome' => $c->produto?->nome,
+                'quantidade' => $c->quantidade,
+            ])->values(),
+        ];
     }
 
     /**
@@ -1533,6 +1625,7 @@ class DashboardController extends Controller
                     'quantidade' => $i->quantidade,
                     'nome' => $i->produto?->nome,
                     'tamanho' => $i->produtoVariacao?->tamanho,
+                    'composicao' => $i->composicao,
                     'valor_total' => $i->valor_total,
                 ])->values(),
             ];

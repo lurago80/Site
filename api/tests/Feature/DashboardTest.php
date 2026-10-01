@@ -8,6 +8,7 @@ use App\Models\Empresa;
 use App\Models\ItemVenda;
 use App\Models\Plano;
 use App\Models\Produto;
+use App\Models\ProdutoVariacao;
 use App\Models\User;
 use App\Models\Venda;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -416,6 +417,33 @@ class DashboardTest extends TestCase
         $this->actingAs($this->admin)
             ->putJson("/dashboard/{$this->empresa->slug}/pedidos-loja/{$pdv->id}/envio", ['status_envio' => 'enviado'])
             ->assertNotFound();
+    }
+
+    public function test_admin_configura_o_kit_e_valida_os_componentes(): void
+    {
+        $caneca = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Caneca', 'tipo' => 'fisico', 'preco_venda' => 30, 'estoque_atual' => 5]);
+        $cerveja = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cerveja', 'tipo' => 'fisico', 'preco_venda' => 18]);
+        ProdutoVariacao::create(['empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'IPA', 'estoque_atual' => 5]);
+        $kit = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Kit', 'tipo' => 'fisico', 'preco_venda' => 80]);
+
+        $url = "/dashboard/{$this->empresa->slug}/produtos/{$kit->id}/kit";
+
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [
+            ['tipo' => 'fixo', 'produto_id' => $caneca->id, 'quantidade' => 1],
+            ['tipo' => 'escolha', 'produto_id' => $cerveja->id, 'quantidade' => 3],
+        ]])->assertOk()->assertJsonPath('eh_kit', true)->assertJsonCount(2, 'componentes');
+
+        $this->actingAs($this->admin)->getJson($url)->assertOk()->assertJsonPath('componentes.1.nome', 'Cerveja');
+
+        // "escolha" exige variações; "fixo" não pode ter variações; kit dentro de kit não vale.
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [['tipo' => 'escolha', 'produto_id' => $caneca->id, 'quantidade' => 3]]])->assertStatus(422);
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [['tipo' => 'fixo', 'produto_id' => $cerveja->id, 'quantidade' => 1]]])->assertStatus(422);
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [['tipo' => 'fixo', 'produto_id' => $kit->id, 'quantidade' => 1]]])->assertStatus(422);
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => []])->assertStatus(422);
+
+        // Desligar o kit limpa a composição.
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => false, 'componentes' => []])->assertOk()->assertJsonCount(0, 'componentes');
+        $this->assertFalse($kit->fresh()->eh_kit);
     }
 
     public function test_cor_primaria_invalida_e_rejeitada(): void

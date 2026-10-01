@@ -10,6 +10,7 @@ use App\Models\Cupom;
 use App\Models\Produto;
 use App\Models\Venda;
 use App\Services\Vendas\FreteService;
+use App\Services\Vendas\KitService;
 use Illuminate\Http\Request;
 
 /**
@@ -21,7 +22,10 @@ use Illuminate\Http\Request;
  */
 class CatalogoController extends Controller
 {
-    public function __construct(private readonly FreteService $freteService) {}
+    public function __construct(
+        private readonly FreteService $freteService,
+        private readonly KitService $kitService,
+    ) {}
 
     /**
      * Cotação de frete para o checkout: entrega (pela UF informada) e se a
@@ -202,7 +206,20 @@ class CatalogoController extends Controller
             ->where('loja_virtual', true)
             ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
             ->orderBy('nome')
-            ->get();
+            ->get()
+            ->map(function (Produto $produto) {
+                if (! $produto->eh_kit) {
+                    return $produto;
+                }
+
+                // Kit: manda a composição (itens fixos + grupos de escolha com
+                // o estoque de cada variação) para o cliente montar o kit.
+                $dados = $produto->toArray();
+                $dados['kit'] = $this->kitService->resumo($produto);
+                unset($dados['componentes']);
+
+                return $dados;
+            });
     }
 
     public function agenda(Request $request, string $empresa)

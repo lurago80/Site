@@ -90,6 +90,7 @@ class PdvController extends Controller
         return response()->json(
             Produto::query()
                 ->where('tipo', 'fisico')
+                ->where('eh_kit', false)
                 ->when($busca, fn ($q, $termo) => $q->where('nome', 'ilike', "%{$termo}%"))
                 ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
                 ->orderBy('nome')

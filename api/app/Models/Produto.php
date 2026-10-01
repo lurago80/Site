@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'empresa_id', 'fornecedor_id', 'grupo_id', 'nome', 'codigo', 'descricao', 'categoria', 'tipo', 'unidade',
-    'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'loja_virtual', 'ncm', 'cfop_padrao',
+    'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'loja_virtual', 'eh_kit', 'ncm', 'cfop_padrao',
 
     // Campos gerais
     'estoque_minimo', 'quantidade_minima_venda', 'imagem_url', 'pesavel', 'valor_atacado', 'codigo_barras',
@@ -49,6 +49,7 @@ class Produto extends Model
             'peso_bruto' => 'decimal:3',
             'ativo' => 'boolean',
             'loja_virtual' => 'boolean',
+            'eh_kit' => 'boolean',
             'pesavel' => 'boolean',
             'sujeito_imposto_seletivo' => 'boolean',
             'aliquota_icms' => 'decimal:2',
@@ -96,5 +97,10 @@ class Produto extends Model
     public function variacoes(): HasMany
     {
         return $this->hasMany(ProdutoVariacao::class);
+    }
+
+    public function componentes(): HasMany
+    {
+        return $this->hasMany(KitComponente::class, 'kit_id');
     }
 }

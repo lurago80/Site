@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCarrinho } from '@/lib/cart';
+import SeletorQuantidades, { type GrupoSeletor, type SelecaoSeletor } from './SeletorQuantidades';
 import type { HorarioAgenda, Produto, ProdutoVariacao } from '@/lib/types';
 
 function formatarMoeda(valor: string | number) {
@@ -131,10 +132,17 @@ function VisualizadorImagem({ src, alt, onFechar }: { src: string; alt: string; 
 function CardProduto({
     produto,
     onAdicionar,
+    onAdicionarVarias,
+    onAdicionarKit,
 }: {
     produto: Produto;
     onAdicionar: (variacao: ProdutoVariacao | null) => void;
+    onAdicionarVarias: (escolhidas: { variacao: ProdutoVariacao; quantidade: number }[]) => void;
+    onAdicionarKit: (escolhas: { variacao: ProdutoVariacao; produtoNome: string; quantidade: number }[]) => void;
 }) {
+    const { itens: itensCarrinho } = useCarrinho();
+    const [seletorAberto, setSeletorAberto] = useState(false);
+    const fecharSeletor = useCallback(() => setSeletorAberto(false), []);
     const [imagemQuebrada, setImagemQuebrada] = useState(false);
     const [imagemAberta, setImagemAberta] = useState(false);
     const fecharImagem = useCallback(() => setImagemAberta(false), []);
@@ -143,10 +151,63 @@ function CardProduto({
     const variacaoEscolhida = temVariacoes
         ? produto.variacoes!.find((v) => v.id === tamanhoEscolhido) ?? null
         : null;
-    const semEstoque = temVariacoes
-        ? variacaoEscolhida !== null && variacaoEscolhida.estoque_atual <= 0
-        : produto.estoque_atual !== null && produto.estoque_atual <= 0;
-    const precisaEscolherTamanho = temVariacoes && tamanhoEscolhido === '';
+    const ehKit = !!produto.eh_kit && !!produto.kit;
+    // Produto com variações e venda mínima (ex.: cerveja, mínimo 6): em vez de
+    // escolher um tipo por vez, abre a lista com todos os tipos e contadores.
+    const usaSeletor = !ehKit && temVariacoes && !!produto.quantidade_minima_venda;
+    const semEstoque = ehKit
+        ? !produto.kit!.disponivel
+        : temVariacoes
+          ? variacaoEscolhida !== null && variacaoEscolhida.estoque_atual <= 0
+          : produto.estoque_atual !== null && produto.estoque_atual <= 0;
+    const precisaEscolherTamanho = temVariacoes && tamanhoEscolhido === '' && !usaSeletor;
+
+    const noCarrinho = itensCarrinho.reduce(
+        (acc, i) => (i.tipo === 'produto' && !i.escolhas && i.produtoId === produto.id ? acc + i.quantidade : acc),
+        0,
+    );
+
+    const gruposSeletor: GrupoSeletor[] = ehKit
+        ? produto.kit!.escolhas.map((g) => ({
+              chave: String(g.produto_id),
+              titulo: `Escolha ${g.quantidade} × ${g.nome}`,
+              alvo: g.quantidade,
+              modo: 'exato' as const,
+              opcoes: g.variacoes,
+          }))
+        : usaSeletor
+          ? [
+                {
+                    chave: 'tipos',
+                    titulo: 'Escolha os tipos e as quantidades',
+                    alvo: Math.max(1, produto.quantidade_minima_venda! - noCarrinho),
+                    modo: 'minimo' as const,
+                    opcoes: produto.variacoes!,
+                    jaNoCarrinho: noCarrinho,
+                },
+            ]
+          : [];
+
+    function confirmarSeletor(selecao: SelecaoSeletor) {
+        setSeletorAberto(false);
+
+        if (ehKit) {
+            onAdicionarKit(
+                produto.kit!.escolhas.flatMap((g) =>
+                    g.variacoes
+                        .filter((v) => (selecao[String(g.produto_id)]?.[v.id] ?? 0) > 0)
+                        .map((v) => ({ variacao: v as ProdutoVariacao, produtoNome: g.nome, quantidade: selecao[String(g.produto_id)][v.id] })),
+                ),
+            );
+            return;
+        }
+
+        onAdicionarVarias(
+            produto.variacoes!
+                .filter((v) => (selecao.tipos?.[v.id] ?? 0) > 0)
+                .map((v) => ({ variacao: v, quantidade: selecao.tipos[v.id] })),
+        );
+    }
 
     return (
         <div
@@ -228,7 +289,7 @@ function CardProduto({
                             {temVariacoes ? ' (pode misturar as variações)' : ''}
                         </span>
                     )}
-                    {temVariacoes && (
+                    {temVariacoes && !usaSeletor && !ehKit && (
                         <select
                             value={tamanhoEscolhido}
                             onChange={(e) => setTamanhoEscolhido(e.target.value ? Number(e.target.value) : '')}
@@ -243,14 +304,28 @@ function CardProduto({
                             ))}
                         </select>
                     )}
+                    {ehKit && (
+                        <span style={{ fontSize: 12, color: 'var(--cor-texto-suave)' }}>
+                            Inclui: {[...produto.kit!.fixos.map((f) => `${f.quantidade}x ${f.nome}`), ...produto.kit!.escolhas.map((g) => `${g.quantidade}x ${g.nome} à sua escolha`)].join(' + ')}
+                        </span>
+                    )}
                     <button
                         className="botao-primario"
                         disabled={semEstoque || precisaEscolherTamanho}
-                        onClick={() => onAdicionar(variacaoEscolhida)}
+                        onClick={() => (ehKit || usaSeletor ? setSeletorAberto(true) : onAdicionar(variacaoEscolhida))}
                         style={{ width: '100%' }}
                     >
-                        {semEstoque ? 'Sem estoque' : 'Adicionar ao carrinho'}
+                        {semEstoque ? 'Sem estoque' : ehKit ? 'Montar meu kit' : usaSeletor ? 'Escolher tipos' : 'Adicionar ao carrinho'}
                     </button>
+                    {seletorAberto && (
+                        <SeletorQuantidades
+                            titulo={produto.nome}
+                            grupos={gruposSeletor}
+                            textoConfirmar={ehKit ? 'Adicionar kit ao carrinho' : 'Adicionar ao carrinho'}
+                            onConfirmar={confirmarSeletor}
+                            onFechar={fecharSeletor}
+                        />
+                    )}
                 </div>
             </div>
         </div>
@@ -266,10 +341,11 @@ export default function Catalogo({
     agenda: HorarioAgenda[];
     moduloAgendamentoAtivo: boolean;
 }) {
-    const { adicionarProduto, definirAgenda } = useCarrinho();
+    const { adicionarProduto, adicionarKit, definirAgenda } = useCarrinho();
     const [quantidadesAgenda, setQuantidadesAgenda] = useState<Record<number, number>>({});
 
     const produtosComEstoque = produtos.filter((produto) => {
+        if (produto.eh_kit) return !!produto.kit?.disponivel;
         if (produto.variacoes && produto.variacoes.length > 0) {
             return produto.variacoes.some((v) => v.estoque_atual > 0);
         }
@@ -368,6 +444,31 @@ export default function Catalogo({
                                         Number(produto.preco_venda),
                                         variacao ? { id: variacao.id, tamanho: variacao.tamanho } : null,
                                         produto.quantidade_minima_venda,
+                                    )
+                                }
+                                onAdicionarVarias={(escolhidas) =>
+                                    escolhidas.forEach(({ variacao, quantidade }) =>
+                                        adicionarProduto(
+                                            produto.id,
+                                            `${produto.nome} (${variacao.tamanho})`,
+                                            Number(produto.preco_venda),
+                                            { id: variacao.id, tamanho: variacao.tamanho },
+                                            produto.quantidade_minima_venda,
+                                            quantidade,
+                                        ),
+                                    )
+                                }
+                                onAdicionarKit={(escolhas) =>
+                                    adicionarKit(
+                                        produto.id,
+                                        produto.nome,
+                                        Number(produto.preco_venda),
+                                        produto.kit!.fixos.map((f) => `${f.quantidade}x ${f.nome}`),
+                                        escolhas.map((e) => ({
+                                            variacaoId: e.variacao.id,
+                                            rotulo: `${e.produtoNome} - ${e.variacao.tamanho}`,
+                                            quantidade: e.quantidade,
+                                        })),
                                     )
                                 }
                             />

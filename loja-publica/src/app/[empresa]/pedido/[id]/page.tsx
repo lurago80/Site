@@ -122,6 +122,13 @@ export default function PaginaRecibo({ params }: { params: Promise<{ empresa: st
                                 <span>
                                     {item.quantidade}x {item.produto?.nome}
                                     {item.produto_variacao ? ` (${item.produto_variacao.tamanho})` : ''}
+                                    {item.composicao && (
+                                        <ul style={{ margin: '2px 0 0', paddingLeft: 16, fontSize: 12, color: 'var(--cor-texto-suave)' }}>
+                                            {item.composicao.map((c, idx) => (
+                                                <li key={idx}>{c.quantidade}x {c.nome}{c.tamanho ? ` - ${c.tamanho}` : ''}</li>
+                                            ))}
+                                        </ul>
+                                    )}
                                 </span>
                                 <span>R$ {Number(item.valor_total).toFixed(2)}</span>
                             </div>

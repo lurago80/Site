@@ -12,6 +12,14 @@ interface CarrinhoContexto {
         valorUnitario: number,
         variacao?: { id: number; tamanho: string } | null,
         quantidadeMinima?: number | null,
+        quantidade?: number,
+    ) => void;
+    adicionarKit: (
+        produtoId: number,
+        nome: string,
+        valorUnitario: number,
+        itensFixos: string[],
+        escolhas: { variacaoId: number; rotulo: string; quantidade: number }[],
     ) => void;
     definirAgenda: (agendaId: number, nome: string, quantidade: number, valorUnitario: number) => void;
     removerItem: (index: number) => void;
@@ -49,17 +57,19 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
         valorUnitario: number,
         variacao?: { id: number; tamanho: string } | null,
         quantidadeMinima?: number | null,
+        quantidade = 1,
     ) {
         setItens((atual) => {
             const existente = atual.find(
                 (i): i is ItemCarrinhoProduto =>
                     i.tipo === 'produto' &&
+                    !i.escolhas &&
                     i.produtoId === produtoId &&
                     (i.variacaoId ?? null) === (variacao?.id ?? null),
             );
             if (existente) {
                 return atual.map((i) =>
-                    i === existente ? { ...existente, quantidade: existente.quantidade + 1 } : i,
+                    i === existente ? { ...existente, quantidade: existente.quantidade + quantidade } : i,
                 );
             }
             return [
@@ -70,12 +80,26 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
                     variacaoId: variacao?.id ?? null,
                     tamanho: variacao?.tamanho ?? null,
                     nome,
-                    quantidade: 1,
+                    quantidade,
                     valorUnitario,
                     quantidadeMinima: quantidadeMinima ?? null,
                 },
             ];
         });
+    }
+
+    // Kit nunca se junta com outro: cada um tem a sua própria escolha de sabores.
+    function adicionarKit(
+        produtoId: number,
+        nome: string,
+        valorUnitario: number,
+        itensFixos: string[],
+        escolhas: { variacaoId: number; rotulo: string; quantidade: number }[],
+    ) {
+        setItens((atual) => [
+            ...atual,
+            { tipo: 'produto', produtoId, nome, quantidade: 1, valorUnitario, itensFixos, escolhas },
+        ]);
     }
 
     function definirAgenda(agendaId: number, nome: string, quantidade: number, valorUnitario: number) {
@@ -102,7 +126,7 @@ export function CarrinhoProvider({ empresa, children }: { empresa: string; child
     const total = itens.reduce((soma, item) => soma + item.quantidade * item.valorUnitario, 0);
 
     return (
-        <Contexto.Provider value={{ itens, total, adicionarProduto, definirAgenda, removerItem, alterarQuantidade, limpar }}>
+        <Contexto.Provider value={{ itens, total, adicionarProduto, adicionarKit, definirAgenda, removerItem, alterarQuantidade, limpar }}>
             {children}
         </Contexto.Provider>
     );

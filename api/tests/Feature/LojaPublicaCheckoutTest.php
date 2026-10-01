@@ -7,6 +7,8 @@ use App\Models\Cliente;
 use App\Models\Cupom;
 use App\Models\Empresa;
 use App\Models\FreteRegra;
+use App\Models\KitComponente;
+use App\Models\ProdutoVariacao;
 use App\Models\Plano;
 use App\Models\Produto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -717,5 +719,141 @@ class LojaPublicaCheckoutTest extends TestCase
 
         $this->getJson("/api/loja/{$this->empresa->slug}/frete?uf=AM&subtotal=40")
             ->assertJsonPath('entrega.disponivel', false);
+    }
+
+    /**
+     * Kit "Caneca + 3 cervejas": caneca fixa (estoque 5) e 3 cervejas à
+     * escolha entre 3 sabores (estoque 10 cada), por R$ 80 fixo.
+     *
+     * @return array{kit: Produto, caneca: Produto, cerveja: Produto, sabores: array<int, ProdutoVariacao>}
+     */
+    private function criarKit(): array
+    {
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca', 'tipo' => 'fisico', 'preco_venda' => 30, 'estoque_atual' => 5,
+        ]);
+        $cerveja = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Artesanal', 'tipo' => 'fisico', 'preco_venda' => 18,
+            'quantidade_minima_venda' => 6,
+        ]);
+        $sabores = collect(['Pilsen', 'IPA', 'Weiss'])->map(fn ($nome) => ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => $nome, 'estoque_atual' => 10,
+        ]))->all();
+        $kit = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Caneca + 3 Cervejas', 'tipo' => 'fisico',
+            'preco_venda' => 80, 'eh_kit' => true,
+        ]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $caneca->id, 'tipo' => 'fixo', 'quantidade' => 1]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $cerveja->id, 'tipo' => 'escolha', 'quantidade' => 3]);
+
+        return compact('kit', 'caneca', 'cerveja', 'sabores');
+    }
+
+    public function test_catalogo_expoe_a_composicao_do_kit(): void
+    {
+        ['kit' => $kit] = $this->criarKit();
+
+        $resposta = $this->getJson("/api/loja/{$this->empresa->slug}/produtos")->assertOk();
+        $kitJson = collect($resposta->json())->firstWhere('id', $kit->id);
+
+        $this->assertTrue($kitJson['eh_kit']);
+        $this->assertTrue($kitJson['kit']['disponivel']);
+        $this->assertSame('Caneca', $kitJson['kit']['fixos'][0]['nome']);
+        $this->assertSame(3, $kitJson['kit']['escolhas'][0]['quantidade']);
+        $this->assertCount(3, $kitJson['kit']['escolhas'][0]['variacoes']);
+        $this->assertArrayNotHasKey('componentes', $kitJson);
+    }
+
+    public function test_checkout_de_kit_baixa_caneca_e_cervejas_escolhidas_e_guarda_a_composicao(): void
+    {
+        ['kit' => $kit, 'caneca' => $caneca, 'sabores' => [$pilsen, $ipa]] = $this->criarKit();
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+            'itens' => [[
+                'produto_id' => $kit->id, 'quantidade' => 1,
+                // pode repetir: 2 Pilsen + 1 IPA
+                'escolhas' => [['variacao_id' => $pilsen->id, 'quantidade' => 2], ['variacao_id' => $ipa->id, 'quantidade' => 1]],
+            ]],
+        ]));
+
+        $response->assertCreated();
+        $response->assertJsonPath('valor_total', '80.00');
+        $this->assertSame(4, $caneca->fresh()->estoque_atual);
+        $this->assertSame(8, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(9, $ipa->fresh()->estoque_atual);
+
+        $composicao = $response->json('itens.0.composicao');
+        $this->assertCount(3, $composicao);
+        $this->assertSame('Pilsen', collect($composicao)->firstWhere('variacao_id', $pilsen->id)['tamanho']);
+        $this->assertSame(2, collect($composicao)->firstWhere('variacao_id', $pilsen->id)['quantidade']);
+    }
+
+    public function test_kit_permite_repetir_a_mesma_cerveja_tres_vezes(): void
+    {
+        ['kit' => $kit, 'sabores' => [$pilsen]] = $this->criarKit();
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+            'itens' => [['produto_id' => $kit->id, 'quantidade' => 1, 'escolhas' => [['variacao_id' => $pilsen->id, 'quantidade' => 3]]]],
+        ]))->assertCreated();
+
+        $this->assertSame(7, $pilsen->fresh()->estoque_atual);
+    }
+
+    public function test_kit_exige_exatamente_a_quantidade_de_cervejas_e_nao_baixa_nada_se_recusar(): void
+    {
+        ['kit' => $kit, 'caneca' => $caneca, 'sabores' => [$pilsen]] = $this->criarKit();
+
+        foreach ([[], [['variacao_id' => $pilsen->id, 'quantidade' => 2]], [['variacao_id' => $pilsen->id, 'quantidade' => 4]]] as $escolhas) {
+            $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+                'itens' => [['produto_id' => $kit->id, 'quantidade' => 1, 'escolhas' => $escolhas]],
+            ]))->assertStatus(422);
+        }
+
+        $this->assertSame(5, $caneca->fresh()->estoque_atual);
+        $this->assertSame(10, $pilsen->fresh()->estoque_atual);
+    }
+
+    public function test_kit_recusa_variacao_de_outro_produto(): void
+    {
+        ['kit' => $kit] = $this->criarKit();
+        $intrusa = ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $this->produtoFisico->id, 'tamanho' => 'X', 'estoque_atual' => 5,
+        ]);
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+            'itens' => [['produto_id' => $kit->id, 'quantidade' => 1, 'escolhas' => [['variacao_id' => $intrusa->id, 'quantidade' => 3]]]],
+        ]))->assertStatus(422);
+    }
+
+    public function test_kit_sem_estoque_de_cerveja_retorna_409_e_devolve_a_caneca(): void
+    {
+        ['kit' => $kit, 'caneca' => $caneca, 'sabores' => [$pilsen]] = $this->criarKit();
+        $pilsen->update(['estoque_atual' => 2]);
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+            'itens' => [['produto_id' => $kit->id, 'quantidade' => 1, 'escolhas' => [['variacao_id' => $pilsen->id, 'quantidade' => 3]]]],
+        ]))->assertStatus(409);
+
+        // a baixa da caneca (feita antes) é desfeita junto com a transação
+        $this->assertSame(5, $caneca->fresh()->estoque_atual);
+    }
+
+    public function test_cerveja_avulsa_continua_exigindo_venda_minima_de_seis_misturando_sabores(): void
+    {
+        ['cerveja' => $cerveja, 'sabores' => [$pilsen, $ipa]] = $this->criarKit();
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+            'itens' => [
+                ['produto_id' => $cerveja->id, 'variacao_id' => $pilsen->id, 'quantidade' => 2],
+                ['produto_id' => $cerveja->id, 'variacao_id' => $ipa->id, 'quantidade' => 3],
+            ],
+        ]))->assertStatus(422);
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([
+            'itens' => [
+                ['produto_id' => $cerveja->id, 'variacao_id' => $pilsen->id, 'quantidade' => 2],
+                ['produto_id' => $cerveja->id, 'variacao_id' => $ipa->id, 'quantidade' => 4],
+            ],
+        ]))->assertCreated()->assertJsonPath('valor_total', '108.00');
     }
 }

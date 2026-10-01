@@ -14,6 +14,19 @@ export interface ProdutoVariacao {
     ativo: boolean;
 }
 
+export interface KitGrupoEscolha {
+    produto_id: number;
+    nome: string;
+    quantidade: number;
+    variacoes: { id: number; tamanho: string; estoque_atual: number }[];
+}
+
+export interface KitInfo {
+    fixos: { produto_id: number; nome: string; quantidade: number }[];
+    escolhas: KitGrupoEscolha[];
+    disponivel: boolean;
+}
+
 export interface Produto {
     id: number;
     nome: string;
@@ -23,6 +36,8 @@ export interface Produto {
     imagem_url: string | null;
     quantidade_minima_venda: number | null;
     variacoes?: ProdutoVariacao[];
+    eh_kit?: boolean;
+    kit?: KitInfo;
 }
 
 export interface HorarioAgenda {
@@ -59,6 +74,9 @@ export interface ItemCarrinhoProduto {
     quantidade: number;
     valorUnitario: number;
     quantidadeMinima?: number | null;
+    // Só em kit: o que vem fixo e o que o cliente escolheu (sempre 1 kit por linha).
+    itensFixos?: string[];
+    escolhas?: { variacaoId: number; rotulo: string; quantidade: number }[];
 }
 
 export interface ItemCarrinhoAgenda {
@@ -86,6 +104,7 @@ export interface ItemVendaResposta {
     produto: { nome: string } | null;
     produto_variacao: { tamanho: string } | null;
     agenda_visitacao: { data_hora: string } | null;
+    composicao?: { nome: string; tamanho: string | null; quantidade: number }[] | null;
 }
 
 export interface RespostaCheckout {

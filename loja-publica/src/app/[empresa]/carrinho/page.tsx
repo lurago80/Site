@@ -55,9 +55,15 @@ export default function PaginaCarrinho({ params }: { params: Promise<{ empresa: 
                             <div style={{ fontSize: 12.5, color: 'var(--cor-texto-suave)', marginTop: 3 }}>
                                 R$ {item.valorUnitario.toFixed(2)} cada
                             </div>
+                            {item.tipo === 'produto' && item.escolhas && (
+                                <ul style={{ margin: '6px 0 0', paddingLeft: 16, fontSize: 12, color: 'var(--cor-texto-suave)' }}>
+                                    {item.itensFixos?.map((f) => <li key={f}>{f}</li>)}
+                                    {item.escolhas.map((e) => <li key={e.variacaoId}>{e.quantidade}x {e.rotulo}</li>)}
+                                </ul>
+                            )}
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <div style={{ display: item.tipo === 'produto' && item.escolhas ? 'none' : 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                             <button
                                 className="botao-secundario"
                                 onClick={() => alterarQuantidade(index, item.quantidade - 1)}

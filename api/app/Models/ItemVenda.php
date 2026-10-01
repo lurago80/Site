@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'empresa_id', 'venda_id', 'produto_id', 'produto_variacao_id', 'agenda_visitacao_id',
-    'quantidade', 'valor_unitario', 'valor_total', 'comissao_percentual', 'comissao_valor',
+    'quantidade', 'valor_unitario', 'valor_total', 'comissao_percentual', 'comissao_valor', 'composicao',
 ])]
 class ItemVenda extends Model
 {
@@ -19,6 +19,7 @@ class ItemVenda extends Model
         return [
             'valor_unitario' => 'decimal:2',
             'valor_total' => 'decimal:2',
+            'composicao' => 'array',
         ];
     }
 

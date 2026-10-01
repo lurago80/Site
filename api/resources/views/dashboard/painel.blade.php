@@ -128,6 +128,7 @@
                     <div class="abas-produto">
                         <button type="button" class="ativa" onclick="mostrarAbaProduto('geral', this)">Geral</button>
                         <button type="button" onclick="mostrarAbaProduto('tamanhos', this)">Tamanhos</button>
+                        <button type="button" onclick="mostrarAbaProduto('kit', this)">Kit</button>
                         <button type="button" onclick="mostrarAbaProduto('icms', this)">ICMS / PIS / COFINS / IPI</button>
                         <button type="button" onclick="mostrarAbaProduto('ibscbs', this)">IBS / CBS (novo regime)</button>
                         <button type="button" onclick="mostrarAbaProduto('is', this)">Imposto Seletivo</button>
@@ -226,6 +227,31 @@
                                     <div style="align-self:flex-end"><button type="button" onclick="adicionarTamanhoProduto()">Adicionar tamanho</button></div>
                                 </div>
                                 <p class="msg" id="msg-pr-tamanhos"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="aba-conteudo-produto" id="aba-produto-kit">
+                        <div class="grupo-campos">
+                            <h3>Kit (opcional)</h3>
+                            <p style="font-size:13px; color:#666; margin:0 0 10px">
+                                Um kit é vendido <strong>só na loja virtual</strong>, por um preço fixo (campo "Preço de venda" da aba Geral).
+                                Monte a composição abaixo: produto <em>sem variações</em> entra fixo no kit (ex.: 1 caneca); produto
+                                <em>com variações</em> o cliente escolhe os sabores/tipos (ex.: 3 cervejas entre as opções, podendo repetir).
+                                O estoque de cada item é baixado na venda. O kit não tem estoque próprio e não tem tamanhos.
+                            </p>
+                            <p class="msg" id="msg-pr-kit-aviso">Salve o produto primeiro para poder montar o kit.</p>
+                            <div id="bloco-pr-kit" style="display:none">
+                                <label style="font-weight:normal"><input type="checkbox" id="pr-eh-kit" onchange="alternarKitProduto()"> Este produto é um kit</label>
+                                <div id="pr-kit-composicao" style="display:none; margin-top:10px;">
+                                    <table>
+                                        <thead><tr><th>Produto</th><th>Como entra no kit</th><th>Quantidade</th><th></th></tr></thead>
+                                        <tbody id="tbody-pr-kit"></tbody>
+                                    </table>
+                                    <div style="margin-top:8px;"><button type="button" onclick="adicionarComponenteKit()">+ Adicionar item ao kit</button></div>
+                                </div>
+                                <div style="margin-top:10px;"><button type="button" class="acao" onclick="salvarKitProduto()">Salvar kit</button></div>
+                                <p class="msg" id="msg-pr-kit"></p>
                             </div>
                         </div>
                     </div>
@@ -1539,6 +1565,7 @@
             if (!p) return;
             document.getElementById('pr-id').value = p.id;
             carregarTamanhosProduto(p.id);
+            carregarKitProduto(p.id);
             // Geral
             document.getElementById('pr-codigo').value = p.codigo ?? '';
             document.getElementById('pr-codigo-barras').value = p.codigo_barras ?? '';
@@ -1673,6 +1700,93 @@
             document.getElementById('pr-botao').textContent = 'Cadastrar';
             document.getElementById('pr-cancelar').style.display = 'none';
             carregarTamanhosProduto(null);
+            carregarKitProduto(null);
+        }
+
+        // ---- Kit (caneca + cervejas à escolha) ----
+
+        // Produtos que podem entrar num kit: qualquer um que não seja kit nem o próprio produto.
+        function opcoesComponenteKit(produtoAtualId, selecionadoId) {
+            return produtosCache
+                .filter(x => !x.eh_kit && x.id !== Number(produtoAtualId))
+                .map(x => {
+                    const ativas = (x.variacoes || []).filter(v => v.ativo).length;
+                    return `<option value="${x.id}" data-variacoes="${ativas}" ${x.id === selecionadoId ? 'selected' : ''}>${esc(x.nome)}${ativas ? ` (${ativas} variações)` : ''}</option>`;
+                }).join('');
+        }
+
+        function linhaComponenteKit(produtoAtualId, comp) {
+            const ativas = comp ? (produtosCache.find(x => x.id === comp.produto_id)?.variacoes || []).filter(v => v.ativo).length : 0;
+            return `
+                <tr>
+                    <td><select class="kit-produto" onchange="atualizarLinhaKit(this)">
+                        <option value="">Selecione...</option>${opcoesComponenteKit(produtoAtualId, comp?.produto_id)}
+                    </select></td>
+                    <td class="kit-modo">${comp ? (ativas ? 'Cliente escolhe entre as variações' : 'Fixo (sempre vem)') : '-'}</td>
+                    <td><input type="number" class="kit-quantidade" min="1" max="99" value="${comp?.quantidade ?? 1}" style="width:80px"></td>
+                    <td><button type="button" class="secundario" onclick="this.closest('tr').remove()">Remover</button></td>
+                </tr>`;
+        }
+
+        function atualizarLinhaKit(select) {
+            const ativas = Number(select.selectedOptions[0]?.dataset.variacoes || 0);
+            select.closest('tr').querySelector('.kit-modo').textContent = !select.value ? '-' : ativas ? 'Cliente escolhe entre as variações' : 'Fixo (sempre vem)';
+        }
+
+        function adicionarComponenteKit() {
+            const produtoId = document.getElementById('bloco-pr-kit').dataset.produtoId;
+            document.getElementById('tbody-pr-kit').insertAdjacentHTML('beforeend', linhaComponenteKit(produtoId, null));
+        }
+
+        function alternarKitProduto() {
+            document.getElementById('pr-kit-composicao').style.display = document.getElementById('pr-eh-kit').checked ? '' : 'none';
+        }
+
+        async function carregarKitProduto(produtoId) {
+            const aviso = document.getElementById('msg-pr-kit-aviso');
+            const bloco = document.getElementById('bloco-pr-kit');
+            document.getElementById('msg-pr-kit').textContent = '';
+            if (!produtoId) {
+                aviso.style.display = 'block';
+                bloco.style.display = 'none';
+                document.getElementById('tbody-pr-kit').innerHTML = '';
+                return;
+            }
+            aviso.style.display = 'none';
+            bloco.style.display = 'block';
+            bloco.dataset.produtoId = produtoId;
+            const resp = await fetch(`${base}/produtos/${produtoId}/kit`, { headers: { 'Accept': 'application/json' } });
+            const dados = await resp.json();
+            document.getElementById('pr-eh-kit').checked = !!dados.eh_kit;
+            document.getElementById('tbody-pr-kit').innerHTML = dados.componentes.map(c => linhaComponenteKit(produtoId, c)).join('');
+            alternarKitProduto();
+        }
+
+        async function salvarKitProduto() {
+            const bloco = document.getElementById('bloco-pr-kit');
+            const produtoId = bloco.dataset.produtoId;
+            const ehKit = document.getElementById('pr-eh-kit').checked;
+            const componentes = Array.from(document.querySelectorAll('#tbody-pr-kit tr'))
+                .map(tr => {
+                    const sel = tr.querySelector('.kit-produto');
+                    const ativas = Number(sel.selectedOptions[0]?.dataset.variacoes || 0);
+                    return {
+                        produto_id: Number(sel.value),
+                        tipo: ativas ? 'escolha' : 'fixo',
+                        quantidade: Number(tr.querySelector('.kit-quantidade').value || 1),
+                    };
+                })
+                .filter(c => c.produto_id);
+
+            const resp = await fetch(`${base}/produtos/${produtoId}/kit`, {
+                method: 'PUT', headers: headersJson, body: JSON.stringify({ eh_kit: ehKit, componentes }),
+            });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-pr-kit');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = ehKit ? 'Kit salvo.' : 'Kit desativado.';
+            await carregarProdutos();
+            carregarKitProduto(produtoId);
         }
 
         async function carregarTamanhosProduto(produtoId) {
@@ -3006,7 +3120,7 @@
         function detalhePedidoLoja(p) {
             const e = p.endereco_entrega;
             const retirada = p.tipo_entrega === 'retirada';
-            const itens = p.itens.map(i => `<li>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? ` (${esc(i.tamanho)})` : ''} - R$ ${Number(i.valor_total).toFixed(2)}</li>`).join('');
+            const itens = p.itens.map(i => `<li>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? ` (${esc(i.tamanho)})` : ''} - R$ ${Number(i.valor_total).toFixed(2)}${i.composicao ? `<ul style="margin:2px 0; padding-left:16px; color:var(--cor-texto-suave);">${i.composicao.map(c => `<li>${c.quantidade}x ${esc(c.nome)}${c.tamanho ? ` - ${esc(c.tamanho)}` : ''}</li>`).join('')}</ul>` : ''}</li>`).join('');
             const endereco = retirada
                 ? '<em>Cliente retira na loja.</em>'
                 : e ? `${esc(e.logradouro)}, ${esc(e.numero)} - ${esc(e.bairro)}<br>${esc(e.municipio)}/${esc(e.uf)} - CEP ${esc(e.cep)}`
