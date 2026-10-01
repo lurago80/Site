@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'empresa_id', 'cliente_id', 'vendedor_id', 'atendente_id', 'forma_pagamento_id',
     'canal', 'tipo_doc', 'status_pagamento', 'valor_total', 'comissao', 'data_venda',
     'cupom_id', 'desconto_pdv_id', 'valor_desconto', 'check_in_em', 'check_in_usuario_id',
-    'tipo_entrega', 'valor_frete', 'endereco_entrega',
+    'tipo_entrega', 'valor_frete', 'endereco_entrega', 'status_envio', 'codigo_rastreio',
 ])]
 class Venda extends Model
 {

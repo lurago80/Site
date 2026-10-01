@@ -168,6 +168,7 @@ class CheckoutController extends Controller
                 'tipo_entrega' => $tipoEntrega,
                 'valor_frete' => $valorFrete,
                 'endereco_entrega' => $enderecoEntrega,
+                'status_envio' => $tipoEntrega !== null ? 'a_separar' : null,
             ]);
 
             return $venda;

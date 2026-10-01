@@ -44,6 +44,9 @@
             <div class="grupo-label">PDV</div>
             <a class="link-pdv" href="{{ url("/pdv/{$empresaSlug}/caixa") }}" target="_blank">Abrir frente de caixa ↗</a>
 
+            <div class="grupo-label">Loja virtual</div>
+            <button onclick="mostrarSecao('pedidos-loja', this)">Pedidos da Loja</button>
+
             <div class="grupo-label">Cadastros</div>
             <button onclick="mostrarSecao('agenda', this)">Agenda de Visitas</button>
             <button onclick="mostrarSecao('produtos', this)">Produtos</button>
@@ -426,6 +429,39 @@
                         <tbody id="tbody-produtos"></tbody>
                     </table>
                     <p class="msg" id="msg-produtos"></p>
+                </div>
+            </section>
+
+            <section id="secao-pedidos-loja" class="secao">
+                <h1>Pedidos da Loja</h1>
+                <div class="card">
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Pedidos de produtos feitos na loja pública. Acompanhe a separação, o envio (com código de rastreio)
+                        e a retirada. Visitas agendadas sozinhas não aparecem aqui.
+                    </p>
+                    <div class="linha-form">
+                        <div><label>Envio</label>
+                            <select id="pl-filtro-envio" onchange="carregarPedidosLoja()">
+                                <option value="">Todos</option>
+                                <option value="a_separar">A separar</option>
+                                <option value="enviado">Enviado / pronto p/ retirada</option>
+                                <option value="entregue">Entregue / retirado</option>
+                            </select>
+                        </div>
+                        <div><label>Pagamento</label>
+                            <select id="pl-filtro-pagamento" onchange="carregarPedidosLoja()">
+                                <option value="">Todos</option>
+                                <option value="pago">Pago</option>
+                                <option value="pendente">Pendente</option>
+                            </select>
+                        </div>
+                        <div><button class="secundario" onclick="carregarPedidosLoja()">Atualizar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Entrega</th><th>Total</th><th>Pagamento</th><th>Envio</th><th></th></tr></thead>
+                        <tbody id="tbody-pedidos-loja"></tbody>
+                    </table>
+                    <p class="msg" id="msg-pedidos-loja"></p>
                 </div>
             </section>
 
@@ -1303,6 +1339,7 @@
             dashboard: carregarIndicadores,
             agenda: carregarAgenda,
             produtos: () => { carregarProdutos(); carregarGrupos(); },
+            'pedidos-loja': carregarPedidosLoja,
             clientes: carregarClientes,
             fornecedores: carregarFornecedores,
             compras: carregarCompras,
@@ -2920,6 +2957,105 @@
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Identidade visual salva.';
             carregarConfigLoja();
+        }
+
+        // ---- Pedidos da loja virtual ----
+
+        // Dados vindos da loja pública são digitados por qualquer pessoa -
+        // escapa antes de colocar em innerHTML.
+        function esc(valor) {
+            return String(valor ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        let pedidosLojaCache = [];
+
+        function rotuloEnvio(pedido) {
+            const retirada = pedido.tipo_entrega === 'retirada';
+            return {
+                a_separar: 'A separar',
+                enviado: retirada ? 'Pronto p/ retirada' : 'Enviado',
+                entregue: retirada ? 'Retirado' : 'Entregue',
+            }[pedido.status_envio] ?? '-';
+        }
+
+        async function carregarPedidosLoja() {
+            const params = new URLSearchParams();
+            const envio = document.getElementById('pl-filtro-envio').value;
+            const pagamento = document.getElementById('pl-filtro-pagamento').value;
+            if (envio) params.set('status_envio', envio);
+            if (pagamento) params.set('status_pagamento', pagamento);
+
+            const resp = await fetch(`${base}/pedidos-loja?${params}`, { headers: { 'Accept': 'application/json' } });
+            pedidosLojaCache = await resp.json();
+
+            document.getElementById('tbody-pedidos-loja').innerHTML = pedidosLojaCache.map(p => `
+                <tr>
+                    <td>#${p.id}</td>
+                    <td>${new Date(p.data_venda).toLocaleString('pt-BR')}</td>
+                    <td>${esc(p.cliente?.nome ?? '-')}</td>
+                    <td>${p.tipo_entrega === 'retirada' ? 'Retirada na loja' : p.tipo_entrega === 'entrega' ? `Entrega (frete R$ ${Number(p.valor_frete).toFixed(2)})` : '-'}</td>
+                    <td>R$ ${Number(p.valor_total).toFixed(2)}</td>
+                    <td>${esc(p.status_pagamento)}</td>
+                    <td>${esc(rotuloEnvio(p))}</td>
+                    <td><button class="secundario" onclick="alternarDetalhePedidoLoja(${p.id})">Detalhes</button></td>
+                </tr>
+                <tr id="pl-detalhe-${p.id}" style="display:none;"><td colspan="8">${detalhePedidoLoja(p)}</td></tr>
+            `).join('') || '<tr><td colspan="8">Nenhum pedido encontrado.</td></tr>';
+        }
+
+        function detalhePedidoLoja(p) {
+            const e = p.endereco_entrega;
+            const retirada = p.tipo_entrega === 'retirada';
+            const itens = p.itens.map(i => `<li>${i.quantidade}x ${esc(i.nome)}${i.tamanho ? ` (${esc(i.tamanho)})` : ''} - R$ ${Number(i.valor_total).toFixed(2)}</li>`).join('');
+            const endereco = retirada
+                ? '<em>Cliente retira na loja.</em>'
+                : e ? `${esc(e.logradouro)}, ${esc(e.numero)} - ${esc(e.bairro)}<br>${esc(e.municipio)}/${esc(e.uf)} - CEP ${esc(e.cep)}`
+                    : '<em>Endereço não informado.</em>';
+            const opcoesEnvio = [
+                ['a_separar', 'A separar'],
+                ['enviado', retirada ? 'Pronto para retirada' : 'Enviado'],
+                ['entregue', retirada ? 'Retirado' : 'Entregue'],
+            ].map(([v, r]) => `<option value="${v}" ${p.status_envio === v ? 'selected' : ''}>${r}</option>`).join('');
+
+            return `
+                <div style="display:flex; gap:32px; flex-wrap:wrap; font-size:13px;">
+                    <div><strong>Cliente</strong><br>${esc(p.cliente?.nome)}<br>${esc(p.cliente?.telefone)}<br>${esc(p.cliente?.email)}<br>${esc(p.cliente?.cpf_cnpj)}</div>
+                    <div><strong>${retirada ? 'Retirada' : 'Endereço de entrega'}</strong><br>${endereco}</div>
+                    <div><strong>Itens</strong><ul style="margin:4px 0; padding-left:18px;">${itens}</ul></div>
+                </div>
+                ${p.tipo_entrega ? `
+                <div class="linha-form" style="margin-top:10px;">
+                    <div><label>Situação do envio</label><select id="pl-envio-${p.id}">${opcoesEnvio}</select></div>
+                    ${retirada ? '' : `<div><label>Código de rastreio</label><input type="text" id="pl-rastreio-${p.id}" maxlength="60" value="${esc(p.codigo_rastreio ?? '')}"></div>`}
+                    <div><button class="acao" onclick="salvarEnvioPedidoLoja(${p.id})">Salvar</button></div>
+                </div>` : '<p style="font-size:12px; color:var(--cor-texto-suave);">Pedido anterior ao controle de entrega - sem situação de envio.</p>'}
+            `;
+        }
+
+        function alternarDetalhePedidoLoja(id) {
+            const linha = document.getElementById(`pl-detalhe-${id}`);
+            linha.style.display = linha.style.display === 'none' ? '' : 'none';
+        }
+
+        async function salvarEnvioPedidoLoja(id) {
+            const rastreio = document.getElementById(`pl-rastreio-${id}`);
+            const resp = await fetch(`${base}/pedidos-loja/${id}/envio`, {
+                method: 'PUT',
+                headers: headersJson,
+                body: JSON.stringify({
+                    status_envio: document.getElementById(`pl-envio-${id}`).value,
+                    codigo_rastreio: rastreio ? (rastreio.value || null) : null,
+                }),
+            });
+            const msg = document.getElementById('msg-pedidos-loja');
+            if (!resp.ok) {
+                const erro = await resp.json();
+                msg.className = 'msg erro'; msg.textContent = erro.message ?? 'Erro ao salvar o envio.';
+                return;
+            }
+            msg.className = 'msg ok'; msg.textContent = `Pedido #${id} atualizado.`;
+            await carregarPedidosLoja();
+            alternarDetalhePedidoLoja(id);
         }
 
         // ---- Frete da loja pública ----

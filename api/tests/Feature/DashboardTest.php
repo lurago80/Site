@@ -361,6 +361,63 @@ class DashboardTest extends TestCase
             ->assertStatus(403);
     }
 
+    public function test_lista_pedidos_da_loja_e_atualiza_o_envio(): void
+    {
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Chopp', 'tipo' => 'fisico', 'preco_venda' => 20, 'estoque_atual' => 10,
+        ]);
+        $cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Maria <b>Teste</b>', 'cpf_cnpj' => '12345678901']);
+
+        $pedido = Venda::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $cliente->id,
+            'canal' => 'site', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
+            'valor_total' => 52, 'data_venda' => now(),
+            'tipo_entrega' => 'entrega', 'valor_frete' => 12, 'status_envio' => 'a_separar',
+            'endereco_entrega' => ['logradouro' => 'Av. Paulista', 'numero' => '1000', 'uf' => 'SP'],
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $pedido->id, 'produto_id' => $produto->id,
+            'quantidade' => 2, 'valor_unitario' => 20, 'valor_total' => 40,
+        ]);
+
+        // Venda de PDV não entra na lista.
+        Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 10, 'data_venda' => now(),
+        ]);
+
+        $base = "/dashboard/{$this->empresa->slug}/pedidos-loja";
+
+        $this->actingAs($this->admin)->getJson($base)
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.endereco_entrega.logradouro', 'Av. Paulista')
+            ->assertJsonPath('0.itens.0.nome', 'Chopp');
+
+        $this->actingAs($this->admin)->getJson("{$base}?status_envio=enviado")->assertOk()->assertJsonCount(0);
+
+        $this->actingAs($this->admin)->putJson("{$base}/{$pedido->id}/envio", [
+            'status_envio' => 'enviado', 'codigo_rastreio' => 'BR123',
+        ])->assertOk()->assertJsonPath('codigo_rastreio', 'BR123');
+
+        $this->assertSame('enviado', $pedido->fresh()->status_envio);
+        $this->actingAs($this->admin)->getJson("{$base}?status_envio=enviado")->assertJsonCount(1);
+
+        $this->actingAs($this->admin)->putJson("{$base}/{$pedido->id}/envio", ['status_envio' => 'sumiu'])->assertStatus(422);
+    }
+
+    public function test_envio_de_pedido_sem_entrega_ou_de_pdv_retorna_404(): void
+    {
+        $pdv = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 10, 'data_venda' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/pedidos-loja/{$pdv->id}/envio", ['status_envio' => 'enviado'])
+            ->assertNotFound();
+    }
+
     public function test_cor_primaria_invalida_e_rejeitada(): void
     {
         $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-loja", [

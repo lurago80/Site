@@ -1487,6 +1487,79 @@ class DashboardController extends Controller
         return response()->json($empresaAtual->fresh()->only(['segmento', 'logo_url', 'cor_primaria']));
     }
 
+    // ---- Pedidos da loja virtual (acompanhamento de envio/retirada) ----
+
+    public function pedidosLoja(Request $request, string $empresa)
+    {
+        $filtros = $request->validate([
+            'status_envio' => ['nullable', 'string', 'in:a_separar,enviado,entregue'],
+            'status_pagamento' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        // Só pedidos do site com produto físico - visita agendada sozinha
+        // não tem o que separar/enviar.
+        $pedidos = Venda::where('empresa_id', $empresaAtual->id)
+            ->where('canal', 'site')
+            ->whereHas('itens', fn ($q) => $q->whereNotNull('produto_id'))
+            ->when($filtros['status_envio'] ?? null, fn ($q, $v) => $q->where('status_envio', $v))
+            ->when($filtros['status_pagamento'] ?? null, fn ($q, $v) => $q->where('status_pagamento', $v))
+            ->with(['cliente', 'itens' => fn ($q) => $q->whereNotNull('produto_id'), 'itens.produto', 'itens.produtoVariacao'])
+            ->orderByDesc('data_venda')
+            ->limit(200)
+            ->get();
+
+        return response()->json($pedidos->map(function (Venda $v) {
+            // Pedido antigo (antes do frete) não tem endereço guardado na
+            // venda - cai no endereço atual do cadastro do cliente.
+            $endereco = $v->endereco_entrega ?? ($v->cliente?->logradouro ? $v->cliente->only([
+                'cep', 'logradouro', 'numero', 'bairro', 'municipio', 'uf',
+            ]) : null);
+
+            return [
+                'id' => $v->id,
+                'data_venda' => $v->data_venda,
+                'status_pagamento' => $v->status_pagamento,
+                'valor_total' => $v->valor_total,
+                'valor_frete' => $v->valor_frete,
+                'tipo_entrega' => $v->tipo_entrega,
+                'status_envio' => $v->status_envio,
+                'codigo_rastreio' => $v->codigo_rastreio,
+                'endereco_entrega' => $endereco,
+                'cliente' => $v->cliente?->only(['nome', 'cpf_cnpj', 'email', 'telefone']),
+                'itens' => $v->itens->map(fn ($i) => [
+                    'quantidade' => $i->quantidade,
+                    'nome' => $i->produto?->nome,
+                    'tamanho' => $i->produtoVariacao?->tamanho,
+                    'valor_total' => $i->valor_total,
+                ])->values(),
+            ];
+        }));
+    }
+
+    public function atualizarEnvioPedidoLoja(Request $request, string $empresa, int $vendaId)
+    {
+        $dados = $request->validate([
+            'status_envio' => ['required', 'string', 'in:a_separar,enviado,entregue'],
+            'codigo_rastreio' => ['nullable', 'string', 'max:60'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $venda = Venda::where('empresa_id', $empresaAtual->id)
+            ->where('canal', 'site')
+            ->whereNotNull('tipo_entrega')
+            ->findOrFail($vendaId);
+
+        $venda->update([
+            'status_envio' => $dados['status_envio'],
+            'codigo_rastreio' => $venda->tipo_entrega === 'entrega' ? ($dados['codigo_rastreio'] ?? null) : null,
+        ]);
+
+        return response()->json($venda->fresh()->only(['id', 'status_envio', 'codigo_rastreio']));
+    }
+
     // ---- Frete da loja pública (tabela por UF, frete grátis e retirada) ----
 
     public function configFrete(Request $request, string $empresa)
