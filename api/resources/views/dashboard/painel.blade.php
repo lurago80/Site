@@ -224,10 +224,17 @@
                                     <tbody id="tbody-pr-tamanhos"></tbody>
                                 </table>
                                 <div class="linha-form" style="margin-top:10px">
+                                    <div style="min-width:260px"><label>Vinculado a um produto (opcional)</label>
+                                        <select id="pr-tam-novo-vinculo" onchange="vinculoTamanhoMudou()" style="width:100%"><option value="">Não - estoque próprio</option></select>
+                                    </div>
                                     <div><label>Tamanho / sabor</label><input type="text" id="pr-tam-novo-tamanho" placeholder="P, M, G, GG ou Pilsen, IPA..." maxlength="40" style="width:170px"></div>
                                     <div><label>Estoque</label><input type="number" id="pr-tam-novo-estoque" min="0" value="0" style="width:90px"></div>
                                     <div style="align-self:flex-end"><button type="button" onclick="adicionarTamanhoProduto()">Adicionar tamanho</button></div>
                                 </div>
+                                <p style="font-size:12px; color:var(--cor-texto-suave); margin:6px 0 0;">
+                                    Com <strong>vínculo</strong>, a opção é só a vitrine: o estoque, a baixa e o cadastro fiscal (NCM, CST) são do produto escolhido
+                                    (ex.: a opção PILSEN da CERVEJA ARTESANAL baixa o estoque da CERVEJA PILSEN). O estoque digitado é ignorado.
+                                </p>
                                 <p class="msg" id="msg-pr-tamanhos"></p>
                             </div>
                         </div>
@@ -1953,6 +1960,7 @@
             aviso.style.display = 'none';
             bloco.style.display = 'block';
             bloco.dataset.produtoId = produtoId;
+            preencherOpcoesVinculo(produtoId);
             const resp = await fetch(`${base}/produtos/${produtoId}/variacoes`, { headers: headersJson });
             const lista = await resp.json();
             renderizarTamanhosProduto(lista);
@@ -1963,9 +1971,12 @@
             tbody.innerHTML = '';
             lista.forEach((v) => {
                 const tr = document.createElement('tr');
+                const estoqueCelula = v.produto_vinculado
+                    ? `<span title="O estoque vem do produto vinculado">usa o estoque de <strong>${esc(v.produto_vinculado.nome)}</strong>: ${v.produto_vinculado.estoque_atual ?? 'ilimitado'}</span>`
+                    : `<input type="number" min="0" value="${v.estoque_atual}" style="width:90px" onchange="atualizarTamanhoProduto(${v.id}, { estoque_atual: Number(this.value) })">`;
                 tr.innerHTML = `
-                    <td>${v.tamanho}</td>
-                    <td><input type="number" min="0" value="${v.estoque_atual}" style="width:90px" onchange="atualizarTamanhoProduto(${v.id}, { estoque_atual: Number(this.value) })"></td>
+                    <td>${esc(v.tamanho)}</td>
+                    <td>${estoqueCelula}</td>
                     <td><input type="checkbox" ${v.ativo ? 'checked' : ''} onchange="atualizarTamanhoProduto(${v.id}, { ativo: this.checked })"></td>
                     <td><button type="button" onclick="removerTamanhoProduto(${v.id})">Remover</button></td>
                 `;
@@ -1977,18 +1988,43 @@
             const produtoId = document.getElementById('bloco-pr-tamanhos').dataset.produtoId;
             const tamanho = document.getElementById('pr-tam-novo-tamanho').value.trim();
             const estoque = Number(document.getElementById('pr-tam-novo-estoque').value || 0);
+            const vinculo = document.getElementById('pr-tam-novo-vinculo').value;
             const msg = document.getElementById('msg-pr-tamanhos');
             if (!tamanho) { msg.className = 'msg erro'; msg.textContent = 'Informe o tamanho.'; return; }
             const resp = await fetch(`${base}/produtos/${produtoId}/variacoes`, {
                 method: 'POST', headers: headersJson,
-                body: JSON.stringify({ tamanho, estoque_atual: estoque }),
+                body: JSON.stringify({ tamanho, estoque_atual: estoque, produto_vinculado_id: vinculo ? Number(vinculo) : null }),
             });
             const resposta = await resp.json();
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Tamanho adicionado.';
             document.getElementById('pr-tam-novo-tamanho').value = '';
             document.getElementById('pr-tam-novo-estoque').value = '0';
+            document.getElementById('pr-tam-novo-vinculo').value = '';
+            vinculoTamanhoMudou();
             carregarTamanhosProduto(produtoId);
+        }
+
+        // Produtos que podem ser vinculados: ativos, sem variações próprias, que não sejam kit nem o próprio produto.
+        function preencherOpcoesVinculo(produtoId) {
+            document.getElementById('pr-tam-novo-vinculo').innerHTML = '<option value="">Não - estoque próprio</option>' +
+                produtosCache
+                    .filter(x => x.ativo && !x.eh_kit && x.tipo === 'fisico' && x.id !== Number(produtoId) && (x.variacoes || []).length === 0)
+                    .map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('');
+        }
+
+        function vinculoTamanhoMudou() {
+            const select = document.getElementById('pr-tam-novo-vinculo');
+            const produto = produtosCache.find(x => x.id === Number(select.value));
+            const estoque = document.getElementById('pr-tam-novo-estoque');
+            estoque.disabled = !!produto;
+            if (!produto) return;
+
+            // sugere o nome do tipo: o do produto, sem a palavra inicial que ele divide com o produto pai (ex.: "CERVEJA ")
+            const primeira = (document.getElementById('pr-nome').value || '').trim().split(/\s+/)[0];
+            const nome = produto.nome.trim();
+            document.getElementById('pr-tam-novo-tamanho').value =
+                (primeira && nome.toUpperCase().startsWith(primeira.toUpperCase() + ' ') ? nome.slice(primeira.length + 1) : nome).slice(0, 40);
         }
 
         async function atualizarTamanhoProduto(variacaoId, campos) {
@@ -3336,7 +3372,7 @@
 
             selVar.style.display = variacoes.length ? '' : 'none';
             selVar.innerHTML = variacoes.length
-                ? '<option value="">Escolha...</option>' + variacoes.map(v => `<option value="${v.id}">${esc(v.tamanho)} (estoque ${v.estoque_atual})</option>`).join('')
+                ? '<option value="">Escolha...</option>' + variacoes.map(v => `<option value="${v.id}">${esc(v.tamanho)} (estoque ${v.produto_vinculado ? (v.produto_vinculado.estoque_atual ?? 'ilimitado') : v.estoque_atual})</option>`).join('')
                 : '';
             tr.querySelector('.nfe-item-valor').value = produto ? Number(produto.preco_venda).toFixed(2) : '';
             nfeAtualizarTotais();

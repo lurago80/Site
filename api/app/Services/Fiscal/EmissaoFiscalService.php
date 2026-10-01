@@ -463,6 +463,11 @@ class EmissaoFiscalService
                     throw new \InvalidArgumentException("Informe o tipo/tamanho de \"{$produto->nome}\".");
                 }
 
+                // variação vinculada: a nota e o estoque são do produto real (ex.: CERVEJA PILSEN)
+                if ($variacao !== null) {
+                    $produto = $variacao->produtoParaFaturar($produto);
+                }
+
                 $quantidade = round((float) $item['quantidade'], 3);
                 if ($quantidade <= 0) {
                     throw new \InvalidArgumentException("Quantidade de \"{$produto->nome}\" deve ser maior que zero.");
@@ -486,7 +491,7 @@ class EmissaoFiscalService
 
             if ($baixarEstoque && ! $empresa->estoque_permite_negativo) {
                 foreach ($linhas as $linha) {
-                    $disponivel = $linha['variacao']?->estoque_atual ?? $linha['produto']->estoque_atual;
+                    $disponivel = $linha['variacao'] !== null ? $linha['variacao']->estoqueDisponivel() : $linha['produto']->estoque_atual;
 
                     if ($disponivel !== null && $disponivel < $linha['quantidade']) {
                         throw new \InvalidArgumentException("Estoque insuficiente para {$linha['produto']->nome}.");
@@ -551,7 +556,8 @@ class EmissaoFiscalService
             if (! in_array($documento->status, ['rejeitada', 'denegada'], true) && $baixarEstoque) {
                 foreach ($linhas as $linha) {
                     if ($linha['variacao'] !== null) {
-                        $linha['variacao']->decrement('estoque_atual', $linha['quantidade']);
+                        // a SEFAZ já aceitou a nota: baixa sem abortar por saldo
+                        $linha['variacao']->baixar((int) ceil($linha['quantidade']), $linha['produto']->nome, true);
                     } elseif ($linha['produto']->estoque_atual !== null) {
                         $linha['produto']->decrement('estoque_atual', $linha['quantidade']);
                     }
@@ -767,7 +773,8 @@ class EmissaoFiscalService
     {
         $nome = $produto?->nome ?? 'Item';
 
-        return $variacao ? "{$nome} ({$variacao->tamanho})" : $nome;
+        // variação vinculada já tem o nome do produto real: não repete o tipo
+        return ($variacao && $variacao->produto_vinculado_id === null) ? "{$nome} ({$variacao->tamanho})" : $nome;
     }
 
     /**

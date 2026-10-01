@@ -342,8 +342,9 @@ class CheckoutController extends Controller
 
         if ($variacaoId !== null) {
             $variacao = ProdutoVariacao::where('produto_id', $produto->id)->findOrFail($variacaoId);
-            abort_if($variacao->estoque_atual < $quantidade, 409, 'Estoque insuficiente para '.$produto->nome.' (tamanho '.$variacao->tamanho.')');
-            $variacao->decrement('estoque_atual', $quantidade);
+            abort_if(! $variacao->disponivelParaVenda(), 422, "\"{$produto->nome} ({$variacao->tamanho})\" não está mais disponível.");
+            // variação vinculada baixa o estoque do produto real (ex.: CERVEJA PILSEN)
+            $variacao->baixar($quantidade, $produto->nome.' (tamanho '.$variacao->tamanho.')');
         } elseif ($produto->estoque_atual !== null) {
             abort_if($produto->estoque_atual < $quantidade, 409, 'Estoque insuficiente para '.$produto->nome);
             $produto->decrement('estoque_atual', $quantidade);
@@ -353,7 +354,8 @@ class CheckoutController extends Controller
 
         $venda->itens()->create([
             'empresa_id' => $venda->empresa_id,
-            'produto_id' => $produto->id,
+            // variação vinculada: o item (e a nota) é do produto real, com o preço da vitrine
+            'produto_id' => $variacao ? $variacao->produtoParaFaturar($produto)->id : $produto->id,
             'produto_variacao_id' => $variacao?->id,
             'quantidade' => $quantidade,
             'valor_unitario' => $produto->preco_venda,

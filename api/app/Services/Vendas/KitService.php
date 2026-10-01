@@ -19,7 +19,10 @@ class KitService
      */
     public function resumo(Produto $kit): array
     {
-        $kit->loadMissing(['componentes.produto.variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')]);
+        $kit->loadMissing([
+            'componentes.produto.variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho'),
+            'componentes.produto.variacoes.produtoVinculado',
+        ]);
 
         $fixos = [];
         $escolhas = [];
@@ -35,8 +38,8 @@ class KitService
                 continue;
             }
 
-            $variacoes = $produto->variacoes->map(fn ($v) => [
-                'id' => $v->id, 'tamanho' => $v->tamanho, 'estoque_atual' => $v->estoque_atual,
+            $variacoes = $produto->variacoes->filter(fn ($v) => $v->disponivelParaVenda())->map(fn ($v) => [
+                'id' => $v->id, 'tamanho' => $v->tamanho, 'estoque_atual' => $v->estoqueParaExibir(),
             ])->values();
 
             $escolhas[] = [
@@ -92,18 +95,28 @@ class KitService
         foreach ($porVariacao as $variacaoId => $quantidade) {
             $variacao = ProdutoVariacao::lockForUpdate()->where('ativo', true)->find($variacaoId);
 
-            abort_if($variacao === null || ! $grupos->has($variacao->produto_id), 422, "Escolha inválida para o kit \"{$kit->nome}\".");
+            abort_if(
+                $variacao === null || ! $grupos->has($variacao->produto_id) || ! $variacao->disponivelParaVenda(),
+                422,
+                "Escolha inválida para o kit \"{$kit->nome}\"."
+            );
 
-            $nomeProduto = $grupos[$variacao->produto_id]->produto->nome;
+            $pai = $grupos[$variacao->produto_id]->produto;
+            $nomeProduto = $pai->nome;
 
-            abort_if($variacao->estoque_atual < $quantidade, 409, "Estoque insuficiente para {$nomeProduto} ({$variacao->tamanho}).");
-            $variacao->decrement('estoque_atual', $quantidade);
+            // vinculada: baixa o estoque do produto real e a composição registra esse produto
+            $variacao->baixar($quantidade, "{$nomeProduto} ({$variacao->tamanho})");
+            $vinculada = $variacao->produto_vinculado_id !== null;
+            $produtoDaLinha = $variacao->produtoParaFaturar($pai);
 
             $totalPorGrupo[$variacao->produto_id] = ($totalPorGrupo[$variacao->produto_id] ?? 0) + $quantidade;
 
             $composicao[] = [
-                'produto_id' => $variacao->produto_id, 'nome' => $nomeProduto,
-                'variacao_id' => $variacao->id, 'tamanho' => $variacao->tamanho, 'quantidade' => $quantidade,
+                'produto_id' => $produtoDaLinha->id,
+                'nome' => $produtoDaLinha->nome,
+                'variacao_id' => $variacao->id,
+                'tamanho' => $vinculada ? null : $variacao->tamanho,
+                'quantidade' => $quantidade,
             ];
         }
 

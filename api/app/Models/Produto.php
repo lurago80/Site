@@ -118,6 +118,7 @@ class Produto extends Model
             'documentos fiscais' => DocumentoFiscalItem::where('produto_id', $this->id),
             'agenda de visitas' => AgendaVisitacao::where('produto_id', $this->id),
             'composição de kits' => KitComponente::where('produto_id', $this->id),
+            'variações vinculadas' => ProdutoVariacao::where('produto_vinculado_id', $this->id),
         ];
 
         $encontrados = [];

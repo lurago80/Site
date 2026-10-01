@@ -168,7 +168,7 @@ class DashboardController extends Controller
 
         return response()->json(
             Produto::where('empresa_id', $empresaAtual->id)
-                ->with(['fornecedor', 'grupo', 'classTrib', 'creditoPresumido', 'variacoes'])
+                ->with(['fornecedor', 'grupo', 'classTrib', 'creditoPresumido', 'variacoes.produtoVinculado:id,nome,estoque_atual'])
                 ->orderBy('nome')
                 ->get()
         );
@@ -184,7 +184,9 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
         $produto = Produto::where('empresa_id', $empresaAtual->id)->findOrFail($produtoId);
 
-        return response()->json($produto->variacoes()->orderBy('tamanho')->get());
+        return response()->json(
+            $produto->variacoes()->with('produtoVinculado:id,nome,estoque_atual')->orderBy('tamanho')->get()
+        );
     }
 
     public function criarVariacaoProduto(Request $request, string $empresa, int $produtoId)
@@ -196,7 +198,10 @@ class DashboardController extends Controller
             'tamanho' => ['required', 'string', 'max:40'],
             'estoque_atual' => ['nullable', 'integer', 'min:0'],
             'ativo' => ['sometimes', 'boolean'],
+            'produto_vinculado_id' => ['nullable', 'integer'],
         ]);
+
+        $this->validarProdutoVinculado($empresaAtual->id, $produto, $dados['produto_vinculado_id'] ?? null);
 
         $variacao = ProdutoVariacao::create($dados + [
             'empresa_id' => $empresaAtual->id,
@@ -219,11 +224,38 @@ class DashboardController extends Controller
             'tamanho' => ['sometimes', 'string', 'max:40'],
             'estoque_atual' => ['sometimes', 'integer', 'min:0'],
             'ativo' => ['sometimes', 'boolean'],
+            'produto_vinculado_id' => ['sometimes', 'nullable', 'integer'],
         ]);
+
+        if (array_key_exists('produto_vinculado_id', $dados)) {
+            $this->validarProdutoVinculado($empresaAtual->id, Produto::findOrFail($produtoId), $dados['produto_vinculado_id']);
+        }
 
         $variacao->update($dados);
 
-        return response()->json($variacao->fresh());
+        return response()->json($variacao->fresh()->load('produtoVinculado:id,nome,estoque_atual'));
+    }
+
+    /**
+     * Variação "vinculada": o estoque, a baixa e o cadastro fiscal passam a ser do
+     * produto vinculado (ex.: a opção PILSEN da CERVEJA ARTESANAL usa a CERVEJA PILSEN).
+     */
+    private function validarProdutoVinculado(int $empresaId, Produto $pai, ?int $vinculadoId): void
+    {
+        if ($vinculadoId === null) {
+            return;
+        }
+
+        $vinculado = Produto::where('empresa_id', $empresaId)->find($vinculadoId);
+
+        abort_if($vinculado === null, 422, 'Produto vinculado não encontrado.');
+        abort_if($vinculado->id === $pai->id, 422, 'O produto não pode ser vinculado a ele mesmo.');
+        abort_if($vinculado->eh_kit, 422, 'Um kit não pode ser vinculado a uma variação.');
+        abort_if(
+            $vinculado->variacoes()->exists(),
+            422,
+            'O produto vinculado não pode ter variações próprias: é o estoque dele que será usado.'
+        );
     }
 
     public function excluirVariacaoProduto(Request $request, string $empresa, int $produtoId, int $variacaoId)

@@ -165,12 +165,8 @@ class VendaPdvService
         $variacao = null;
         if (! empty($item['variacao_id'])) {
             $variacao = ProdutoVariacao::where('produto_id', $produto->id)->findOrFail($item['variacao_id']);
-            abort_if(
-                ! $empresa->estoque_permite_negativo && $variacao->estoque_atual < $quantidade,
-                409,
-                "Estoque insuficiente para {$produto->nome} ({$variacao->tamanho})."
-            );
-            $variacao->decrement('estoque_atual', $quantidade);
+            abort_if(! $variacao->disponivelParaVenda(), 422, "\"{$produto->nome} ({$variacao->tamanho})\" está desativado e não pode ser vendido.");
+            $variacao->baixar($quantidade, "{$produto->nome} ({$variacao->tamanho})", (bool) $empresa->estoque_permite_negativo);
         } elseif ($produto->estoque_atual !== null) {
             abort_if(
                 ! $empresa->estoque_permite_negativo && $produto->estoque_atual < $quantidade,
@@ -185,7 +181,7 @@ class VendaPdvService
 
         $venda->itens()->create([
             'empresa_id' => $venda->empresa_id,
-            'produto_id' => $produto->id,
+            'produto_id' => $variacao ? $variacao->produtoParaFaturar($produto)->id : $produto->id,
             'produto_variacao_id' => $variacao?->id,
             'quantidade' => $quantidade,
             'valor_unitario' => $produto->preco_venda,

@@ -26,11 +26,11 @@ class LojaPublicaPresenter
             'imagem_url' => $produto->imagem_url,
             'quantidade_minima_venda' => $produto->quantidade_minima_venda,
             'eh_kit' => $produto->eh_kit,
-            'variacoes' => $produto->variacoes->map(fn ($v) => [
+            'variacoes' => $produto->variacoes->filter(fn ($v) => $v->disponivelParaVenda())->map(fn ($v) => [
                 'id' => $v->id,
                 'tamanho' => $v->tamanho,
-                'estoque_atual' => $v->estoque_atual,
-                'ativo' => $v->ativo,
+                'estoque_atual' => $v->estoqueParaExibir(),
+                'ativo' => true,
             ])->values()->all(),
         ];
 
@@ -54,7 +54,8 @@ class LojaPublicaPresenter
             'valor_total' => $item->valor_total,
             'composicao' => $item->composicao,
             'produto' => $item->produto ? ['nome' => $item->produto->nome] : null,
-            'produto_variacao' => $item->produtoVariacao ? ['tamanho' => $item->produtoVariacao->tamanho] : null,
+            // variação vinculada: o item já é o produto real, o nome do tipo seria repetição
+            'produto_variacao' => ($item->produtoVariacao && $item->produtoVariacao->produto_vinculado_id === null) ? ['tamanho' => $item->produtoVariacao->tamanho] : null,
             'agenda_visitacao' => $item->agendaVisitacao ? ['data_hora' => $item->agendaVisitacao->data_hora] : null,
         ])->values()->all();
     }
