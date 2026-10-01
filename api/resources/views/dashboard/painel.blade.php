@@ -162,6 +162,7 @@
                                 <label class="campo-check"><input type="checkbox" id="pr-pesavel"> Pesável</label>
                                 <label class="campo-check"><input type="checkbox" id="pr-ativo" checked> Ativo</label>
                                 <label class="campo-check"><input type="checkbox" id="pr-loja-virtual" checked> Loja virtual</label>
+                                <label class="campo-check" title="Não aparece no PDV (frente de caixa); só pode ser vendido na loja virtual."><input type="checkbox" id="pr-somente-loja-virtual"> Somente loja virtual</label>
                             </div>
                         </div>
 
@@ -1707,6 +1708,7 @@
             document.getElementById('pr-pesavel').checked = !!p.pesavel;
             document.getElementById('pr-ativo').checked = !!p.ativo;
             document.getElementById('pr-loja-virtual').checked = !!p.loja_virtual;
+            document.getElementById('pr-somente-loja-virtual').checked = !!p.somente_loja_virtual;
             document.getElementById('pr-preco').value = p.preco_venda;
             document.getElementById('pr-custo').value = p.preco_custo ?? '';
             document.getElementById('pr-valor-atacado').value = p.valor_atacado ?? '';
@@ -1819,6 +1821,7 @@
             document.getElementById('pr-pesavel').checked = false;
             document.getElementById('pr-ativo').checked = true;
             document.getElementById('pr-loja-virtual').checked = true;
+            document.getElementById('pr-somente-loja-virtual').checked = false;
             document.getElementById('pr-sujeito-is').checked = false;
             document.getElementById('pr-imagem-arquivo').value = '';
             document.getElementById('pr-imagem-origem-url').checked = true;
@@ -1995,7 +1998,8 @@
                 fornecedor_id: document.getElementById('pr-fornecedor').value || null,
                 pesavel: document.getElementById('pr-pesavel').checked,
                 ativo: document.getElementById('pr-ativo').checked,
-                loja_virtual: document.getElementById('pr-loja-virtual').checked,
+                loja_virtual: document.getElementById('pr-loja-virtual').checked || document.getElementById('pr-somente-loja-virtual').checked,
+                somente_loja_virtual: document.getElementById('pr-somente-loja-virtual').checked,
                 preco_venda: Number(document.getElementById('pr-preco').value),
                 preco_custo: document.getElementById('pr-custo').value || null,
                 valor_atacado: document.getElementById('pr-valor-atacado').value || null,

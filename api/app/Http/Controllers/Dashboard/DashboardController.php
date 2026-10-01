@@ -363,11 +363,20 @@ class DashboardController extends Controller
             $dados['imagem_url'] = $this->armazenarImagemProduto($request->file('imagem'));
         }
 
+        $somenteLoja = (bool) ($dados['somente_loja_virtual'] ?? false);
+
+        // produto só da loja virtual precisa, claro, aparecer na loja
+        // ($dados + [...] mantém o valor enviado, por isso força aqui)
+        if ($somenteLoja) {
+            $dados['loja_virtual'] = true;
+        }
+
         $produto = Produto::create($dados + [
             'empresa_id' => $empresaAtual->id,
             'unidade' => $dados['unidade'] ?? 'UN',
             'ativo' => $dados['ativo'] ?? true,
             'loja_virtual' => $dados['loja_virtual'] ?? true,
+            'somente_loja_virtual' => $somenteLoja,
         ]);
 
         return response()->json($produto, 201);
@@ -386,6 +395,10 @@ class DashboardController extends Controller
         unset($dados['imagem']);
         if ($request->hasFile('imagem')) {
             $dados['imagem_url'] = $this->armazenarImagemProduto($request->file('imagem'));
+        }
+
+        if (! empty($dados['somente_loja_virtual'])) {
+            $dados['loja_virtual'] = true;
         }
 
         $produto->update($dados);
@@ -440,6 +453,7 @@ class DashboardController extends Controller
             'quantidade_minima_venda' => ['nullable', 'integer', 'min:1'],
             'ativo' => ['sometimes', 'boolean'],
             'loja_virtual' => ['sometimes', 'boolean'],
+            'somente_loja_virtual' => ['sometimes', 'boolean'],
             'pesavel' => ['sometimes', 'boolean'],
             'imagem_url' => ['nullable', 'string', 'max:255'],
             'imagem' => ['nullable', 'file', 'image', 'max:5120'],

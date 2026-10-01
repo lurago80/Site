@@ -158,6 +158,7 @@ class VendaPdvService
     {
         $produto = Produto::findOrFail($item['produto_id']);
         abort_if($produto->eh_kit, 422, "O kit \"{$produto->nome}\" só é vendido na loja virtual.");
+        abort_if($produto->somente_loja_virtual, 422, "\"{$produto->nome}\" só é vendido na loja virtual.");
         $quantidade = (int) $item['quantidade'];
 
         $variacao = null;

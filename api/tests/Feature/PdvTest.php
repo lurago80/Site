@@ -106,6 +106,26 @@ class PdvTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_produto_somente_loja_virtual_nao_aparece_nem_e_vendido_no_pdv(): void
+    {
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Exclusiva da Loja',
+            'tipo' => 'fisico', 'preco_venda' => 20.00, 'estoque_atual' => 10,
+            'loja_virtual' => true, 'somente_loja_virtual' => true,
+        ]);
+
+        $this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=Exclusiva")->assertOk()->assertJsonCount(0);
+
+        $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $produto->id, 'quantidade' => 1]],
+        ])->assertStatus(422);
+
+        $this->assertSame(10, $produto->fresh()->estoque_atual);
+    }
+
     public function test_venda_nao_fiscal_de_produto_debita_estoque(): void
     {
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [

@@ -446,6 +446,28 @@ class DashboardTest extends TestCase
         $this->assertFalse($kit->fresh()->eh_kit);
     }
 
+    public function test_produto_somente_loja_virtual_e_criado_ja_visivel_na_loja_e_fora_do_pdv(): void
+    {
+        // marcou "somente loja virtual" mesmo com "loja virtual" desmarcada: continua aparecendo na loja
+        $resposta = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/produtos", [
+            'nome' => 'Cerveja Artesanal', 'tipo' => 'fisico', 'preco_venda' => 20,
+            'loja_virtual' => false, 'somente_loja_virtual' => true,
+        ])->assertCreated();
+
+        $this->assertTrue($resposta->json('loja_virtual'));
+        $this->assertTrue($resposta->json('somente_loja_virtual'));
+
+        $id = $resposta->json('id');
+
+        // ao editar para somente loja virtual, também força a aparecer na loja
+        $outro = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Outro', 'tipo' => 'fisico', 'preco_venda' => 5, 'loja_virtual' => false]);
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/produtos/{$outro->id}", ['somente_loja_virtual' => true])->assertOk();
+        $this->assertTrue($outro->fresh()->loja_virtual);
+
+        $catalogo = $this->getJson("/api/loja/{$this->empresa->slug}/produtos")->assertOk()->json();
+        $this->assertContains($id, collect($catalogo)->pluck('id')->all());
+    }
+
     public function test_cor_primaria_invalida_e_rejeitada(): void
     {
         $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-loja", [
