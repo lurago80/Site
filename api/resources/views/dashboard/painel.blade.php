@@ -2153,11 +2153,11 @@
             clientesCache = await resp.json();
             document.getElementById('tbody-clientes').innerHTML = clientesCache.map(c => `
                 <tr>
-                    <td>${c.nome}</td>
-                    <td>${c.cpf_cnpj ?? '-'}</td>
-                    <td>${c.email ?? '-'}</td>
-                    <td>${c.telefone ?? '-'}</td>
-                    <td>${c.logradouro ? `${c.logradouro}, ${c.numero} - ${c.municipio}/${c.uf}` : '<em>incompleto</em>'}</td>
+                    <td>${esc(c.nome)}</td>
+                    <td>${esc(c.cpf_cnpj ?? '-')}</td>
+                    <td>${esc(c.email ?? '-')}</td>
+                    <td>${esc(c.telefone ?? '-')}</td>
+                    <td>${c.logradouro ? esc(`${c.logradouro}, ${c.numero} - ${c.municipio}/${c.uf}`) : '<em>incompleto</em>'}</td>
                     <td>${c.consentimento_lgpd ? 'Sim' : 'Não'}</td>
                     <td><button class="secundario" onclick="editarCliente(${c.id})">Editar</button></td>
                 </tr>
@@ -2598,7 +2598,7 @@
             const lista = await resp.json();
             document.getElementById('tbody-contas-receber').innerHTML = lista.map(c => `
                 <tr>
-                    <td>${c.cliente ? c.cliente.nome : '-'}</td>
+                    <td>${c.cliente ? esc(c.cliente.nome) : '-'}</td>
                     <td>${c.historico ?? '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
                     <td>${c.vencimento}</td>
@@ -2650,7 +2650,7 @@
             document.getElementById('cp-fornecedor').innerHTML = '<option value="">Nenhum</option>' +
                 fornecedoresLista.map(f => `<option value="${f.id}">${f.razao_social}</option>`).join('');
             document.getElementById('cr-cliente').innerHTML = '<option value="">Nenhum</option>' +
-                clientesLista.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+                clientesLista.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
         }
 
         // ---- Grupos de produto ----
@@ -3202,7 +3202,7 @@
             tbody.innerHTML = vendas.map(v => `
                 <tr>
                     <td>#${v.id}</td>
-                    <td>${v.cliente ? v.cliente.nome : 'Consumidor não identificado'}</td>
+                    <td>${v.cliente ? esc(v.cliente.nome) : 'Consumidor não identificado'}</td>
                     <td>R$ ${Number(v.valor_total).toFixed(2)}</td>
                     <td>${new Date(v.data_venda).toLocaleString('pt-BR')}</td>
                     <td><button onclick="importarFiscal(${v.id})">Emitir NFC-e</button></td>
@@ -3231,7 +3231,7 @@
             tbody.innerHTML = lista.map(d => `
                 <tr>
                     <td>#${d.numero}</td>
-                    <td>${d.cliente || 'Não identificado'}${d.cliente_completo ? '' : ' <span style="color:#c81e1e;">(endereço incompleto)</span>'}</td>
+                    <td>${esc(d.cliente || 'Não identificado')}${d.cliente_completo ? '' : ' <span style="color:#c81e1e;">(endereço incompleto)</span>'}</td>
                     <td>R$ ${Number(d.total).toFixed(2)}</td>
                     <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
                     <td><button onclick="importarNfceFiscal(${d.id})" ${d.cliente_completo ? '' : 'disabled'}>Gerar NFe</button></td>
