@@ -16,6 +16,7 @@ use App\Models\ContaReceber;
 use App\Models\Cupom;
 use App\Jobs\EnviarPedidoEnviadoJob;
 use App\Models\Empresa;
+use App\Support\ErroCertificado;
 use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
@@ -1319,7 +1320,7 @@ class DashboardController extends Controller
             $certificadoPfx = Certificate::readPfx($conteudo, $dados['senha']);
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'Não foi possível ler o certificado - senha incorreta ou arquivo inválido.',
+                'message' => ErroCertificado::mensagem($e),
             ], 422);
         }
 
