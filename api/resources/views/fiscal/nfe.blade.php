@@ -43,15 +43,32 @@
         </p>
     @endif
 
+    @php
+        $destinatario = $documento->cliente ?? $documento->venda?->cliente;
+        $endereco = ($documento->venda?->tipo_entrega === 'entrega' && $documento->venda->endereco_entrega)
+            ? $documento->venda->endereco_entrega
+            : ($destinatario ? $destinatario->only(['logradouro', 'numero', 'bairro', 'municipio', 'uf']) : []);
+    @endphp
+
+    @if ($documento->ambiente === 'homologacao')
+        <p style="text-align:center; font-weight:bold; color:#b02525; border:1px dashed #b02525; padding:6px;">
+            EMITIDA EM AMBIENTE DE HOMOLOGAÇÃO - SEM VALOR FISCAL
+        </p>
+    @endif
+
+    @if ($documento->natureza_operacao)
+        <p style="font-size:11px;"><strong>Natureza da operação:</strong> {{ $documento->natureza_operacao }}</p>
+    @endif
+
     <div class="bloco">
         <h2>Destinatário</h2>
         <p>
-            {{ $documento->venda->cliente->nome ?? 'Não identificado' }}
-            — {{ $documento->venda->cliente->cpf_cnpj ?? '-' }}<br>
-            @if ($documento->venda->cliente?->logradouro)
-                {{ $documento->venda->cliente->logradouro }}, {{ $documento->venda->cliente->numero }} —
-                {{ $documento->venda->cliente->bairro }} —
-                {{ $documento->venda->cliente->municipio }}/{{ $documento->venda->cliente->uf }}
+            {{ $destinatario->nome ?? ($documento->compra?->fornecedor?->razao_social ?? 'Não identificado') }}
+            — {{ $destinatario->cpf_cnpj ?? ($documento->compra?->fornecedor?->cnpj ?? '-') }}<br>
+            @if (! empty($endereco['logradouro']))
+                {{ $endereco['logradouro'] }}, {{ $endereco['numero'] ?? '' }} —
+                {{ $endereco['bairro'] ?? '' }} —
+                {{ $endereco['municipio'] ?? '' }}/{{ $endereco['uf'] ?? '' }}
             @endif
         </p>
     </div>
@@ -63,7 +80,7 @@
             <tbody>
                 @foreach ($documento->itens as $item)
                     <tr>
-                        <td>{{ $item->produto->nome ?? 'Item' }}</td>
+                        <td>{{ $item->descricao ?: ($item->produto->nome ?? 'Item') }}</td>
                         <td>{{ $item->ncm }}</td>
                         <td>{{ $item->cfop }}</td>
                         <td>{{ $item->quantidade }}</td>
@@ -76,10 +93,32 @@
 
     <div class="bloco">
         <h2>Totais</h2>
+        @if ($documento->frete > 0)
+            <p style="text-align:right; margin:0;">Produtos: R$ {{ number_format($documento->valor_produtos, 2, ',', '.') }}</p>
+            <p style="text-align:right; margin:0;">Frete: R$ {{ number_format($documento->frete, 2, ',', '.') }}</p>
+        @endif
         <p style="font-size:16px; font-weight:bold; text-align:right;">
             R$ {{ number_format($documento->total, 2, ',', '.') }}
         </p>
     </div>
+
+    @if (! empty($documento->transportadora['nome']))
+        <div class="bloco">
+            <h2>Transportadora</h2>
+            <p>
+                {{ $documento->transportadora['nome'] }}
+                @if (! empty($documento->transportadora['documento'])) — {{ $documento->transportadora['documento'] }} @endif
+                @if (! empty($documento->transportadora['municipio'])) — {{ $documento->transportadora['municipio'] }}/{{ $documento->transportadora['uf'] ?? '' }} @endif
+            </p>
+        </div>
+    @endif
+
+    @if ($documento->informacoes_adicionais)
+        <div class="bloco">
+            <h2>Informações complementares</h2>
+            <p>{{ $documento->informacoes_adicionais }}</p>
+        </div>
+    @endif
 
     @if ($documento->status === 'cancelada')
         <div class="bloco" style="border-color:#b02525;">

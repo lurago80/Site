@@ -3,11 +3,16 @@
 namespace App\Services\Fiscal;
 
 use App\Models\CertificadoDigital;
+use App\Models\Cliente;
+use App\Models\Cobranca;
 use App\Models\Compra;
 use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\DocumentoFiscalItem;
+use App\Models\Empresa;
 use App\Models\NumeracaoInutilizada;
+use App\Models\Produto;
+use App\Models\ProdutoVariacao;
 use App\Models\Venda;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -404,6 +409,343 @@ class EmissaoFiscalService
 
             return $documento->fresh('itens');
         });
+    }
+
+    /**
+     * NFe (modelo 55) emitida direto na retaguarda, sem venda de PDV: venda
+     * avulsa, remessa, transferência ou bonificação (ver OperacoesNfe). O
+     * destinatário é um cliente cadastrado; o frete é rateado entre os itens.
+     * Estoque só é baixado (quando a operação baixa) depois que a SEFAZ aceita.
+     *
+     * @param  array{
+     *     tipo: string, cliente_id: int, natureza_operacao?: ?string, cfop?: ?string,
+     *     itens: array<int, array{produto_id: int, variacao_id?: ?int, quantidade: float|int|string, valor_unitario?: float|int|string|null}>,
+     *     frete?: float|int|string|null, modalidade_frete?: ?int, transportadora?: ?array,
+     *     informacoes_adicionais?: ?string, baixar_estoque?: ?bool, forma_pagamento_id?: ?int
+     * }  $dados
+     */
+    public function emitirNfeAvulsa(Empresa $empresa, array $dados): DocumentoFiscal
+    {
+        $tipo = $dados['tipo'] ?? '';
+        $operacao = OperacoesNfe::TIPOS[$tipo] ?? null;
+
+        if ($operacao === null) {
+            throw new \InvalidArgumentException('Tipo de operação inválido para NFe.');
+        }
+
+        if (empty($dados['itens'])) {
+            throw new \InvalidArgumentException('Informe ao menos um item na NFe.');
+        }
+
+        $cliente = Cliente::findOrFail($dados['cliente_id']);
+        $baixarEstoque = (bool) ($dados['baixar_estoque'] ?? $operacao['baixa_estoque']);
+
+        return DB::transaction(function () use ($empresa, $dados, $tipo, $operacao, $cliente, $baixarEstoque) {
+            $configFiscal = $this->configFiscalParaNfe($empresa);
+
+            if (empty($empresa->uf) || empty($cliente->uf)) {
+                throw new \RuntimeException('UF da empresa e do destinatário são obrigatórias para definir o CFOP.');
+            }
+
+            $interno = strtoupper($empresa->uf) === strtoupper($cliente->uf);
+
+            $linhas = collect($dados['itens'])->map(function (array $item) use ($dados, $operacao, $interno) {
+                $produto = Produto::findOrFail($item['produto_id']);
+
+                if ($produto->eh_kit) {
+                    throw new \InvalidArgumentException("\"{$produto->nome}\" é um kit - emita a NFe pelo pedido da loja.");
+                }
+
+                $variacao = null;
+                if (! empty($item['variacao_id'])) {
+                    $variacao = ProdutoVariacao::where('produto_id', $produto->id)->findOrFail($item['variacao_id']);
+                } elseif ($produto->variacoes()->where('ativo', true)->exists()) {
+                    throw new \InvalidArgumentException("Informe o tipo/tamanho de \"{$produto->nome}\".");
+                }
+
+                $quantidade = round((float) $item['quantidade'], 3);
+                if ($quantidade <= 0) {
+                    throw new \InvalidArgumentException("Quantidade de \"{$produto->nome}\" deve ser maior que zero.");
+                }
+
+                $valorUnitario = round((float) ($item['valor_unitario'] ?? $produto->preco_venda), 2);
+
+                $cfopBase = ! empty($dados['cfop'])
+                    ? $dados['cfop']
+                    : ($operacao['cfop'] === '5102' ? ($produto->cfop_padrao ?: $operacao['cfop']) : $operacao['cfop']);
+
+                return [
+                    'produto' => $produto,
+                    'variacao' => $variacao,
+                    'quantidade' => $quantidade,
+                    'valor_unitario' => $valorUnitario,
+                    'valor_total' => round($quantidade * $valorUnitario, 2),
+                    'cfop' => $this->cfopResolver->ajustarPorDestino($cfopBase, $interno),
+                ];
+            });
+
+            if ($baixarEstoque && ! $empresa->estoque_permite_negativo) {
+                foreach ($linhas as $linha) {
+                    $disponivel = $linha['variacao']?->estoque_atual ?? $linha['produto']->estoque_atual;
+
+                    if ($disponivel !== null && $disponivel < $linha['quantidade']) {
+                        throw new \InvalidArgumentException("Estoque insuficiente para {$linha['produto']->nome}.");
+                    }
+                }
+            }
+
+            $valorProdutos = round($linhas->sum('valor_total'), 2);
+            $frete = round((float) ($dados['frete'] ?? 0), 2);
+            $modalidade = $dados['modalidade_frete'] ?? ($frete > 0 ? 0 : 9);
+
+            if ($frete > 0 && (int) $modalidade === 9) {
+                throw new \InvalidArgumentException('Para cobrar frete, escolha quem paga o transporte (modalidade do frete).');
+            }
+
+            $tpag = $operacao['tpag'];
+            if ($tpag === null && ! empty($dados['forma_pagamento_id'])) {
+                $tpag = \App\Models\FormaPagamento::find($dados['forma_pagamento_id'])?->codigo_tpag;
+            }
+
+            [$serie, $numero] = $this->proximoNumero($configFiscal, 55);
+
+            $documento = DocumentoFiscal::create([
+                'empresa_id' => $empresa->id,
+                'cliente_id' => $cliente->id,
+                'tipo_operacao' => $tipo,
+                'modelo' => 55,
+                'serie' => $serie,
+                'numero' => $numero,
+                'ambiente' => $configFiscal->ambiente_ativo,
+                'status' => 'contingencia',
+                'natureza_operacao' => mb_substr($dados['natureza_operacao'] ?? $operacao['natureza'], 0, 60),
+                'cfop_geral' => $dados['cfop'] ?? null,
+                'valor_produtos' => $valorProdutos,
+                'frete' => $frete,
+                'total' => round($valorProdutos + $frete, 2),
+                'modalidade_frete' => (int) $modalidade,
+                'transportadora' => $dados['transportadora'] ?? null,
+                'informacoes_adicionais' => $dados['informacoes_adicionais'] ?? null,
+                'indicador_presenca' => $operacao['ind_pres'],
+                'tpag' => $tpag,
+            ]);
+
+            $fretes = $this->ratearFrete($linhas->pluck('valor_total')->all(), $frete);
+
+            $itensEmMemoria = $linhas->values()->map(fn (array $linha, int $i) => new DocumentoFiscalItem([
+                'empresa_id' => $empresa->id,
+                'documento_fiscal_id' => $documento->id,
+                'produto_id' => $linha['produto']->id,
+                'variacao_id' => $linha['variacao']?->id,
+                'descricao' => $this->descricaoItem($linha['produto'], $linha['variacao']),
+                'ncm' => $linha['produto']->ncm,
+                'cfop' => $linha['cfop'],
+                'quantidade' => $linha['quantidade'],
+                'valor_unitario' => $linha['valor_unitario'],
+                'valor_total' => $linha['valor_total'],
+                'valor_frete' => $fretes[$i],
+            ]));
+
+            $this->enviarEPersistir($documento, $itensEmMemoria, $empresa, $configFiscal);
+
+            if (! in_array($documento->status, ['rejeitada', 'denegada'], true) && $baixarEstoque) {
+                foreach ($linhas as $linha) {
+                    if ($linha['variacao'] !== null) {
+                        $linha['variacao']->decrement('estoque_atual', $linha['quantidade']);
+                    } elseif ($linha['produto']->estoque_atual !== null) {
+                        $linha['produto']->decrement('estoque_atual', $linha['quantidade']);
+                    }
+                }
+            }
+
+            return $documento->fresh(['itens', 'cliente']);
+        });
+    }
+
+    /**
+     * NFe (modelo 55) de um pedido da loja virtual já pago: só os produtos
+     * (visita agendada não entra), com o frete cobrado no pedido, o endereço
+     * de entrega daquele pedido e a forma de pagamento usada. Estoque já foi
+     * baixado no checkout - aqui não mexe nele.
+     */
+    public function emitirNfePedidoLoja(Venda $venda): DocumentoFiscal
+    {
+        if ($venda->canal !== 'site') {
+            throw new \RuntimeException('Esta ação vale só para pedidos da loja virtual.');
+        }
+
+        if ($venda->status_pagamento !== 'pago') {
+            throw new \RuntimeException('Só é possível emitir a NFe de um pedido já pago.');
+        }
+
+        if ($venda->cliente === null) {
+            throw new \RuntimeException('O pedido não tem cliente identificado.');
+        }
+
+        $venda->loadMissing(['itens.produto', 'itens.produtoVariacao', 'empresa']);
+        $itensProduto = $venda->itens->filter(fn ($item) => $item->produto_id !== null)->values();
+
+        if ($itensProduto->isEmpty()) {
+            throw new \RuntimeException('O pedido não tem produtos para faturar.');
+        }
+
+        if (DocumentoFiscal::where('venda_id', $venda->id)->where('modelo', 55)->where('tipo_operacao', 'venda')->where('status', 'autorizada')->exists()) {
+            throw new \RuntimeException('Este pedido já possui NFe autorizada.');
+        }
+
+        $empresa = $venda->empresa;
+
+        return DB::transaction(function () use ($venda, $itensProduto, $empresa) {
+            $configFiscal = $this->configFiscalParaNfe($empresa);
+
+            $entrega = $venda->tipo_entrega === 'entrega';
+            $uf = $entrega ? ($venda->endereco_entrega['uf'] ?? null) : $venda->cliente->uf;
+
+            if (empty($empresa->uf) || empty($uf)) {
+                throw new \RuntimeException('UF da empresa e do destinatário são obrigatórias para definir o CFOP.');
+            }
+
+            $interno = strtoupper($empresa->uf) === strtoupper($uf);
+            $frete = $entrega ? round((float) $venda->valor_frete, 2) : 0.0;
+            $valorProdutos = round((float) $itensProduto->sum('valor_total'), 2);
+
+            $metodo = Cobranca::where('venda_id', $venda->id)->latest('id')->value('metodo');
+            $tpag = match ($metodo) {
+                'pix' => '17',
+                'cartao_credito' => '03',
+                'cartao_debito' => '04',
+                default => null,
+            };
+
+            [$serie, $numero] = $this->proximoNumero($configFiscal, 55);
+
+            $documento = DocumentoFiscal::create([
+                'empresa_id' => $empresa->id,
+                'venda_id' => $venda->id,
+                'cliente_id' => $venda->cliente_id,
+                'tipo_operacao' => 'venda',
+                'modelo' => 55,
+                'serie' => $serie,
+                'numero' => $numero,
+                'ambiente' => $configFiscal->ambiente_ativo,
+                'status' => 'contingencia',
+                'natureza_operacao' => 'Venda de mercadoria',
+                'valor_produtos' => $valorProdutos,
+                'frete' => $frete,
+                'total' => round($valorProdutos + $frete, 2),
+                // Frete cobrado do cliente e contratado pela loja = por conta do remetente;
+                // na retirada o destinatário leva a mercadoria.
+                'modalidade_frete' => $entrega ? 0 : 1,
+                'informacoes_adicionais' => "Pedido #{$venda->id} da loja virtual.",
+                'indicador_presenca' => 2,
+                'tpag' => $tpag,
+            ]);
+
+            $fretes = $this->ratearFrete($itensProduto->map(fn ($i) => (float) $i->valor_total)->all(), $frete);
+
+            $itensEmMemoria = $itensProduto->map(fn ($item, int $i) => new DocumentoFiscalItem([
+                'empresa_id' => $empresa->id,
+                'documento_fiscal_id' => $documento->id,
+                'item_venda_id' => $item->id,
+                'produto_id' => $item->produto_id,
+                'variacao_id' => $item->produto_variacao_id,
+                'descricao' => $this->descricaoItem($item->produto, $item->produtoVariacao),
+                'ncm' => $item->produto?->ncm,
+                'cfop' => $this->cfopResolver->ajustarPorDestino($item->produto?->cfop_padrao ?: '5102', $interno),
+                'quantidade' => $item->quantidade,
+                'valor_unitario' => $item->valor_unitario,
+                'valor_total' => $item->valor_total,
+                'valor_frete' => $fretes[$i],
+            ]));
+
+            $this->enviarEPersistir($documento, $itensEmMemoria, $empresa, $configFiscal);
+
+            if ($documento->status === 'autorizada') {
+                $venda->update(['tipo_doc' => 'fiscal']);
+            }
+
+            return $documento->fresh(['itens', 'cliente']);
+        });
+    }
+
+    private function configFiscalParaNfe(Empresa $empresa): ConfigFiscal
+    {
+        $configFiscal = ConfigFiscal::query()->where('empresa_id', $empresa->id)->lockForUpdate()->first();
+
+        if ($configFiscal === null) {
+            throw new \RuntimeException('Empresa não possui configuração fiscal cadastrada (config_fiscal).');
+        }
+
+        // O gerador de impostos da NFe cobre só o Simples Nacional (CSOSN);
+        // emitir em outro regime geraria nota com tributação errada.
+        if (! in_array((string) $configFiscal->crt, OperacoesNfe::CRT_SUPORTADOS, true)) {
+            throw new \RuntimeException('A emissão de NFe por aqui está disponível apenas para empresas do Simples Nacional (CRT 1 ou 2).');
+        }
+
+        return $configFiscal;
+    }
+
+    /**
+     * Manda o documento ao gateway e grava o retorno (status, chave, protocolo,
+     * XML) e os itens - mesmo passo final de todas as emissões.
+     *
+     * @param  Collection<int, DocumentoFiscalItem>  $itensEmMemoria
+     */
+    private function enviarEPersistir(DocumentoFiscal $documento, Collection $itensEmMemoria, Empresa $empresa, ConfigFiscal $configFiscal): void
+    {
+        $certificado = CertificadoDigital::query()->where('empresa_id', $empresa->id)->first();
+
+        $resultado = $this->gateway->emitir($documento, $itensEmMemoria, $empresa, $configFiscal, $certificado);
+
+        $documento->update([
+            'status' => $resultado->status,
+            'chave_acesso' => $resultado->chaveAcesso,
+            'protocolo_autorizacao' => $resultado->protocoloAutorizacao,
+            'xml_path' => $this->salvarXml($empresa->id, $resultado->chaveAcesso, $documento->id, $resultado->xml),
+            'motivo_cancelamento' => $resultado->motivoRejeicao,
+        ]);
+
+        foreach ($itensEmMemoria as $item) {
+            $item->documento_fiscal_id = $documento->id;
+            $item->save();
+        }
+    }
+
+    private function descricaoItem(?Produto $produto, ?ProdutoVariacao $variacao): string
+    {
+        $nome = $produto?->nome ?? 'Item';
+
+        return $variacao ? "{$nome} ({$variacao->tamanho})" : $nome;
+    }
+
+    /**
+     * Divide o frete entre os itens na proporção do valor de cada um; o último
+     * item absorve a diferença de arredondamento para a soma fechar com o frete.
+     *
+     * @param  array<int, float>  $valoresItens
+     * @return array<int, float>
+     */
+    private function ratearFrete(array $valoresItens, float $frete): array
+    {
+        $total = array_sum($valoresItens);
+        $partes = [];
+        $acumulado = 0.0;
+        $ultimo = count($valoresItens) - 1;
+
+        foreach (array_values($valoresItens) as $i => $valor) {
+            $parte = ($i === $ultimo || $total <= 0)
+                ? round($frete - $acumulado, 2)
+                : round($frete * $valor / $total, 2);
+
+            if ($total <= 0 && $i !== $ultimo) {
+                $parte = 0.0;
+            }
+
+            $partes[$i] = $parte;
+            $acumulado += $parte;
+        }
+
+        return $partes;
     }
 
     public function cancelar(DocumentoFiscal $documento, string $justificativa): DocumentoFiscal

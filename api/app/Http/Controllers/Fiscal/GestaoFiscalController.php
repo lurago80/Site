@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Fiscal;
 
 use App\Http\Controllers\Controller;
 use App\Models\Compra;
+use App\Models\ConfigFiscal;
 use App\Models\DocumentoFiscal;
 use App\Models\DocumentoFiscalItem;
 use App\Models\Empresa;
 use App\Models\Venda;
 use App\Services\Fiscal\EmissaoFiscalService;
 use App\Services\Fiscal\ExportacaoFiscalService;
+use App\Services\Fiscal\OperacoesNfe;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
 
@@ -339,9 +341,92 @@ class GestaoFiscalController extends Controller
         return response()->json($documento, 201);
     }
 
+    /**
+     * Opções da tela "Emitir NFe": ambiente em uso (homologação/produção),
+     * se o regime da empresa é suportado e os tipos de operação disponíveis.
+     */
+    public function opcoesNfe(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $config = ConfigFiscal::where('empresa_id', $empresaAtual->id)->first();
+
+        return response()->json([
+            'configurado' => $config !== null,
+            'ambiente' => $config?->ambiente_ativo,
+            'regime_suportado' => $config !== null && in_array((string) $config->crt, OperacoesNfe::CRT_SUPORTADOS, true),
+            'tipos' => collect(OperacoesNfe::TIPOS)->map(fn (array $t, string $valor) => [
+                'valor' => $valor,
+                'rotulo' => $t['rotulo'],
+                'natureza' => $t['natureza'],
+                'cfop' => $t['cfop'],
+                'baixa_estoque' => $t['baixa_estoque'],
+                'sem_pagamento' => $t['tpag'] === '90',
+            ])->values(),
+            'modalidades_frete' => collect(OperacoesNfe::MODALIDADES_FRETE)
+                ->map(fn (string $rotulo, int $valor) => ['valor' => $valor, 'rotulo' => $rotulo])->values(),
+        ]);
+    }
+
+    /**
+     * NFe direta da retaguarda: venda avulsa, remessa, transferência ou
+     * bonificação (ver EmissaoFiscalService::emitirNfeAvulsa).
+     */
+    public function emitirNfeAvulsa(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'tipo' => ['required', 'string', 'in:'.implode(',', array_keys(OperacoesNfe::TIPOS))],
+            'cliente_id' => ['required', 'integer'],
+            'natureza_operacao' => ['nullable', 'string', 'max:60'],
+            'cfop' => ['nullable', 'regex:/^[56]\d{3}$/'],
+            'itens' => ['required', 'array', 'min:1'],
+            'itens.*.produto_id' => ['required', 'integer'],
+            'itens.*.variacao_id' => ['nullable', 'integer'],
+            'itens.*.quantidade' => ['required', 'numeric', 'gt:0'],
+            'itens.*.valor_unitario' => ['nullable', 'numeric', 'min:0'],
+            'frete' => ['nullable', 'numeric', 'min:0'],
+            'modalidade_frete' => ['nullable', 'integer', 'in:'.implode(',', array_keys(OperacoesNfe::MODALIDADES_FRETE))],
+            'transportadora' => ['nullable', 'array'],
+            'transportadora.nome' => ['nullable', 'string', 'max:60'],
+            'transportadora.documento' => ['nullable', 'string', 'max:18'],
+            'transportadora.ie' => ['nullable', 'string', 'max:14'],
+            'transportadora.endereco' => ['nullable', 'string', 'max:60'],
+            'transportadora.municipio' => ['nullable', 'string', 'max:60'],
+            'transportadora.uf' => ['nullable', 'string', 'size:2'],
+            'informacoes_adicionais' => ['nullable', 'string', 'max:2000'],
+            'baixar_estoque' => ['nullable', 'boolean'],
+            'forma_pagamento_id' => ['nullable', 'integer'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        try {
+            $documento = $this->emissaoFiscalService->emitirNfeAvulsa($empresaAtual, $dados);
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($documento, 201);
+    }
+
+    /**
+     * NFe de um pedido pago da loja virtual (produtos + frete do pedido).
+     */
+    public function emitirNfePedidoLoja(Request $request, string $empresa, int $vendaId)
+    {
+        $venda = Venda::with('cliente')->findOrFail($vendaId);
+
+        try {
+            $documento = $this->emissaoFiscalService->emitirNfePedidoLoja($venda);
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($documento, 201);
+    }
+
     public function reimprimir(Request $request, string $empresa, int $documentoId)
     {
-        $documento = DocumentoFiscal::with(['itens.produto', 'venda.cliente', 'empresa'])->findOrFail($documentoId);
+        $documento = DocumentoFiscal::with(['itens.produto', 'venda.cliente', 'cliente', 'empresa', 'compra.fornecedor'])->findOrFail($documentoId);
 
         $view = $documento->modelo === 55 ? 'fiscal.nfe' : 'fiscal.cupom';
 

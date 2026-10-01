@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'ambiente', 'status', 'protocolo_autorizacao', 'natureza_operacao', 'cfop_geral',
     'valor_produtos', 'desconto', 'frete', 'total', 'valor_icms', 'valor_pis', 'valor_cofins',
     'xml_path', 'danfe_path', 'motivo_cancelamento', 'data_cancelamento',
+    'cliente_id', 'modalidade_frete', 'transportadora', 'informacoes_adicionais', 'indicador_presenca', 'tpag',
 ])]
 class DocumentoFiscal extends Model
 {
@@ -29,12 +30,18 @@ class DocumentoFiscal extends Model
             'valor_pis' => 'decimal:2',
             'valor_cofins' => 'decimal:2',
             'data_cancelamento' => 'datetime',
+            'transportadora' => 'array',
         ];
     }
 
     public function venda(): BelongsTo
     {
         return $this->belongsTo(Venda::class);
+    }
+
+    public function cliente(): BelongsTo
+    {
+        return $this->belongsTo(Cliente::class);
     }
 
     public function compra(): BelongsTo

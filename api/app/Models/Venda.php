@@ -81,6 +81,15 @@ class Venda extends Model
             ->latest('id');
     }
 
+    /** Última NFe (modelo 55) de venda emitida para este pedido. */
+    public function nfe(): HasOne
+    {
+        return $this->hasOne(DocumentoFiscal::class)
+            ->where('modelo', 55)
+            ->where('tipo_operacao', 'venda')
+            ->latest('id');
+    }
+
     public function devolucoes(): HasMany
     {
         return $this->hasMany(DocumentoFiscal::class)->where('tipo_operacao', 'devolucao');

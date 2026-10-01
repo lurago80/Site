@@ -63,6 +63,9 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('fiscal/{empres
     Route::post('/inutilizacoes', [GestaoFiscalController::class, 'inutilizar']);
     Route::post('/vendas/{vendaId}/importar', [GestaoFiscalController::class, 'importarVendaNaoFiscal']);
     Route::post('/nfces/{documentoNfceId}/importar-para-nfe', [GestaoFiscalController::class, 'importarVendaNfce']);
+    Route::get('/nfe/opcoes', [GestaoFiscalController::class, 'opcoesNfe']);
+    Route::post('/nfe', [GestaoFiscalController::class, 'emitirNfeAvulsa']);
+    Route::post('/vendas/{vendaId}/nfe-pedido-loja', [GestaoFiscalController::class, 'emitirNfePedidoLoja']);
     Route::get('/documentos-elegiveis-devolucao', [GestaoFiscalController::class, 'documentosElegiveisDevolucao']);
     Route::get('/documentos/{documentoId}/itens-disponiveis-devolucao', [GestaoFiscalController::class, 'itensDisponiveisDevolucao']);
     Route::post('/documentos/{documentoId}/devolucao', [GestaoFiscalController::class, 'emitirDevolucao']);

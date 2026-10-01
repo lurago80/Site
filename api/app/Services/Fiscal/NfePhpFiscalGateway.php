@@ -313,7 +313,10 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
         $destinatario = $devolucaoFornecedor
             ? $this->dadosDestinatarioFornecedor($documento->compra?->fornecedor)
-            : $this->dadosDestinatarioCliente($documento->venda?->cliente);
+            : $this->dadosDestinatarioCliente(
+                $documento->cliente ?? $documento->venda?->cliente,
+                $documento->venda?->tipo_entrega === 'entrega' ? $documento->venda->endereco_entrega : null,
+            );
 
         // schema > 9 habilita os campos da Reforma Tributária (IBS/CBS)
         $nfe = new Make('PL_010_V130');
@@ -328,7 +331,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
         $std = new \stdClass();
         $std->cUF = $cUF;
-        $std->natOp = match (true) {
+        $std->natOp = $documento->natureza_operacao ?: match (true) {
             $regularizacaoDeNfce => 'Regularização de venda documentada por NFC-e',
             $devolucaoCliente => 'Devolução de venda de mercadoria',
             $devolucaoFornecedor => 'Devolução de compra para comercialização',
@@ -345,7 +348,8 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $std->tpAmb = $tpAmb;
         $std->finNFe = 1; // NFe normal
         $std->indFinal = empty($destinatario->inscricao_estadual) ? 1 : 0;
-        $std->indPres = ($regularizacaoDeNfce || $devolucaoCliente || $devolucaoFornecedor) ? 9 : 1; // 9 = não se aplica
+        $std->indPres = $documento->indicador_presenca
+            ?? (($regularizacaoDeNfce || $devolucaoCliente || $devolucaoFornecedor) ? 9 : 1); // 9 = não se aplica
         $std->indIntermed = 0; // 0 = operação sem intermediador/marketplace
         $std->procEmi = 0;
         $std->verProc = '1.0.0';
@@ -434,18 +438,20 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $valorItem = (float) $item->valor_total;
             $valorTotal += $valorItem;
 
-            $cfop = $this->cfopResolver->resolver(
-                $empresa->uf,
-                $destinatario->uf,
-                $item->produto?->cfop_padrao,
-                $tipoOperacao,
-            );
+            $cfop = ($documento->cliente_id !== null && ! empty($item->cfop))
+                ? $item->cfop
+                : $this->cfopResolver->resolver(
+                    $empresa->uf,
+                    $destinatario->uf,
+                    $item->produto?->cfop_padrao,
+                    $tipoOperacao,
+                );
 
             $std = new \stdClass();
             $std->item = $numeroItem;
             $std->cProd = (string) ($item->produto_id ?? $numeroItem);
             $std->cEAN = 'SEM GTIN';
-            $std->xProd = $item->produto?->nome ?? 'Item de venda';
+            $std->xProd = $item->descricao ?: ($item->produto?->nome ?? 'Item de venda');
             $std->NCM = $item->produto?->ncm ?: self::NCM_GENERICO_TODO;
             $std->CFOP = $cfop;
             $std->uCom = 'UN';
@@ -456,6 +462,9 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $std->uTrib = 'UN';
             $std->qTrib = (float) $item->quantidade;
             $std->vUnTrib = (float) $item->valor_unitario;
+            if ((float) $item->valor_frete > 0) {
+                $std->vFrete = (float) $item->valor_frete;
+            }
             $std->indTot = 1;
             $nfe->tagprod($std);
 
@@ -489,20 +498,29 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
      * DTO uniforme de destinatário (cliente ou fornecedor) consumido por
      * tagdest/tagenderDest/CfopResolver - ver montarXmlNfe().
      */
-    private function dadosDestinatarioCliente(?Cliente $cliente): \stdClass
+    /**
+     * @param  array<string, mixed>|null  $enderecoEntrega  endereço guardado no pedido da loja; quando vem, vale no lugar do cadastro do cliente
+     */
+    private function dadosDestinatarioCliente(?Cliente $cliente, ?array $enderecoEntrega = null): \stdClass
     {
         if ($cliente === null) {
             throw new \RuntimeException('NFe exige um cliente/destinatário identificado na venda.');
         }
 
+        $campos = ['logradouro', 'numero', 'bairro', 'municipio', 'uf', 'cep', 'codigo_ibge_municipio'];
+        $endereco = [];
+        foreach ($campos as $campo) {
+            $endereco[$campo] = ! empty($enderecoEntrega) ? ($enderecoEntrega[$campo] ?? null) : $cliente->{$campo};
+        }
+
         $this->validarDestinatario('Cliente', [
             'cpf_cnpj' => $cliente->cpf_cnpj,
-            'uf' => $cliente->uf,
-            'municipio' => $cliente->municipio,
-            'codigo_ibge_municipio' => $cliente->codigo_ibge_municipio,
-            'logradouro' => $cliente->logradouro,
-            'numero' => $cliente->numero,
-            'bairro' => $cliente->bairro,
+            'uf' => $endereco['uf'],
+            'municipio' => $endereco['municipio'],
+            'codigo_ibge_municipio' => $endereco['codigo_ibge_municipio'],
+            'logradouro' => $endereco['logradouro'],
+            'numero' => $endereco['numero'],
+            'bairro' => $endereco['bairro'],
         ]);
 
         $std = new \stdClass();
@@ -510,13 +528,13 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $std->nome = $cliente->nome;
         $std->inscricao_estadual = $cliente->inscricao_estadual;
         $std->email = $cliente->email;
-        $std->logradouro = $cliente->logradouro;
-        $std->numero = $cliente->numero;
-        $std->bairro = $cliente->bairro;
-        $std->codigo_ibge_municipio = $cliente->codigo_ibge_municipio;
-        $std->municipio = $cliente->municipio;
-        $std->uf = $cliente->uf;
-        $std->cep = $cliente->cep;
+        $std->logradouro = $endereco['logradouro'];
+        $std->numero = $endereco['numero'];
+        $std->bairro = $endereco['bairro'];
+        $std->codigo_ibge_municipio = $endereco['codigo_ibge_municipio'];
+        $std->municipio = $endereco['municipio'];
+        $std->uf = $endereco['uf'];
+        $std->cep = $endereco['cep'];
 
         return $std;
     }
@@ -625,12 +643,15 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
     private function finalizarTotaisETransporte(Make $nfe, float $valorTotal, DocumentoFiscal $documento): void
     {
+        $frete = round((float) $documento->frete, 2);
+        $valorNota = round($valorTotal + $frete, 2);
+
         $std = new \stdClass();
         $std->vBC = 0;
         $std->vICMS = 0;
         $std->vICMSDeson = 0;
         $std->vProd = $valorTotal;
-        $std->vFrete = 0;
+        $std->vFrete = $frete;
         $std->vSeg = 0;
         $std->vDesc = 0;
         $std->vII = 0;
@@ -638,22 +659,58 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $std->vPIS = 0;
         $std->vCOFINS = 0;
         $std->vOutro = 0;
-        $std->vNF = $valorTotal;
+        $std->vNF = $valorNota;
         $std->vTotTrib = 0;
         $nfe->tagICMSTot($std);
 
         $std = new \stdClass();
-        $std->modFrete = 9; // sem transporte
+        $std->modFrete = $documento->modalidade_frete ?? 9; // 9 = sem transporte
         $nfe->tagtransp($std);
+
+        $transportadora = $documento->transportadora;
+        if (! empty($transportadora['nome'])) {
+            $std = new \stdClass();
+            $documentoTransp = preg_replace('/\D/', '', (string) ($transportadora['documento'] ?? ''));
+            if (strlen($documentoTransp) === 14) {
+                $std->CNPJ = $documentoTransp;
+            } elseif (strlen($documentoTransp) === 11) {
+                $std->CPF = $documentoTransp;
+            }
+            $std->xNome = $transportadora['nome'];
+            if (! empty($transportadora['ie'])) {
+                $std->IE = $transportadora['ie'];
+            }
+            if (! empty($transportadora['endereco'])) {
+                $std->xEnder = $transportadora['endereco'];
+            }
+            if (! empty($transportadora['municipio'])) {
+                $std->xMun = $transportadora['municipio'];
+            }
+            if (! empty($transportadora['uf'])) {
+                $std->UF = strtoupper($transportadora['uf']);
+            }
+            $nfe->tagtransporta($std);
+        }
 
         $std = new \stdClass();
         $std->vTroco = 0;
         $nfe->tagpag($std);
 
+        $tpag = $documento->tpag ?? $documento->venda?->formaPagamento?->codigo_tpag ?? '99'; // 99 = outros, quando não informado
         $std = new \stdClass();
-        $std->tPag = $documento->venda?->formaPagamento?->codigo_tpag ?? '99'; // 99 = outros, quando não informado
-        $std->vPag = $valorTotal;
+        $std->tPag = $tpag;
+        // 90 = sem pagamento (remessa, transferência, bonificação): vPag precisa ser zero
+        $std->vPag = $tpag === '90' ? 0 : $valorNota;
+        if ($tpag === '99') {
+            $std->xPag = 'Outros';
+        }
         $nfe->tagdetPag($std);
+
+        if (! empty($documento->informacoes_adicionais)) {
+            $std = new \stdClass();
+            $std->infCpl = mb_substr($documento->informacoes_adicionais, 0, 2000);
+            $nfe->taginfAdic($std);
+        }
     }
 
     private function interpretarResposta(string $respostaSoap, string $xmlAssinado): ResultadoEmissaoFiscal

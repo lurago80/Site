@@ -51,6 +51,14 @@ class CfopResolver
         self::TIPO_DEVOLUCAO_FORNECEDOR,
     ];
 
+    /**
+     * Ajusta um CFOP de saída ao destino: 5xxx dentro do estado, 6xxx fora dele.
+     */
+    public function ajustarPorDestino(string $cfopBase, bool $interno): string
+    {
+        return ($interno ? '5' : '6').substr($cfopBase, 1);
+    }
+
     public function resolver(
         string $ufEmitente,
         string $ufDestinatario,

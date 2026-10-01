@@ -66,6 +66,7 @@
             <button onclick="mostrarSecao('caixa-consulta', this)">Caixa (consulta)</button>
 
             <div class="grupo-label">Fiscal</div>
+            <button onclick="mostrarSecao('nfe', this)">Emitir NF-e</button>
             <button onclick="mostrarSecao('fiscal', this)">Emissão e Relatórios</button>
             <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
 
@@ -1051,6 +1052,127 @@
                 </div>
             </section>
 
+            <section id="secao-nfe" class="secao">
+                <h1>Emitir NF-e</h1>
+                <div id="nfe-ambiente" class="card" style="margin-bottom:14px; font-size:13px;">Carregando...</div>
+
+                <div class="card">
+                    <div class="abas-produto" id="nfe-abas">
+                        <button type="button" class="ativa" data-aba="venda" onclick="nfeMostrarAba('venda', this)">Venda</button>
+                        <button type="button" data-aba="remessa" onclick="nfeMostrarAba('remessa', this)">Remessa</button>
+                        <button type="button" data-aba="transferencia" onclick="nfeMostrarAba('transferencia', this)">Transferência</button>
+                        <button type="button" data-aba="bonificacao" onclick="nfeMostrarAba('bonificacao', this)">Bonificação</button>
+                        <button type="button" data-aba="dev-venda" onclick="nfeMostrarAba('dev-venda', this)">Devolução de venda</button>
+                        <button type="button" data-aba="dev-fornecedor" onclick="nfeMostrarAba('dev-fornecedor', this)">Devolução a fornecedor</button>
+                    </div>
+
+                    <div id="nfe-painel-emitir">
+                        <p id="nfe-descricao" style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;"></p>
+                        <div class="linha-form">
+                            <div style="flex:1; min-width:240px;"><label>Destinatário (cliente cadastrado)</label>
+                                <select id="nfe-cliente" style="width:100%"></select>
+                            </div>
+                            <div style="flex:1; min-width:240px;"><label>Natureza da operação</label>
+                                <input type="text" id="nfe-natureza" maxlength="60" style="width:100%">
+                            </div>
+                            <div><label>CFOP (opcional)</label>
+                                <input type="text" id="nfe-cfop" maxlength="4" style="width:90px">
+                            </div>
+                            <div id="nfe-forma-pagamento-bloco"><label>Forma de pagamento</label>
+                                <select id="nfe-forma-pagamento"></select>
+                            </div>
+                        </div>
+                        <p style="font-size:11.5px; color:var(--cor-texto-suave); margin:4px 0 12px;">
+                            O CFOP sai do padrão da operação (5xxx no mesmo estado, 6xxx em outro). Informe um CFOP só se precisar de outro código de saída.
+                        </p>
+
+                        <h3 style="font-size:13px; margin:14px 0 4px;">Itens</h3>
+                        <table>
+                            <thead><tr><th>Produto</th><th>Tipo/tamanho</th><th>Quantidade</th><th>Valor unitário</th><th>Total</th><th></th></tr></thead>
+                            <tbody id="tbody-nfe-itens"></tbody>
+                        </table>
+                        <div style="margin:8px 0;"><button type="button" class="secundario" onclick="nfeAdicionarItem()">+ Adicionar item</button></div>
+
+                        <h3 style="font-size:13px; margin:14px 0 4px;">Frete e transporte</h3>
+                        <div class="linha-form">
+                            <div><label>Frete (R$)</label><input type="number" step="0.01" min="0" id="nfe-frete" style="width:110px" oninput="nfeAtualizarTotais()"></div>
+                            <div><label>Quem paga o transporte</label><select id="nfe-modalidade" style="min-width:230px"></select></div>
+                        </div>
+                        <details style="margin:8px 0;">
+                            <summary style="cursor:pointer; font-size:12.5px;">Transportadora (opcional)</summary>
+                            <div class="linha-form" style="margin-top:8px;">
+                                <div><label>Nome</label><input type="text" id="nfe-transp-nome" maxlength="60"></div>
+                                <div><label>CNPJ/CPF</label><input type="text" id="nfe-transp-doc" maxlength="18" style="width:150px"></div>
+                                <div><label>IE</label><input type="text" id="nfe-transp-ie" maxlength="14" style="width:120px"></div>
+                                <div><label>Endereço</label><input type="text" id="nfe-transp-endereco" maxlength="60"></div>
+                                <div><label>Município</label><input type="text" id="nfe-transp-municipio" maxlength="60"></div>
+                                <div><label>UF</label><input type="text" id="nfe-transp-uf" maxlength="2" style="width:50px; text-transform:uppercase"></div>
+                            </div>
+                        </details>
+
+                        <div style="margin-top:10px;">
+                            <label>Informações complementares</label>
+                            <textarea id="nfe-informacoes" rows="2" maxlength="2000" style="width:100%"></textarea>
+                        </div>
+                        <div style="margin-top:8px;">
+                            <label style="font-weight:normal"><input type="checkbox" id="nfe-baixar-estoque"> Baixar estoque desta operação</label>
+                        </div>
+
+                        <p style="font-size:16px; font-weight:700; text-align:right; margin:14px 0 4px;">
+                            Total da nota: <span id="nfe-total">R$ 0,00</span>
+                        </p>
+                        <div style="text-align:right;"><button class="acao" id="nfe-botao-emitir" onclick="nfeEmitir()">Emitir NF-e</button></div>
+                        <p class="msg" id="msg-nfe"></p>
+                    </div>
+
+                    <div id="nfe-painel-dev-venda" style="display:none;">
+                        <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                            Cliente devolvendo mercadoria comprada. Gera NF-e com CFOP 1202 (mesmo estado) ou 2202 (fora do estado),
+                            referenciando a nota original quando possível.
+                        </p>
+                        <table>
+                            <thead><tr><th>Documento</th><th>Cliente</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+                            <tbody id="tbody-dv-documentos"><tr><td colspan="5">Carregando...</td></tr></tbody>
+                        </table>
+                        <div id="dv-itens-bloco" style="display:none; margin-top:16px;">
+                            <h3 style="font-size:14px;">Itens disponíveis para devolução - documento #<span id="dv-documento-numero"></span></h3>
+                            <table>
+                                <thead><tr><th>Devolver?</th><th>Produto</th><th>Vendido</th><th>Já devolvido</th><th>Disponível</th><th>Quantidade a devolver</th></tr></thead>
+                                <tbody id="tbody-dv-itens"></tbody>
+                            </table>
+                            <div class="linha-form" style="margin-top:8px;">
+                                <div><button class="acao" onclick="dvConfirmar()">Confirmar devolução</button></div>
+                                <div><button class="secundario" onclick="dvFechar()">Cancelar</button></div>
+                            </div>
+                        </div>
+                        <p class="msg" id="msg-dv"></p>
+                    </div>
+
+                    <div id="nfe-painel-dev-fornecedor" style="display:none;">
+                        <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                            Empresa devolvendo mercadoria comprada. Gera NF-e com CFOP 5202 (mesmo estado) ou 6202 (fora do estado).
+                            Exige compra confirmada e fornecedor com endereço completo cadastrado.
+                        </p>
+                        <table>
+                            <thead><tr><th>Compra</th><th>Fornecedor</th><th>Total</th><th>Data</th><th>Ação</th></tr></thead>
+                            <tbody id="tbody-dvf-compras"><tr><td colspan="5">Carregando...</td></tr></tbody>
+                        </table>
+                        <div id="dvf-itens-bloco" style="display:none; margin-top:16px;">
+                            <h3 style="font-size:14px;">Itens disponíveis para devolução - compra #<span id="dvf-compra-numero"></span></h3>
+                            <table>
+                                <thead><tr><th>Devolver?</th><th>Produto</th><th>Comprado</th><th>Já devolvido</th><th>Disponível</th><th>Quantidade a devolver</th></tr></thead>
+                                <tbody id="tbody-dvf-itens"></tbody>
+                            </table>
+                            <div class="linha-form" style="margin-top:8px;">
+                                <div><button class="acao" onclick="dvfConfirmar()">Confirmar devolução</button></div>
+                                <div><button class="secundario" onclick="dvfFechar()">Cancelar</button></div>
+                            </div>
+                        </div>
+                        <p class="msg" id="msg-dvf"></p>
+                    </div>
+                </div>
+            </section>
+
             <section id="secao-fiscal" class="secao">
                 <h1>Fiscal — Emissão e Relatórios</h1>
 
@@ -1366,6 +1488,7 @@
             agenda: carregarAgenda,
             produtos: () => { carregarProdutos(); carregarGrupos(); },
             'pedidos-loja': carregarPedidosLoja,
+            nfe: carregarNfe,
             clientes: carregarClientes,
             fornecedores: carregarFornecedores,
             compras: carregarCompras,
@@ -3073,6 +3196,337 @@
             carregarConfigLoja();
         }
 
+        // ---- Emitir NF-e (venda avulsa, remessa, transferência, bonificação e devoluções) ----
+
+        const nfeBase = `{{ url('/fiscal') }}/${empresa}`;
+        let nfeOpcoes = null;
+        let nfeProdutos = [];
+        let nfeAbaAtual = 'venda';
+
+        const nfeDescricoes = {
+            venda: 'Venda de mercadoria para um cliente cadastrado, com frete, transportadora e forma de pagamento. Baixa o estoque.',
+            remessa: 'Remessa de mercadoria sem venda (ex.: para conserto ou demonstração). CFOP padrão 5949; informe outro (ex.: 5915) se precisar. Não baixa estoque por padrão.',
+            transferencia: 'Transferência de mercadoria para outro estabelecimento (cadastre-o como cliente). CFOP padrão 5152. Não baixa estoque por padrão.',
+            bonificacao: 'Bonificação, doação ou brinde. CFOP padrão 5910. Baixa o estoque por padrão.',
+        };
+
+        async function nfeObterOpcoes() {
+            const resp = await fetch(`${nfeBase}/nfe/opcoes`, { headers: { 'Accept': 'application/json' } });
+            nfeOpcoes = await resp.json();
+            return nfeOpcoes;
+        }
+
+        function nfeMoeda(valor) {
+            return `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
+        }
+
+        async function carregarNfe() {
+            const op = await nfeObterOpcoes();
+            const banner = document.getElementById('nfe-ambiente');
+
+            if (!op.configurado) {
+                banner.innerHTML = '<strong style="color:#c81e1e;">Configuração fiscal não cadastrada.</strong> Preencha em Config. Fiscal antes de emitir.';
+            } else if (op.ambiente === 'producao') {
+                banner.innerHTML = '<strong style="color:#c81e1e;">AMBIENTE DE PRODUÇÃO</strong> - as notas emitidas aqui têm valor fiscal.';
+            } else {
+                banner.innerHTML = '<strong style="color:#b7791f;">AMBIENTE DE HOMOLOGAÇÃO</strong> - notas de teste, sem valor fiscal.';
+            }
+            if (op.configurado && !op.regime_suportado) {
+                banner.innerHTML += '<br><strong style="color:#c81e1e;">Atenção:</strong> a emissão por esta tela está disponível apenas para empresas do Simples Nacional.';
+            }
+
+            const [clientes, produtos, formas] = await Promise.all([
+                fetch(`${base}/clientes`).then(r => r.json()),
+                fetch(`${base}/produtos`).then(r => r.json()),
+                fetch(`${base}/formas-pagamento`).then(r => r.json()),
+            ]);
+
+            nfeProdutos = produtos.filter(p => p.ativo && !p.eh_kit);
+            document.getElementById('nfe-cliente').innerHTML = '<option value="">Selecione...</option>' +
+                clientes.map(c => `<option value="${c.id}">${esc(c.nome)} - ${esc(c.cpf_cnpj ?? 'sem documento')}</option>`).join('');
+            document.getElementById('nfe-forma-pagamento').innerHTML = '<option value="">Não informada</option>' +
+                formas.filter(f => f.ativo !== false).map(f => `<option value="${f.id}">${esc(f.descricao)}</option>`).join('');
+            document.getElementById('nfe-modalidade').innerHTML = op.modalidades_frete
+                .map(m => `<option value="${m.valor}" ${m.valor === 9 ? 'selected' : ''}>${esc(m.rotulo)}</option>`).join('');
+
+            document.getElementById('tbody-nfe-itens').innerHTML = '';
+            nfeAdicionarItem();
+            nfeAplicarTipo(nfeAbaAtual in nfeDescricoes ? nfeAbaAtual : 'venda');
+        }
+
+        function nfeAplicarTipo(tipo) {
+            const t = nfeOpcoes.tipos.find(x => x.valor === tipo);
+            document.getElementById('nfe-descricao').textContent = nfeDescricoes[tipo];
+            document.getElementById('nfe-natureza').value = t.natureza;
+            document.getElementById('nfe-cfop').value = '';
+            document.getElementById('nfe-cfop').placeholder = t.cfop;
+            document.getElementById('nfe-baixar-estoque').checked = !!t.baixa_estoque;
+            document.getElementById('nfe-forma-pagamento-bloco').style.display = t.sem_pagamento ? 'none' : '';
+            document.getElementById('msg-nfe').textContent = '';
+        }
+
+        function nfeMostrarAba(aba, botao) {
+            nfeAbaAtual = aba;
+            document.querySelectorAll('#nfe-abas button').forEach(b => b.classList.remove('ativa'));
+            botao.classList.add('ativa');
+
+            const emitir = aba in nfeDescricoes;
+            document.getElementById('nfe-painel-emitir').style.display = emitir ? '' : 'none';
+            document.getElementById('nfe-painel-dev-venda').style.display = aba === 'dev-venda' ? '' : 'none';
+            document.getElementById('nfe-painel-dev-fornecedor').style.display = aba === 'dev-fornecedor' ? '' : 'none';
+
+            if (emitir && nfeOpcoes) nfeAplicarTipo(aba);
+            if (aba === 'dev-venda') dvCarregar();
+            if (aba === 'dev-fornecedor') dvfCarregar();
+        }
+
+        function nfeLinhaItem() {
+            const opcoes = '<option value="">Selecione...</option>' +
+                nfeProdutos.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
+            return `
+                <tr>
+                    <td><select class="nfe-item-produto" onchange="nfeProdutoMudou(this)" style="min-width:240px">${opcoes}</select></td>
+                    <td><select class="nfe-item-variacao" style="display:none; min-width:130px" onchange="nfeAtualizarTotais()"></select></td>
+                    <td><input type="number" class="nfe-item-qtd" step="0.001" min="0.001" value="1" style="width:90px" oninput="nfeAtualizarTotais()"></td>
+                    <td><input type="number" class="nfe-item-valor" step="0.01" min="0" style="width:100px" oninput="nfeAtualizarTotais()"></td>
+                    <td class="nfe-item-total">R$ 0,00</td>
+                    <td><button type="button" class="secundario" onclick="this.closest('tr').remove(); nfeAtualizarTotais()">Remover</button></td>
+                </tr>`;
+        }
+
+        function nfeAdicionarItem() {
+            document.getElementById('tbody-nfe-itens').insertAdjacentHTML('beforeend', nfeLinhaItem());
+        }
+
+        function nfeProdutoMudou(select) {
+            const tr = select.closest('tr');
+            const produto = nfeProdutos.find(p => p.id === Number(select.value));
+            const variacoes = (produto?.variacoes || []).filter(v => v.ativo);
+            const selVar = tr.querySelector('.nfe-item-variacao');
+
+            selVar.style.display = variacoes.length ? '' : 'none';
+            selVar.innerHTML = variacoes.length
+                ? '<option value="">Escolha...</option>' + variacoes.map(v => `<option value="${v.id}">${esc(v.tamanho)} (estoque ${v.estoque_atual})</option>`).join('')
+                : '';
+            tr.querySelector('.nfe-item-valor').value = produto ? Number(produto.preco_venda).toFixed(2) : '';
+            nfeAtualizarTotais();
+        }
+
+        function nfeAtualizarTotais() {
+            let produtos = 0;
+            document.querySelectorAll('#tbody-nfe-itens tr').forEach(tr => {
+                const total = Number(tr.querySelector('.nfe-item-qtd').value || 0) * Number(tr.querySelector('.nfe-item-valor').value || 0);
+                tr.querySelector('.nfe-item-total').textContent = nfeMoeda(total);
+                produtos += Math.round(total * 100) / 100;
+            });
+            const frete = Number(document.getElementById('nfe-frete').value || 0);
+            document.getElementById('nfe-total').textContent = nfeMoeda(produtos + frete);
+        }
+
+        function nfeResultado(msg, documento) {
+            const link = `${nfeBase}/documentos/${documento.id}/reimprimir`;
+            if (documento.status === 'autorizada') {
+                msg.className = 'msg ok';
+                msg.innerHTML = `NF-e nº ${esc(documento.numero)} autorizada${documento.ambiente === 'homologacao' ? ' (homologação)' : ''}. <a href="${link}" target="_blank">Ver NF-e</a>`;
+            } else {
+                msg.className = 'msg erro';
+                msg.innerHTML = `NF-e nº ${esc(documento.numero)} ${esc(documento.status)}: ${esc(documento.motivo_cancelamento ?? 'sem detalhe')}. <a href="${link}" target="_blank">Ver</a>`;
+            }
+        }
+
+        async function nfeConfirmarProducao() {
+            const op = nfeOpcoes ?? await nfeObterOpcoes();
+            return op.ambiente !== 'producao' || confirm('Você está emitindo em PRODUÇÃO. Esta nota terá valor fiscal. Confirmar a emissão?');
+        }
+
+        async function nfeEmitir() {
+            const msg = document.getElementById('msg-nfe');
+            const itens = Array.from(document.querySelectorAll('#tbody-nfe-itens tr')).map(tr => ({
+                produto_id: Number(tr.querySelector('.nfe-item-produto').value),
+                variacao_id: tr.querySelector('.nfe-item-variacao').value ? Number(tr.querySelector('.nfe-item-variacao').value) : null,
+                quantidade: Number(tr.querySelector('.nfe-item-qtd').value),
+                valor_unitario: tr.querySelector('.nfe-item-valor').value === '' ? null : Number(tr.querySelector('.nfe-item-valor').value),
+            })).filter(i => i.produto_id);
+
+            if (!document.getElementById('nfe-cliente').value) { msg.className = 'msg erro'; msg.textContent = 'Selecione o destinatário.'; return; }
+            if (!itens.length) { msg.className = 'msg erro'; msg.textContent = 'Adicione ao menos um item.'; return; }
+
+            const frete = Number(document.getElementById('nfe-frete').value || 0);
+            const transportadora = {
+                nome: document.getElementById('nfe-transp-nome').value.trim(),
+                documento: document.getElementById('nfe-transp-doc').value.trim(),
+                ie: document.getElementById('nfe-transp-ie').value.trim(),
+                endereco: document.getElementById('nfe-transp-endereco').value.trim(),
+                municipio: document.getElementById('nfe-transp-municipio').value.trim(),
+                uf: document.getElementById('nfe-transp-uf').value.trim().toUpperCase(),
+            };
+
+            if (!(await nfeConfirmarProducao())) return;
+
+            const botao = document.getElementById('nfe-botao-emitir');
+            botao.disabled = true;
+            msg.className = 'msg'; msg.textContent = 'Emitindo e aguardando a SEFAZ...';
+
+            try {
+                const resp = await fetch(`${nfeBase}/nfe`, {
+                    method: 'POST',
+                    headers: headersJson,
+                    body: JSON.stringify({
+                        tipo: nfeAbaAtual,
+                        cliente_id: Number(document.getElementById('nfe-cliente').value),
+                        natureza_operacao: document.getElementById('nfe-natureza').value || null,
+                        cfop: document.getElementById('nfe-cfop').value.trim() || null,
+                        itens,
+                        frete: frete > 0 ? frete : null,
+                        modalidade_frete: Number(document.getElementById('nfe-modalidade').value),
+                        transportadora: transportadora.nome ? transportadora : null,
+                        informacoes_adicionais: document.getElementById('nfe-informacoes').value || null,
+                        baixar_estoque: document.getElementById('nfe-baixar-estoque').checked,
+                        forma_pagamento_id: document.getElementById('nfe-forma-pagamento').value ? Number(document.getElementById('nfe-forma-pagamento').value) : null,
+                    }),
+                });
+                const dados = await resp.json();
+                if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message || JSON.stringify(dados.errors); return; }
+                nfeResultado(msg, dados);
+                if (dados.status === 'autorizada') {
+                    document.getElementById('tbody-nfe-itens').innerHTML = '';
+                    nfeAdicionarItem();
+                    document.getElementById('nfe-frete').value = '';
+                    nfeAtualizarTotais();
+                }
+            } finally {
+                botao.disabled = false;
+            }
+        }
+
+        // NF-e a partir de um pedido pago da loja virtual (botão na tela Pedidos da Loja).
+        async function nfeEmitirPedidoLoja(vendaId) {
+            if (!(await nfeConfirmarProducao())) return;
+            const msg = document.getElementById('msg-pedidos-loja');
+            msg.className = 'msg'; msg.textContent = `Emitindo a NF-e do pedido #${vendaId}...`;
+
+            const resp = await fetch(`${nfeBase}/vendas/${vendaId}/nfe-pedido-loja`, { method: 'POST', headers: headersJson });
+            const dados = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message || JSON.stringify(dados.errors); return; }
+            nfeResultado(msg, dados);
+            await carregarPedidosLoja();
+            alternarDetalhePedidoLoja(vendaId);
+        }
+
+        // ---- Devolução de venda ----
+        let dvDocumentoId = null;
+
+        async function dvCarregar() {
+            const resp = await fetch(`${nfeBase}/documentos-elegiveis-devolucao`);
+            const lista = await resp.json();
+            document.getElementById('tbody-dv-documentos').innerHTML = lista.map(d => `
+                <tr>
+                    <td>#${esc(d.numero)} (${d.modelo === 55 ? 'NFe' : 'NFC-e'})</td>
+                    <td>${esc(d.cliente || 'Não identificado')}</td>
+                    <td>R$ ${Number(d.total).toFixed(2)}</td>
+                    <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
+                    <td><button class="secundario" onclick="dvAbrir(${d.id}, ${Number(d.numero)})">Devolver</button></td>
+                </tr>`).join('') || '<tr><td colspan="5">Nenhum documento disponível para devolução.</td></tr>';
+        }
+
+        async function dvAbrir(documentoId, numero) {
+            dvDocumentoId = documentoId;
+            document.getElementById('dv-documento-numero').textContent = numero;
+            document.getElementById('dv-itens-bloco').style.display = 'block';
+            document.getElementById('msg-dv').textContent = '';
+
+            const resp = await fetch(`${nfeBase}/documentos/${documentoId}/itens-disponiveis-devolucao`);
+            const itens = await resp.json();
+            document.getElementById('tbody-dv-itens').innerHTML = itens.map(i => `
+                <tr>
+                    <td><input type="checkbox" class="dv-check" data-id="${i.item_venda_id}"></td>
+                    <td>${esc(i.produto || '-')}</td>
+                    <td>${i.quantidade_vendida}</td>
+                    <td>${i.quantidade_ja_devolvida}</td>
+                    <td>${i.quantidade_disponivel}</td>
+                    <td><input type="number" step="0.001" min="0" max="${i.quantidade_disponivel}" class="dv-qtd" data-id="${i.item_venda_id}" style="width:90px" ${i.quantidade_disponivel <= 0 ? 'disabled' : ''}></td>
+                </tr>`).join('') || '<tr><td colspan="6">Nenhum item disponível.</td></tr>';
+        }
+
+        function dvFechar() {
+            dvDocumentoId = null;
+            document.getElementById('dv-itens-bloco').style.display = 'none';
+        }
+
+        async function dvConfirmar() {
+            const msg = document.getElementById('msg-dv');
+            const itens = Array.from(document.querySelectorAll('.dv-check')).filter(c => c.checked).map(c => ({
+                item_venda_id: Number(c.dataset.id),
+                quantidade: Number(document.querySelector(`.dv-qtd[data-id="${c.dataset.id}"]`).value),
+            }));
+            if (!itens.length) { msg.className = 'msg erro'; msg.textContent = 'Selecione ao menos um item.'; return; }
+            if (!(await nfeConfirmarProducao())) return;
+
+            const resp = await fetch(`${nfeBase}/documentos/${dvDocumentoId}/devolucao`, { method: 'POST', headers: headersJson, body: JSON.stringify({ itens }) });
+            const dados = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message || JSON.stringify(dados.errors); return; }
+            nfeResultado(msg, dados);
+            dvFechar();
+            dvCarregar();
+        }
+
+        // ---- Devolução a fornecedor ----
+        let dvfCompraId = null;
+
+        async function dvfCarregar() {
+            const resp = await fetch(`${nfeBase}/compras-elegiveis-devolucao`);
+            const lista = await resp.json();
+            document.getElementById('tbody-dvf-compras').innerHTML = lista.map(c => `
+                <tr>
+                    <td>#${c.id}${c.numero_nota ? ' (NF ' + esc(c.numero_nota) + ')' : ''}</td>
+                    <td>${esc(c.fornecedor || 'Não identificado')}</td>
+                    <td>R$ ${Number(c.total).toFixed(2)}</td>
+                    <td>${new Date(c.data_entrada).toLocaleDateString('pt-BR')}</td>
+                    <td><button class="secundario" onclick="dvfAbrir(${c.id})">Devolver</button></td>
+                </tr>`).join('') || '<tr><td colspan="5">Nenhuma compra confirmada disponível para devolução.</td></tr>';
+        }
+
+        async function dvfAbrir(compraId) {
+            dvfCompraId = compraId;
+            document.getElementById('dvf-compra-numero').textContent = compraId;
+            document.getElementById('dvf-itens-bloco').style.display = 'block';
+            document.getElementById('msg-dvf').textContent = '';
+
+            const resp = await fetch(`${nfeBase}/compras/${compraId}/itens-disponiveis-devolucao`);
+            const itens = await resp.json();
+            document.getElementById('tbody-dvf-itens').innerHTML = itens.map(i => `
+                <tr>
+                    <td><input type="checkbox" class="dvf-check" data-id="${i.item_compra_id}"></td>
+                    <td>${esc(i.produto || '-')}</td>
+                    <td>${i.quantidade_comprada}</td>
+                    <td>${i.quantidade_ja_devolvida}</td>
+                    <td>${i.quantidade_disponivel}</td>
+                    <td><input type="number" step="0.001" min="0" max="${i.quantidade_disponivel}" class="dvf-qtd" data-id="${i.item_compra_id}" style="width:90px" ${i.quantidade_disponivel <= 0 ? 'disabled' : ''}></td>
+                </tr>`).join('') || '<tr><td colspan="6">Nenhum item disponível.</td></tr>';
+        }
+
+        function dvfFechar() {
+            dvfCompraId = null;
+            document.getElementById('dvf-itens-bloco').style.display = 'none';
+        }
+
+        async function dvfConfirmar() {
+            const msg = document.getElementById('msg-dvf');
+            const itens = Array.from(document.querySelectorAll('.dvf-check')).filter(c => c.checked).map(c => ({
+                item_compra_id: Number(c.dataset.id),
+                quantidade: Number(document.querySelector(`.dvf-qtd[data-id="${c.dataset.id}"]`).value),
+            }));
+            if (!itens.length) { msg.className = 'msg erro'; msg.textContent = 'Selecione ao menos um item.'; return; }
+            if (!(await nfeConfirmarProducao())) return;
+
+            const resp = await fetch(`${nfeBase}/compras/${dvfCompraId}/devolucao`, { method: 'POST', headers: headersJson, body: JSON.stringify({ itens }) });
+            const dados = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = dados.message || JSON.stringify(dados.errors); return; }
+            nfeResultado(msg, dados);
+            dvfFechar();
+            dvfCarregar();
+        }
+
         // ---- Pedidos da loja virtual ----
 
         // Dados vindos da loja pública são digitados por qualquer pessoa -
@@ -3136,6 +3590,13 @@
                     <div><strong>Cliente</strong><br>${esc(p.cliente?.nome)}<br>${esc(p.cliente?.telefone)}<br>${esc(p.cliente?.email)}<br>${esc(p.cliente?.cpf_cnpj)}</div>
                     <div><strong>${retirada ? 'Retirada' : 'Endereço de entrega'}</strong><br>${endereco}</div>
                     <div><strong>Itens</strong><ul style="margin:4px 0; padding-left:18px;">${itens}</ul></div>
+                </div>
+                <div style="margin-top:10px; font-size:13px;">
+                    ${p.nfe && p.nfe.status === 'autorizada'
+                        ? `<strong>NF-e nº ${esc(p.nfe.numero)}</strong> autorizada${p.nfe.ambiente === 'homologacao' ? ' (homologação)' : ''} - <a href="${nfeBase}/documentos/${p.nfe.id}/reimprimir" target="_blank">Ver NF-e</a>`
+                        : p.status_pagamento === 'pago'
+                            ? `<button type="button" class="secundario" onclick="nfeEmitirPedidoLoja(${p.id})">Emitir NF-e deste pedido</button>${p.nfe ? ` <span style="color:#c81e1e;">(última tentativa: ${esc(p.nfe.status)})</span>` : ''}`
+                            : '<em>A NF-e só pode ser emitida depois que o pedido for pago.</em>'}
                 </div>
                 ${p.tipo_entrega ? `
                 <div class="linha-form" style="margin-top:10px;">

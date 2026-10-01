@@ -1598,7 +1598,7 @@ class DashboardController extends Controller
             ->whereHas('itens', fn ($q) => $q->whereNotNull('produto_id'))
             ->when($filtros['status_envio'] ?? null, fn ($q, $v) => $q->where('status_envio', $v))
             ->when($filtros['status_pagamento'] ?? null, fn ($q, $v) => $q->where('status_pagamento', $v))
-            ->with(['cliente', 'itens' => fn ($q) => $q->whereNotNull('produto_id'), 'itens.produto', 'itens.produtoVariacao'])
+            ->with(['cliente', 'nfe', 'itens' => fn ($q) => $q->whereNotNull('produto_id'), 'itens.produto', 'itens.produtoVariacao'])
             ->orderByDesc('data_venda')
             ->limit(200)
             ->get();
@@ -1619,6 +1619,7 @@ class DashboardController extends Controller
                 'tipo_entrega' => $v->tipo_entrega,
                 'status_envio' => $v->status_envio,
                 'codigo_rastreio' => $v->codigo_rastreio,
+                'nfe' => $v->nfe?->only(['id', 'numero', 'status', 'ambiente']),
                 'endereco_entrega' => $endereco,
                 'cliente' => $v->cliente?->only(['nome', 'cpf_cnpj', 'email', 'telefone']),
                 'itens' => $v->itens->map(fn ($i) => [
