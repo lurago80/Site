@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useCarrinho } from '@/lib/cart';
 import type { HorarioAgenda, Produto, ProdutoVariacao } from '@/lib/types';
 
@@ -33,6 +34,100 @@ function IniciaisProduto({ nome }: { nome: string }) {
     );
 }
 
+function VisualizadorImagem({ src, alt, onFechar }: { src: string; alt: string; onFechar: () => void }) {
+    const [zoom, setZoom] = useState(false);
+    const [origem, setOrigem] = useState('50% 50%');
+
+    useEffect(() => {
+        const aoTeclar = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onFechar();
+        };
+        const overflowAnterior = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', aoTeclar);
+        return () => {
+            window.removeEventListener('keydown', aoTeclar);
+            document.body.style.overflow = overflowAnterior;
+        };
+    }, [onFechar]);
+
+    return createPortal(
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={alt}
+            onClick={onFechar}
+            style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 1000,
+                background: 'rgba(10,12,16,.88)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+            }}
+        >
+            <button
+                type="button"
+                aria-label="Fechar imagem"
+                onClick={onFechar}
+                style={{
+                    position: 'absolute',
+                    top: 14,
+                    right: 14,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: 'rgba(255,255,255,.15)',
+                    color: '#fff',
+                    fontSize: 22,
+                    cursor: 'pointer',
+                }}
+            >
+                ×
+            </button>
+            <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ overflow: 'hidden', borderRadius: 8, maxWidth: '100%', maxHeight: '100%' }}
+            >
+                {/* eslint-disable-next-line @next/next/no-img-element -- mesma razão do card: host da imagem é livre */}
+                <img
+                    src={src}
+                    alt={alt}
+                    onClick={(e) => {
+                        if (!zoom) {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setOrigem(`${((e.clientX - r.left) / r.width) * 100}% ${((e.clientY - r.top) / r.height) * 100}%`);
+                        }
+                        setZoom(!zoom);
+                    }}
+                    onMouseMove={(e) => {
+                        if (!zoom) return;
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setOrigem(`${((e.clientX - r.left) / r.width) * 100}% ${((e.clientY - r.top) / r.height) * 100}%`);
+                    }}
+                    style={{
+                        display: 'block',
+                        maxWidth: '92vw',
+                        maxHeight: '88vh',
+                        objectFit: 'contain',
+                        cursor: zoom ? 'zoom-out' : 'zoom-in',
+                        transform: zoom ? 'scale(2.5)' : 'none',
+                        transformOrigin: origem,
+                        transition: 'transform .2s ease',
+                    }}
+                />
+            </div>
+            <span style={{ position: 'absolute', bottom: 14, color: 'rgba(255,255,255,.7)', fontSize: 12 }}>
+                Clique na imagem para ampliar · ESC para fechar
+            </span>
+        </div>,
+        document.body,
+    );
+}
+
 function CardProduto({
     produto,
     onAdicionar,
@@ -41,6 +136,8 @@ function CardProduto({
     onAdicionar: (variacao: ProdutoVariacao | null) => void;
 }) {
     const [imagemQuebrada, setImagemQuebrada] = useState(false);
+    const [imagemAberta, setImagemAberta] = useState(false);
+    const fecharImagem = useCallback(() => setImagemAberta(false), []);
     const temVariacoes = !!produto.variacoes && produto.variacoes.length > 0;
     const [tamanhoEscolhido, setTamanhoEscolhido] = useState<number | ''>('');
     const variacaoEscolhida = temVariacoes
@@ -83,13 +180,18 @@ function CardProduto({
                             objectFit: 'cover',
                             background: 'var(--cor-fundo)',
                             transition: 'transform .25s ease',
+                            cursor: 'zoom-in',
                         }}
+                        onClick={() => setImagemAberta(true)}
                         onError={() => setImagemQuebrada(true)}
                         onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
                         onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
                     />
                 ) : (
                     <IniciaisProduto nome={produto.nome} />
+                )}
+                {imagemAberta && produto.imagem_url && (
+                    <VisualizadorImagem src={produto.imagem_url} alt={produto.nome} onFechar={fecharImagem} />
                 )}
                 {semEstoque && (
                     <span
