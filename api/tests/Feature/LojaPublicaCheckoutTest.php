@@ -9,6 +9,7 @@ use App\Models\Empresa;
 use App\Models\FreteRegra;
 use App\Models\KitComponente;
 use App\Models\ProdutoVariacao;
+use App\Models\Venda;
 use App\Models\Plano;
 use App\Models\Produto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -154,7 +155,7 @@ class LojaPublicaCheckoutTest extends TestCase
         $checkoutResponse->assertCreated();
         $checkoutResponse->assertJsonPath('valor_total', '120.00');
         $checkoutResponse->assertJsonPath('status_pagamento', 'pago');
-        $checkoutResponse->assertJsonPath('cliente.email', 'joao@example.com');
+        $this->assertSame('joao@example.com', Cliente::first()->email);
 
         $this->assertSame(1, $this->agenda->fresh()->vagasDisponiveis());
     }
@@ -649,7 +650,7 @@ class LojaPublicaCheckoutTest extends TestCase
         $response->assertJsonPath('valor_total', '48.50');
         $response->assertJsonPath('valor_frete', '12.50');
         $response->assertJsonPath('tipo_entrega', 'entrega');
-        $response->assertJsonPath('endereco_entrega.uf', 'SP');
+        $this->assertSame('SP', Venda::latest('id')->first()->endereco_entrega['uf']);
     }
 
     public function test_frete_gratis_quando_subtotal_atinge_o_minimo(): void
@@ -855,5 +856,39 @@ class LojaPublicaCheckoutTest extends TestCase
                 ['produto_id' => $cerveja->id, 'variacao_id' => $ipa->id, 'quantidade' => 4],
             ],
         ]))->assertCreated()->assertJsonPath('valor_total', '108.00');
+    }
+
+    public function test_catalogo_publico_nao_expoe_campos_internos_do_produto(): void
+    {
+        $this->produtoFisico->update(['preco_custo' => 7.50, 'valor_atacado' => 12.00, 'codigo_barras' => '789', 'ncm' => '22030000']);
+
+        $produto = $this->getJson("/api/loja/{$this->empresa->slug}/produtos")->assertOk()->json('0');
+
+        foreach (['preco_custo', 'valor_atacado', 'ncm', 'cfop_padrao', 'fornecedor_id', 'empresa_id', 'codigo_barras', 'estoque_minimo'] as $campo) {
+            $this->assertArrayNotHasKey($campo, $produto, "O catálogo público não pode expor {$campo}.");
+        }
+        // o que a loja realmente usa continua lá
+        foreach (['id', 'nome', 'preco_venda', 'estoque_atual', 'imagem_url', 'quantidade_minima_venda', 'eh_kit', 'variacoes'] as $campo) {
+            $this->assertArrayHasKey($campo, $produto);
+        }
+    }
+
+    public function test_resposta_do_checkout_e_o_recibo_publico_nao_expoem_dados_internos_nem_cadastro_do_cliente(): void
+    {
+        $this->produtoFisico->update(['preco_custo' => 7.50]);
+
+        $checkout = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto())->assertCreated();
+        $pedidoId = $checkout->json('id');
+
+        $recibo = $this->getJson("/api/loja/{$this->empresa->slug}/pedidos/{$pedidoId}")->assertOk();
+
+        foreach ([$checkout->json(), $recibo->json()] as $resposta) {
+            $texto = json_encode($resposta);
+            $this->assertStringNotContainsString('preco_custo', $texto);
+            $this->assertStringNotContainsString('987.654.321-00', $texto, 'CPF do cliente não pode voltar na resposta.');
+            $this->assertStringNotContainsString('maria@example.com', $texto, 'E-mail do cliente não pode voltar na resposta.');
+            $this->assertArrayNotHasKey('cliente', $resposta);
+            $this->assertSame('Chopp Artesanal 500ml', $resposta['itens'][0]['produto']['nome']);
+        }
     }
 }

@@ -15,6 +15,7 @@ use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Pagamento\PagamentoService;
 use App\Services\Vendas\FreteService;
 use App\Services\Vendas\KitService;
+use App\Services\Vendas\LojaPublicaPresenter;
 use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -201,15 +202,27 @@ class CheckoutController extends Controller
             EnviarConfirmacaoAgendamentoJob::dispatch($venda->id);
         }
 
-        $vendaFinal = $venda->fresh()->load('itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente');
-        $vendaFinal->setAttribute('cobranca', $cobranca ? [
-            'status' => $cobranca->status,
-            'qr_code' => $cobranca->qr_code,
-            'qr_code_base64' => $cobranca->qr_code_base64,
-            'expira_em' => $cobranca->expira_em,
-        ] : null);
+        $vendaFinal = $venda->fresh()->load('itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao');
 
-        return response()->json($vendaFinal, 201);
+        // Lista fechada de campos: quem faz o checkout não recebe de volta o
+        // cadastro do cliente (que pode ter vindo de outra compra pelo mesmo
+        // CPF) nem os dados internos do produto.
+        return response()->json([
+            'id' => $vendaFinal->id,
+            'status_pagamento' => $vendaFinal->status_pagamento,
+            'valor_total' => $vendaFinal->valor_total,
+            'valor_desconto' => $vendaFinal->valor_desconto,
+            'valor_frete' => $vendaFinal->valor_frete,
+            'tipo_entrega' => $vendaFinal->tipo_entrega,
+            'data_venda' => $vendaFinal->data_venda,
+            'itens' => LojaPublicaPresenter::itens($vendaFinal),
+            'cobranca' => $cobranca ? [
+                'status' => $cobranca->status,
+                'qr_code' => $cobranca->qr_code,
+                'qr_code_base64' => $cobranca->qr_code_base64,
+                'expira_em' => $cobranca->expira_em,
+            ] : null,
+        ], 201);
     }
 
     /**

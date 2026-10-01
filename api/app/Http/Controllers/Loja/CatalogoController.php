@@ -11,6 +11,7 @@ use App\Models\Produto;
 use App\Models\Venda;
 use App\Services\Vendas\FreteService;
 use App\Services\Vendas\KitService;
+use App\Services\Vendas\LojaPublicaPresenter;
 use Illuminate\Http\Request;
 
 /**
@@ -90,7 +91,7 @@ class CatalogoController extends Controller
             'tipo_entrega' => $venda->tipo_entrega,
             'data_venda' => $venda->data_venda,
             'cliente_primeiro_nome' => $venda->cliente ? explode(' ', trim($venda->cliente->nome))[0] : null,
-            'itens' => $venda->itens,
+            'itens' => LojaPublicaPresenter::itens($venda),
             'empresa' => [
                 'nome_fantasia' => $empresaAtual->nome_fantasia ?? $empresaAtual->razao_social,
                 'logo_url' => $empresaAtual->logo_url,
@@ -207,19 +208,12 @@ class CatalogoController extends Controller
             ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
             ->orderBy('nome')
             ->get()
-            ->map(function (Produto $produto) {
-                if (! $produto->eh_kit) {
-                    return $produto;
-                }
-
+            ->map(fn (Produto $produto) => LojaPublicaPresenter::produto(
+                $produto,
                 // Kit: manda a composição (itens fixos + grupos de escolha com
                 // o estoque de cada variação) para o cliente montar o kit.
-                $dados = $produto->toArray();
-                $dados['kit'] = $this->kitService->resumo($produto);
-                unset($dados['componentes']);
-
-                return $dados;
-            });
+                $produto->eh_kit ? $this->kitService->resumo($produto) : null,
+            ));
     }
 
     public function agenda(Request $request, string $empresa)
