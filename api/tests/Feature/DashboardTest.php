@@ -753,7 +753,7 @@ class DashboardTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('message', 'Não foi possível ler o certificado - senha incorreta ou arquivo inválido.');
+        $response->assertJsonPath('message', 'Não foi possível ler o certificado - verifique se o arquivo é um .pfx/.p12 válido e se a senha está correta.');
     }
 
     public function test_upload_de_certificado_sem_arquivo_falha_validacao(): void
