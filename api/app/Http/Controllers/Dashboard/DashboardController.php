@@ -18,6 +18,7 @@ use App\Models\Empresa;
 use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
 use App\Models\Fornecedor;
+use App\Models\FreteRegra;
 use App\Models\GravaBanco;
 use App\Models\Grupo;
 use App\Models\ItemVenda;
@@ -1484,6 +1485,64 @@ class DashboardController extends Controller
         $empresaAtual->update($dados);
 
         return response()->json($empresaAtual->fresh()->only(['segmento', 'logo_url', 'cor_primaria']));
+    }
+
+    // ---- Frete da loja pública (tabela por UF, frete grátis e retirada) ----
+
+    public function configFrete(Request $request, string $empresa)
+    {
+        return response()->json($this->payloadConfigFrete($request->attributes->get('empresaAtual')));
+    }
+
+    public function atualizarConfigFrete(Request $request, string $empresa)
+    {
+        $this->exigirAdmin($request);
+
+        $dados = $request->validate([
+            'frete_gratis_acima' => ['nullable', 'numeric', 'min:0'],
+            'permite_retirada' => ['required', 'boolean'],
+            'instrucoes_retirada' => ['nullable', 'string', 'max:500'],
+            'regras' => ['present', 'array'],
+            'regras.*.uf' => ['nullable', 'string', 'size:2'],
+            'regras.*.valor' => ['required', 'numeric', 'min:0'],
+            'regras.*.prazo_dias' => ['nullable', 'integer', 'min:0', 'max:365'],
+        ]);
+
+        $ufs = collect($dados['regras'])->map(fn ($r) => isset($r['uf']) ? strtoupper($r['uf']) : null);
+        abort_if($ufs->count() !== $ufs->unique()->count(), 422, 'Há UF repetida na tabela de frete.');
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        DB::transaction(function () use ($dados, $empresaAtual) {
+            $empresaAtual->update([
+                'frete_gratis_acima' => $dados['frete_gratis_acima'] ?? null,
+                'permite_retirada' => $dados['permite_retirada'],
+                'instrucoes_retirada' => $dados['instrucoes_retirada'] ?? null,
+            ]);
+
+            FreteRegra::query()->delete();
+
+            foreach ($dados['regras'] as $regra) {
+                FreteRegra::create([
+                    'empresa_id' => $empresaAtual->id,
+                    'uf' => isset($regra['uf']) ? strtoupper($regra['uf']) : null,
+                    'valor' => $regra['valor'],
+                    'prazo_dias' => $regra['prazo_dias'] ?? null,
+                ]);
+            }
+        });
+
+        return response()->json($this->payloadConfigFrete($empresaAtual->fresh()));
+    }
+
+    private function payloadConfigFrete(Empresa $empresa): array
+    {
+        return [
+            'frete_gratis_acima' => $empresa->frete_gratis_acima,
+            'permite_retirada' => $empresa->permite_retirada,
+            'instrucoes_retirada' => $empresa->instrucoes_retirada,
+            'regras' => FreteRegra::orderByRaw('uf is null')->orderBy('uf')->get(['uf', 'valor', 'prazo_dias']),
+        ];
     }
 
     // ---- Parâmetros operacionais (estoque, PDV, etc.) ----

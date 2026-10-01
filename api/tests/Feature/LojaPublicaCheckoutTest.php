@@ -6,6 +6,7 @@ use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\Cupom;
 use App\Models\Empresa;
+use App\Models\FreteRegra;
 use App\Models\Plano;
 use App\Models\Produto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -611,5 +612,110 @@ class LojaPublicaCheckoutTest extends TestCase
         $response->assertJsonPath('valor_total', '72.00');
         $this->assertSame(16, $sabor1->fresh()->estoque_atual);
         $this->assertSame(18, $sabor2->fresh()->estoque_atual);
+    }
+
+    private function payloadProduto(array $extra = [], string $uf = 'SP'): array
+    {
+        return array_merge([
+            'cliente' => [
+                'nome' => 'Maria Compradora',
+                'email' => 'maria@example.com',
+                'cpf_cnpj' => '987.654.321-00',
+                'rg' => '22.333.444-5',
+                'telefone' => '11977776666',
+                'cep' => '01310-100',
+                'logradouro' => 'Av. Paulista',
+                'numero' => '1000',
+                'bairro' => 'Bela Vista',
+                'municipio' => 'São Paulo',
+                'uf' => $uf,
+                'codigo_ibge_municipio' => '3550308',
+                'consentimento_lgpd' => true,
+            ],
+            'itens' => [['produto_id' => $this->produtoFisico->id, 'quantidade' => 2]],
+            'forma_pagamento' => 'cartao',
+        ], $extra);
+    }
+
+    public function test_checkout_soma_frete_da_uf_e_guarda_endereco_de_entrega(): void
+    {
+        FreteRegra::create(['empresa_id' => $this->empresa->id, 'uf' => 'SP', 'valor' => 12.50, 'prazo_dias' => 3]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto());
+
+        $response->assertCreated();
+        $response->assertJsonPath('valor_total', '48.50');
+        $response->assertJsonPath('valor_frete', '12.50');
+        $response->assertJsonPath('tipo_entrega', 'entrega');
+        $response->assertJsonPath('endereco_entrega.uf', 'SP');
+    }
+
+    public function test_frete_gratis_quando_subtotal_atinge_o_minimo(): void
+    {
+        FreteRegra::create(['empresa_id' => $this->empresa->id, 'uf' => 'SP', 'valor' => 12.50]);
+        $this->empresa->update(['frete_gratis_acima' => 30]);
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto());
+
+        $response->assertCreated();
+        $response->assertJsonPath('valor_total', '36.00');
+        $response->assertJsonPath('valor_frete', '0.00');
+    }
+
+    public function test_uf_sem_regra_usa_demais_estados_e_sem_nenhuma_regra_recusa(): void
+    {
+        FreteRegra::create(['empresa_id' => $this->empresa->id, 'uf' => 'SP', 'valor' => 10]);
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([], 'RJ'))
+            ->assertStatus(422);
+
+        FreteRegra::create(['empresa_id' => $this->empresa->id, 'uf' => null, 'valor' => 25]);
+
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto([], 'RJ'))
+            ->assertCreated()
+            ->assertJsonPath('valor_frete', '25.00');
+    }
+
+    public function test_retirada_nao_cobra_frete_nem_exige_endereco(): void
+    {
+        FreteRegra::create(['empresa_id' => $this->empresa->id, 'uf' => 'SP', 'valor' => 12.50]);
+        $this->empresa->update(['permite_retirada' => true]);
+
+        $payload = $this->payloadProduto(['tipo_entrega' => 'retirada']);
+        $payload['cliente'] = array_diff_key($payload['cliente'], array_flip([
+            'cep', 'logradouro', 'numero', 'bairro', 'municipio', 'uf', 'codigo_ibge_municipio',
+        ]));
+
+        $response = $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $payload);
+
+        $response->assertCreated();
+        $response->assertJsonPath('valor_total', '36.00');
+        $response->assertJsonPath('tipo_entrega', 'retirada');
+    }
+
+    public function test_retirada_recusada_quando_a_loja_nao_oferece(): void
+    {
+        $this->postJson("/api/loja/{$this->empresa->slug}/checkout", $this->payloadProduto(['tipo_entrega' => 'retirada']))
+            ->assertStatus(422);
+    }
+
+    public function test_endpoint_de_cotacao_de_frete(): void
+    {
+        FreteRegra::create(['empresa_id' => $this->empresa->id, 'uf' => 'SP', 'valor' => 12.50, 'prazo_dias' => 3]);
+        $this->empresa->update(['permite_retirada' => true, 'frete_gratis_acima' => 100]);
+
+        $this->getJson("/api/loja/{$this->empresa->slug}/frete?uf=SP&subtotal=40")
+            ->assertOk()
+            ->assertJsonPath('entrega.disponivel', true)
+            ->assertJsonPath('entrega.valor', 12.5)
+            ->assertJsonPath('entrega.prazo_dias', 3)
+            ->assertJsonPath('permite_retirada', true);
+
+        $this->getJson("/api/loja/{$this->empresa->slug}/frete?uf=SP&subtotal=150")
+            ->assertJsonPath('entrega.gratis', true)
+            ->assertJsonPath('entrega.valor', 0);
+
+        $this->getJson("/api/loja/{$this->empresa->slug}/frete?uf=AM&subtotal=40")
+            ->assertJsonPath('entrega.disponivel', false);
     }
 }

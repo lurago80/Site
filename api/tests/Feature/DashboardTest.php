@@ -323,6 +323,44 @@ class DashboardTest extends TestCase
         $response->assertStatus(403);
     }
 
+    public function test_admin_salva_e_le_configuracao_de_frete(): void
+    {
+        $url = "/dashboard/{$this->empresa->slug}/config-frete";
+
+        $this->actingAs($this->admin)->putJson($url, [
+            'frete_gratis_acima' => 200,
+            'permite_retirada' => true,
+            'instrucoes_retirada' => 'Rua A, 10 - seg a sex',
+            'regras' => [
+                ['uf' => 'sp', 'valor' => 15, 'prazo_dias' => 3],
+                ['uf' => null, 'valor' => 40],
+            ],
+        ])->assertOk()->assertJsonCount(2, 'regras');
+
+        $this->actingAs($this->admin)->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('permite_retirada', true)
+            ->assertJsonPath('regras.0.uf', 'SP')
+            ->assertJsonPath('regras.1.uf', null);
+
+        // Salvar de novo substitui a tabela inteira.
+        $this->actingAs($this->admin)->putJson($url, ['permite_retirada' => false, 'regras' => []])
+            ->assertOk()->assertJsonCount(0, 'regras');
+    }
+
+    public function test_frete_rejeita_uf_repetida_e_atendente_nao_altera(): void
+    {
+        $url = "/dashboard/{$this->empresa->slug}/config-frete";
+
+        $this->actingAs($this->admin)->putJson($url, [
+            'permite_retirada' => false,
+            'regras' => [['uf' => 'SP', 'valor' => 10], ['uf' => 'sp', 'valor' => 20]],
+        ])->assertStatus(422);
+
+        $this->actingAs($this->atendente)->putJson($url, ['permite_retirada' => false, 'regras' => []])
+            ->assertStatus(403);
+    }
+
     public function test_cor_primaria_invalida_e_rejeitada(): void
     {
         $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-loja", [

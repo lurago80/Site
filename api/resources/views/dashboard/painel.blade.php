@@ -1138,6 +1138,30 @@
                 </div>
 
                 <div class="card">
+                    <h2>Frete da loja pública</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Valor do frete por estado (UF) para os produtos vendidos na loja pública. A linha "Demais estados"
+                        vale para os estados sem regra própria; se não houver regra para o estado do cliente, a entrega
+                        não é oferecida. Na venda só de visitas não há frete.
+                    </p>
+                    <table>
+                        <thead><tr><th>UF</th><th>Valor do frete (R$)</th><th>Prazo (dias)</th><th></th></tr></thead>
+                        <tbody id="tbody-frete-regras"></tbody>
+                    </table>
+                    <div style="margin:8px 0;"><button type="button" class="secundario" onclick="adicionarRegraFrete()">+ Adicionar estado</button></div>
+                    <div class="linha-form">
+                        <div><label>Frete grátis a partir de (R$)</label><input type="number" step="0.01" min="0" id="fr-gratis" style="width:140px" placeholder="vazio = não tem"></div>
+                        <div><label style="font-weight:normal"><input type="checkbox" id="fr-retirada" onchange="alternarRetirada()"> Permitir retirada na loja</label></div>
+                    </div>
+                    <div id="fr-retirada-box" style="display:none; margin-top:8px;">
+                        <label>Instruções de retirada (endereço, horário...)</label>
+                        <input type="text" id="fr-retirada-instrucoes" maxlength="500" style="width:100%">
+                    </div>
+                    <div style="margin-top:10px;"><button class="acao" onclick="salvarConfigFrete()">Salvar frete</button></div>
+                    <p class="msg" id="msg-config-frete"></p>
+                </div>
+
+                <div class="card">
                     <h2>Certificado Digital</h2>
                     <p id="cert-status" style="font-size:13px;">Carregando...</p>
                     <div class="linha-form">
@@ -1292,7 +1316,7 @@
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
-            'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); carregarConfigLoja(); },
+            'config-fiscal': () => { carregarConfigFiscal(); carregarCertificado(); carregarConfigLoja(); carregarConfigFrete(); },
             fiscal: () => { carregarRelatorioFiscal(); carregarVendasNaoFiscaisFiscal(); carregarNfcesDisponiveisFiscal(); },
             'caixa-consulta': carregarCaixaConsulta,
             pagamentos: () => { carregarFormasPagamento(); carregarConfigPagamento(); },
@@ -2896,6 +2920,63 @@
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
             msg.className = 'msg ok'; msg.textContent = 'Identidade visual salva.';
             carregarConfigLoja();
+        }
+
+        // ---- Frete da loja pública ----
+
+        function linhaRegraFrete(regra) {
+            const demais = regra.uf === null || regra.uf === undefined || regra.uf === '';
+            return `
+                <tr>
+                    <td>
+                        <input type="text" class="fr-uf" maxlength="2" style="width:60px; text-transform:uppercase" value="${demais ? '' : regra.uf}" placeholder="${demais ? 'demais' : 'UF'}">
+                    </td>
+                    <td><input type="number" step="0.01" min="0" class="fr-valor" style="width:120px" value="${regra.valor ?? ''}"></td>
+                    <td><input type="number" min="0" max="365" class="fr-prazo" style="width:80px" value="${regra.prazo_dias ?? ''}"></td>
+                    <td><button type="button" class="secundario" onclick="this.closest('tr').remove()">Remover</button></td>
+                </tr>`;
+        }
+
+        function adicionarRegraFrete() {
+            document.getElementById('tbody-frete-regras').insertAdjacentHTML('beforeend', linhaRegraFrete({ uf: '', valor: '', prazo_dias: '' }));
+        }
+
+        function alternarRetirada() {
+            document.getElementById('fr-retirada-box').style.display = document.getElementById('fr-retirada').checked ? '' : 'none';
+        }
+
+        async function carregarConfigFrete() {
+            const resp = await fetch(`${base}/config-frete`, { headers: { 'Accept': 'application/json' } });
+            const dados = await resp.json();
+            document.getElementById('tbody-frete-regras').innerHTML = dados.regras.map(linhaRegraFrete).join('');
+            document.getElementById('fr-gratis').value = dados.frete_gratis_acima ?? '';
+            document.getElementById('fr-retirada').checked = !!dados.permite_retirada;
+            document.getElementById('fr-retirada-instrucoes').value = dados.instrucoes_retirada ?? '';
+            alternarRetirada();
+        }
+
+        async function salvarConfigFrete() {
+            const regras = Array.from(document.querySelectorAll('#tbody-frete-regras tr'))
+                .map(tr => ({
+                    uf: tr.querySelector('.fr-uf').value.trim().toUpperCase() || null,
+                    valor: tr.querySelector('.fr-valor').value,
+                    prazo_dias: tr.querySelector('.fr-prazo').value || null,
+                }))
+                .filter(r => r.valor !== '');
+
+            const dados = {
+                frete_gratis_acima: document.getElementById('fr-gratis').value || null,
+                permite_retirada: document.getElementById('fr-retirada').checked,
+                instrucoes_retirada: document.getElementById('fr-retirada-instrucoes').value || null,
+                regras,
+            };
+
+            const resp = await fetch(`${base}/config-frete`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            const msg = document.getElementById('msg-config-frete');
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+            msg.className = 'msg ok'; msg.textContent = 'Frete salvo.';
+            carregarConfigFrete();
         }
 
         // ---- Parâmetros operacionais (estoque, PDV, etc.) ----

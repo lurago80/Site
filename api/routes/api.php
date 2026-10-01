@@ -18,6 +18,7 @@ Route::middleware(['tenant', 'throttle:60,1'])->prefix('loja/{empresa}')->group(
     Route::get('/config-pagamento-publica', [CatalogoController::class, 'configPagamentoPublica']);
     Route::get('/produtos', [CatalogoController::class, 'produtos']);
     Route::get('/visitas', [CatalogoController::class, 'agenda']);
+    Route::get('/frete', [CatalogoController::class, 'frete']);
     Route::post('/cupons/validar', [CatalogoController::class, 'validarCupom']);
     Route::get('/pedidos/{id}', [CatalogoController::class, 'pedido']);
 });

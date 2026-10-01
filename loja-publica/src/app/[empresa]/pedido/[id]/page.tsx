@@ -156,6 +156,16 @@ export default function PaginaRecibo({ params }: { params: Promise<{ empresa: st
                     </div>
                 )}
 
+                {pedido.tipo_entrega === 'entrega' && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, marginTop: 10 }}>
+                        <span>Frete</span>
+                        <span>{Number(pedido.valor_frete) > 0 ? `R$ ${Number(pedido.valor_frete).toFixed(2)}` : 'Grátis'}</span>
+                    </div>
+                )}
+                {pedido.tipo_entrega === 'retirada' && (
+                    <p style={{ fontSize: 13, marginTop: 10, marginBottom: 0 }}>Retirada na loja (sem frete).</p>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 17, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--cor-borda)' }}>
                     <span>Total</span>
                     <span>R$ {Number(pedido.valor_total).toFixed(2)}</span>

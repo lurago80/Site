@@ -1,5 +1,6 @@
 import type {
     ConfigPagamentoPublica,
+    CotacaoFrete,
     CupomValidado,
     EmpresaInfo,
     HorarioAgenda,
@@ -44,6 +45,10 @@ export const api = {
 
     produtos: (empresa: string, busca?: string) =>
         requisitar<Produto[]>(`/loja/${empresa}/produtos${busca ? `?busca=${encodeURIComponent(busca)}` : ''}`),
+
+    // Cotação só para exibir no checkout - o servidor recalcula o frete ao fechar o pedido.
+    frete: (empresa: string, uf: string, subtotal: number) =>
+        requisitar<CotacaoFrete>(`/loja/${empresa}/frete?uf=${encodeURIComponent(uf)}&subtotal=${subtotal}`),
 
     agenda: (empresa: string) => requisitar<HorarioAgenda[]>(`/loja/${empresa}/visitas`),
 

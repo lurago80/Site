@@ -9,6 +9,7 @@ use App\Models\ConfigPagamento;
 use App\Models\Cupom;
 use App\Models\Produto;
 use App\Models\Venda;
+use App\Services\Vendas\FreteService;
 use Illuminate\Http\Request;
 
 /**
@@ -20,6 +21,29 @@ use Illuminate\Http\Request;
  */
 class CatalogoController extends Controller
 {
+    public function __construct(private readonly FreteService $freteService) {}
+
+    /**
+     * Cotação de frete para o checkout: entrega (pela UF informada) e se a
+     * loja oferece retirada. O valor definitivo é recalculado no checkout.
+     */
+    public function frete(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'uf' => ['nullable', 'string', 'size:2'],
+            'subtotal' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json([
+            'entrega' => $this->freteService->cotarEntrega($empresaAtual, $dados['uf'] ?? null, (float) ($dados['subtotal'] ?? 0)),
+            'frete_gratis_acima' => $empresaAtual->frete_gratis_acima,
+            'permite_retirada' => $empresaAtual->permite_retirada,
+            'instrucoes_retirada' => $empresaAtual->instrucoes_retirada,
+        ]);
+    }
+
     /**
      * Dados públicos da empresa para o front-end da loja montar a
      * identidade visual (logo/cor) - nunca inclui nada sensível
@@ -58,6 +82,8 @@ class CatalogoController extends Controller
             'status_pagamento' => $venda->status_pagamento,
             'valor_total' => $venda->valor_total,
             'valor_desconto' => $venda->valor_desconto,
+            'valor_frete' => $venda->valor_frete,
+            'tipo_entrega' => $venda->tipo_entrega,
             'data_venda' => $venda->data_venda,
             'cliente_primeiro_nome' => $venda->cliente ? explode(' ', trim($venda->cliente->nome))[0] : null,
             'itens' => $venda->itens,

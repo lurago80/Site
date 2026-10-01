@@ -37,6 +37,19 @@ export interface ConfigPagamentoPublica {
     public_key: string | null;
 }
 
+export interface CotacaoFrete {
+    entrega: {
+        disponivel: boolean;
+        valor: number;
+        gratis: boolean;
+        prazo_dias: number | null;
+        mensagem: string | null;
+    };
+    frete_gratis_acima: string | null;
+    permite_retirada: boolean;
+    instrucoes_retirada: string | null;
+}
+
 export interface ItemCarrinhoProduto {
     tipo: 'produto';
     produtoId: number;
@@ -79,6 +92,8 @@ export interface RespostaCheckout {
     id: number;
     valor_total: string;
     valor_desconto: string | null;
+    valor_frete: string | null;
+    tipo_entrega: 'entrega' | 'retirada' | null;
     status_pagamento: string;
     cobranca: Cobranca | null;
     itens: ItemVendaResposta[];
@@ -89,6 +104,8 @@ export interface PedidoPublico {
     status_pagamento: string;
     valor_total: string;
     valor_desconto: string | null;
+    valor_frete: string | null;
+    tipo_entrega: 'entrega' | 'retirada' | null;
     data_venda: string;
     cliente_primeiro_nome: string | null;
     itens: ItemVendaResposta[];

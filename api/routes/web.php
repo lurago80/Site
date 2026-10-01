@@ -202,6 +202,9 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::get('/config-loja', [DashboardController::class, 'configLoja']);
     Route::put('/config-loja', [DashboardController::class, 'atualizarConfigLoja']);
 
+    Route::get('/config-frete', [DashboardController::class, 'configFrete']);
+    Route::put('/config-frete', [DashboardController::class, 'atualizarConfigFrete']);
+
     Route::get('/config-operacional', [DashboardController::class, 'configOperacional']);
     Route::put('/config-operacional', [DashboardController::class, 'atualizarConfigOperacional']);
 

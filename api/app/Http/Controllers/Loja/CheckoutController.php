@@ -13,6 +13,7 @@ use App\Models\ReservaTemporaria;
 use App\Models\Venda;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Pagamento\PagamentoService;
+use App\Services\Vendas\FreteService;
 use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,7 @@ class CheckoutController extends Controller
         private readonly ReservaVagaService $reservaVagaService,
         private readonly PagamentoService $pagamentoService,
         private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
+        private readonly FreteService $freteService,
     ) {}
 
     public function store(Request $request, string $empresa)
@@ -66,6 +68,7 @@ class CheckoutController extends Controller
             'cartao_parcelas' => ['nullable', 'integer', 'min:1'],
             'cartao_metodo' => ['nullable', 'string', 'in:cartao_credito,cartao_debito'],
             'cupom_codigo' => ['nullable', 'string', 'max:40'],
+            'tipo_entrega' => ['nullable', 'string', 'in:entrega,retirada'],
         ]);
 
         abort_if(
@@ -85,20 +88,29 @@ class CheckoutController extends Controller
             abort_if(empty($dados['cliente']['rg'] ?? null), 422, 'Informe o RG.');
         }
 
-        // Endereço só é obrigatório quando há produto físico no carrinho
-        // (é usado para o envio) - visita agendada não precisa dele.
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        // Entrega x retirada só se aplica a produto físico - visita agendada
+        // sozinha não tem envio. Na retirada o endereço do cliente não é
+        // exigido; na entrega é obrigatório (é para onde o pedido vai).
+        $tipoEntrega = null;
+
         if (! empty($dados['itens'])) {
-            $camposEndereco = ['cep', 'logradouro', 'numero', 'bairro', 'municipio', 'uf', 'codigo_ibge_municipio'];
-            foreach ($camposEndereco as $campo) {
-                abort_if(empty($dados['cliente'][$campo] ?? null), 422, 'Informe o endereço completo para envio do produto.');
+            $tipoEntrega = $dados['tipo_entrega'] ?? 'entrega';
+
+            if ($tipoEntrega === 'retirada') {
+                abort_unless($empresaAtual->permite_retirada, 422, 'Esta loja não oferece retirada no local.');
+            } else {
+                $camposEndereco = ['cep', 'logradouro', 'numero', 'bairro', 'municipio', 'uf', 'codigo_ibge_municipio'];
+                foreach ($camposEndereco as $campo) {
+                    abort_if(empty($dados['cliente'][$campo] ?? null), 422, 'Informe o endereço completo para envio do produto.');
+                }
             }
         }
 
         $this->quantidadeMinimaVendaService->validar($dados['itens'] ?? []);
 
-        $empresaAtual = $request->attributes->get('empresaAtual');
-
-        $venda = DB::transaction(function () use ($dados, $empresaAtual) {
+        $venda = DB::transaction(function () use ($dados, $empresaAtual, $tipoEntrega) {
             $cliente = $this->localizarOuCriarCliente($empresaAtual->id, $dados['cliente']);
 
             $venda = Venda::create([
@@ -135,10 +147,27 @@ class CheckoutController extends Controller
                 [$valorDesconto, $cupomId] = $this->aplicarCupom($dados['cupom_codigo'], $valorVisitas, $quantidadeTickets, $cliente->id);
             }
 
+            // Frete calculado aqui no servidor (nunca confia no valor que o
+            // navegador mostrou) a partir da UF informada no cadastro.
+            $valorFrete = 0;
+            $enderecoEntrega = null;
+
+            if ($tipoEntrega === 'entrega') {
+                $cotacao = $this->freteService->cotarEntrega($empresaAtual, $dados['cliente']['uf'], (float) $valorProdutos);
+                abort_unless($cotacao['disponivel'], 422, $cotacao['mensagem']);
+                $valorFrete = $cotacao['valor'];
+                $enderecoEntrega = collect($dados['cliente'])->only([
+                    'cep', 'logradouro', 'numero', 'bairro', 'municipio', 'uf', 'codigo_ibge_municipio',
+                ])->all();
+            }
+
             $venda->update([
-                'valor_total' => $valorProdutos + $valorVisitas - $valorDesconto,
+                'valor_total' => $valorProdutos + $valorVisitas - $valorDesconto + $valorFrete,
                 'valor_desconto' => $valorDesconto ?: null,
                 'cupom_id' => $cupomId,
+                'tipo_entrega' => $tipoEntrega,
+                'valor_frete' => $valorFrete,
+                'endereco_entrega' => $enderecoEntrega,
             ]);
 
             return $venda;

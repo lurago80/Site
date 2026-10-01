@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCarrinho } from '@/lib/cart';
 import { api, ErroApi } from '@/lib/api';
-import type { ConfigPagamentoPublica, CupomValidado, RespostaCheckout } from '@/lib/types';
+import type { ConfigPagamentoPublica, CotacaoFrete, CupomValidado, RespostaCheckout } from '@/lib/types';
 import CardBrick from '@/components/CardBrick';
 import StoneCardForm from '@/components/StoneCardForm';
 
@@ -30,6 +30,8 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     const [buscandoCep, setBuscandoCep] = useState(false);
     const [lgpd, setLgpd] = useState(false);
     const [formaPagamento, setFormaPagamento] = useState<'pix' | 'cartao'>('pix');
+    const [tipoEntrega, setTipoEntrega] = useState<'entrega' | 'retirada'>('entrega');
+    const [cotacaoFrete, setCotacaoFrete] = useState<CotacaoFrete | null>(null);
 
     const [configPagamento, setConfigPagamento] = useState<ConfigPagamentoPublica | null>(null);
     const [enviando, setEnviando] = useState(false);
@@ -109,6 +111,14 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
         api.configPagamentoPublica(empresa).then(setConfigPagamento).catch(() => setConfigPagamento({ gateway: null, public_key: null }));
     }, [empresa]);
 
+    // Cotação de frete: refaz quando muda a UF ou o subtotal de produtos
+    // (o frete grátis depende do valor). Só o servidor decide o valor final.
+    const subtotalProdutos = itens.reduce((acc, i) => (i.tipo === 'produto' ? acc + i.valorUnitario * i.quantidade : acc), 0);
+    useEffect(() => {
+        if (subtotalProdutos <= 0) return;
+        api.frete(empresa, uf.length === 2 ? uf : '', subtotalProdutos).then(setCotacaoFrete).catch(() => setCotacaoFrete(null));
+    }, [empresa, uf, subtotalProdutos]);
+
     if (itens.length === 0 && !resultado) {
         return (
             <div>
@@ -129,7 +139,6 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
         (configPagamento?.gateway === 'mercadopago' || configPagamento?.gateway === 'stone') &&
         !!configPagamento.public_key;
     const desconto = cupomAplicado?.valido ? (cupomAplicado.valor_desconto ?? 0) : 0;
-    const totalComDesconto = Math.max(0, total - desconto);
 
     // Cupom só desconta a visita agendada, nunca produtos - por isso o
     // botão de aplicar cupom só aparece quando há uma visita no carrinho.
@@ -140,6 +149,12 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
     // Endereço só é obrigatório quando há produto físico no carrinho - é
     // usado para o envio; visita agendada sozinha não precisa dele.
     const temProdutoFisico = itens.some((i) => i.tipo === 'produto');
+    const permiteRetirada = !!cotacaoFrete?.permite_retirada;
+    const retirando = temProdutoFisico && permiteRetirada && tipoEntrega === 'retirada';
+    const entregando = temProdutoFisico && !retirando;
+    const entregaCotada = uf.length === 2 ? cotacaoFrete?.entrega : undefined;
+    const valorFrete = entregando && entregaCotada?.disponivel ? entregaCotada.valor : 0;
+    const totalComDesconto = Math.max(0, total - desconto) + valorFrete;
     const documentoLimpo = cpfCnpj.replace(/\D/g, '');
     const pessoaJuridica = documentoLimpo.length === 14;
 
@@ -204,8 +219,13 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
             return;
         }
 
-        if (temProdutoFisico && (!cep.trim() || !logradouro.trim() || !numero.trim() || !bairro.trim() || !municipio.trim() || !uf.trim())) {
+        if (entregando && (!cep.trim() || !logradouro.trim() || !numero.trim() || !bairro.trim() || !municipio.trim() || !uf.trim())) {
             setErro('Informe o endereço completo para envio do produto.');
+            return;
+        }
+
+        if (entregando && entregaCotada && !entregaCotada.disponivel) {
+            setErro(entregaCotada.mensagem || 'Não realizamos entregas para este estado.');
             return;
         }
 
@@ -259,6 +279,7 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 reserva_id: reservaId,
                 forma_pagamento: formaPagamento,
                 cupom_codigo: cupomAplicado?.valido ? cupomAplicado.codigo : undefined,
+                tipo_entrega: temProdutoFisico ? (retirando ? 'retirada' : 'entrega') : undefined,
             };
 
             if (formaPagamento === 'cartao' && dadosCartao) {
@@ -334,7 +355,38 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                 </div>
             </div>
 
-            {temProdutoFisico && (
+            {temProdutoFisico && permiteRetirada && (
+                <div className="cartao" style={{ marginBottom: 16 }}>
+                    <h2 style={{ fontSize: 14, marginTop: 0 }}>Como você quer receber?</h2>
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                            <input
+                                type="radio"
+                                style={{ width: 'auto' }}
+                                checked={tipoEntrega === 'entrega'}
+                                onChange={() => setTipoEntrega('entrega')}
+                            />
+                            Receber em casa (entrega)
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                            <input
+                                type="radio"
+                                style={{ width: 'auto' }}
+                                checked={tipoEntrega === 'retirada'}
+                                onChange={() => setTipoEntrega('retirada')}
+                            />
+                            Retirar na loja (sem frete)
+                        </label>
+                    </div>
+                    {retirando && cotacaoFrete?.instrucoes_retirada && (
+                        <p style={{ fontSize: 12.5, color: 'var(--cor-texto-suave)', marginBottom: 0 }}>
+                            {cotacaoFrete.instrucoes_retirada}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {entregando && (
                 <div className="cartao" style={{ marginBottom: 16 }}>
                     <h2 style={{ fontSize: 14, marginTop: 0 }}>Endereço de entrega</h2>
                     <p style={{ fontSize: 12, color: 'var(--cor-texto-suave)', marginTop: -6 }}>
@@ -377,6 +429,21 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
                                 <input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} maxLength={2} required />
                             </div>
                         </div>
+                        {entregaCotada && (
+                            entregaCotada.disponivel ? (
+                                <span style={{ fontSize: 13, color: entregaCotada.gratis ? 'var(--cor-ok-texto)' : 'var(--cor-texto-suave)' }}>
+                                    {entregaCotada.gratis ? 'Frete grátis' : `Frete: R$ ${entregaCotada.valor.toFixed(2)}`}
+                                    {entregaCotada.prazo_dias !== null ? ` - prazo de ${entregaCotada.prazo_dias} dia(s)` : ''}
+                                </span>
+                            ) : (
+                                <span className="msg-erro" style={{ fontSize: 13 }}>{entregaCotada.mensagem}</span>
+                            )
+                        )}
+                        {!entregaCotada && cotacaoFrete?.frete_gratis_acima && (
+                            <span style={{ fontSize: 12, color: 'var(--cor-texto-suave)' }}>
+                                Frete grátis para compras de produtos a partir de R$ {Number(cotacaoFrete.frete_gratis_acima).toFixed(2)}.
+                            </span>
+                        )}
                     </div>
                 </div>
             )}
@@ -478,17 +545,23 @@ export default function PaginaCheckout({ params }: { params: Promise<{ empresa: 
             {erro && <p className="msg-erro" style={{ marginBottom: 12 }}>{erro}</p>}
 
             <div className="cartao" style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(desconto > 0 || entregando) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-texto-suave)' }}>
+                        <span>Subtotal</span>
+                        <span>R$ {total.toFixed(2)}</span>
+                    </div>
+                )}
                 {desconto > 0 && (
-                    <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-texto-suave)' }}>
-                            <span>Subtotal</span>
-                            <span>R$ {total.toFixed(2)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-ok-texto)' }}>
-                            <span>Desconto</span>
-                            <span>- R$ {desconto.toFixed(2)}</span>
-                        </div>
-                    </>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-ok-texto)' }}>
+                        <span>Desconto</span>
+                        <span>- R$ {desconto.toFixed(2)}</span>
+                    </div>
+                )}
+                {entregando && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--cor-texto-suave)' }}>
+                        <span>Frete</span>
+                        <span>{!entregaCotada ? 'informe o CEP/UF' : !entregaCotada.disponivel ? 'indisponível' : valorFrete > 0 ? `R$ ${valorFrete.toFixed(2)}` : 'Grátis'}</span>
+                    </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 18 }}>
                     <span>Total</span>
@@ -559,6 +632,16 @@ function TelaConfirmacao({ empresa, resultado }: { empresa: string; resultado: R
                             <span>Desconto do cupom</span>
                             <span>- R$ {Number(resultado.valor_desconto).toFixed(2)}</span>
                         </div>
+                    )}
+
+                    {resultado.tipo_entrega === 'entrega' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 10 }}>
+                            <span>Frete</span>
+                            <span>{Number(resultado.valor_frete) > 0 ? `R$ ${Number(resultado.valor_frete).toFixed(2)}` : 'Grátis'}</span>
+                        </div>
+                    )}
+                    {resultado.tipo_entrega === 'retirada' && (
+                        <div style={{ fontSize: 13, marginTop: 10 }}>Retirada na loja (sem frete)</div>
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: 15, marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--cor-borda)' }}>
