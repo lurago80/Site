@@ -30,6 +30,23 @@
         button.acao { background: var(--cor-primaria); color: #fff; border: none; padding: 9px 18px; font-weight: 600; }
         button.acao:hover { background: var(--cor-primaria-escura); }
         button.secundario { color: #fff; }
+
+        /* Ações de linha em tabelas: ícones compactos lado a lado */
+        td.acoes-linha, th.acoes-linha { width: 1%; white-space: nowrap; text-align: right; }
+        .acoes-linha .grupo { display: inline-flex; gap: 6px; }
+        button.btn-icone { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; border: 1px solid var(--cor-borda); background: var(--cor-superficie); color: var(--cor-texto-suave); transition: background .15s, color .15s, border-color .15s, box-shadow .15s; }
+        button.btn-icone svg { width: 16px; height: 16px; pointer-events: none; }
+        button.btn-icone:hover { background: var(--cor-primaria-clara); color: var(--cor-primaria); border-color: var(--cor-primaria); }
+        button.btn-icone:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(57, 66, 133, .25); }
+        button.btn-icone.perigo { background: var(--cor-superficie); color: var(--cor-perigo-texto); border-color: #f0b8b8; }
+        button.btn-icone.perigo:hover { background: var(--cor-perigo-bg); border-color: var(--cor-perigo-texto); }
+        button.btn-icone.perigo:focus-visible { box-shadow: 0 0 0 3px rgba(176, 37, 37, .25); }
+
+        /* Selos de status/etiquetas */
+        .selo { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; vertical-align: middle; }
+        .selo.ok { background: var(--cor-sucesso-bg); color: var(--cor-sucesso-texto); }
+        .selo.off { background: var(--cor-secundaria-clara); color: var(--cor-secundaria); }
+        .selo.info { background: var(--cor-primaria-clara); color: var(--cor-primaria); }
         .card > h1:first-child, .card > .abas-produto:first-child { margin-top: 0; }
         .card table { margin-top: 8px; }
     </style>
@@ -460,7 +477,7 @@
 
                     <h2>Produtos cadastrados</h2>
                     <table>
-                        <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>Fornecedor</th><th>NCM</th><th>CFOP</th><th>Ativo</th><th></th></tr></thead>
+                        <thead><tr><th>Código</th><th>Nome</th><th>Categoria</th><th>Tipo</th><th>Preço</th><th>Estoque</th><th>Fornecedor</th><th>NCM</th><th>CFOP</th><th>Ativo</th><th class="acoes-linha">Ações</th></tr></thead>
                         <tbody id="tbody-produtos"></tbody>
                     </table>
                     <p class="msg" id="msg-produtos-lista"></p>
@@ -1651,6 +1668,9 @@
         let produtosCache = [];
         let fornecedoresCache = [];
 
+        const ICONE_EDITAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+        const ICONE_EXCLUIR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
         async function carregarProdutos() {
             await Promise.all([carregarFornecedoresParaSelect(), carregarTabelasFiscaisProduto()]);
             const resp = await fetch(`${base}/produtos`);
@@ -1658,7 +1678,7 @@
             document.getElementById('tbody-produtos').innerHTML = produtosCache.map(p => `
                 <tr>
                     <td>${p.codigo ?? '-'}</td>
-                    <td>${esc(p.nome)}${p.eh_kit ? ' <em>(kit)</em>' : ''}${p.somente_loja_virtual ? ' <em>(só loja virtual)</em>' : ''}</td>
+                    <td>${esc(p.nome)}${p.eh_kit ? ' <span class="selo info">kit</span>' : ''}${p.somente_loja_virtual ? ' <span class="selo info">só loja virtual</span>' : ''}</td>
                     <td>${p.categoria ?? '-'}</td>
                     <td>${p.tipo}</td>
                     <td>R$ ${Number(p.preco_venda).toFixed(2)}</td>
@@ -1666,10 +1686,12 @@
                     <td>${p.fornecedor ? p.fornecedor.razao_social : '-'}</td>
                     <td>${p.ncm ?? '-'}</td>
                     <td>${p.cfop_padrao ?? '-'}</td>
-                    <td>${p.ativo ? 'Sim' : 'Não'}</td>
-                    <td>
-                        <button class="secundario" onclick="editarProduto(${p.id})">Editar</button>
-                        <button class="perigo" onclick="excluirProduto(${p.id})">Excluir</button>
+                    <td>${p.ativo ? '<span class="selo ok">Sim</span>' : '<span class="selo off">Não</span>'}</td>
+                    <td class="acoes-linha">
+                        <span class="grupo">
+                            <button type="button" class="btn-icone" title="Editar produto" aria-label="Editar ${esc(p.nome)}" onclick="editarProduto(${p.id})">${ICONE_EDITAR}</button>
+                            <button type="button" class="btn-icone perigo" title="Excluir produto (se já teve movimento, apenas desativa)" aria-label="Excluir ${esc(p.nome)}" onclick="excluirProduto(${p.id})">${ICONE_EXCLUIR}</button>
+                        </span>
                     </td>
                 </tr>
             `).join('') || '<tr><td colspan="11">Nenhum produto cadastrado.</td></tr>';
