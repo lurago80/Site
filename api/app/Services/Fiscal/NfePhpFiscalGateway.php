@@ -242,6 +242,18 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $std->xPais = 'Brasil';
         $nfe->tagenderEmit($std);
 
+        // Regime normal (CRT 3): ICMS/PIS/COFINS calculados do cadastro do produto.
+        // NFC-e é sempre venda presencial a consumidor final dentro do estado.
+        $regimeNormal = (string) $configFiscal->crt === '3';
+        $contextoImpostos = [
+            'interno' => true,
+            'uf_emitente' => (string) $empresa->uf,
+            'uf_destino' => (string) $empresa->uf,
+            'destinatario_contribuinte' => false,
+            'exclui_icms_pis_cofins' => (bool) ($configFiscal->pis_cofins_exclui_icms ?? true),
+        ];
+        $totaisImpostos = ['vBC' => 0.0, 'vICMS' => 0.0, 'vFCP' => 0.0, 'vIPI' => 0.0, 'vPIS' => 0.0, 'vCOFINS' => 0.0];
+
         $valorTotal = 0;
 
         foreach ($itens->values() as $index => $item) {
@@ -267,22 +279,59 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $std->indTot = 1;
             $nfe->tagprod($std);
 
-            $std = new \stdClass();
-            $std->item = $numeroItem;
-            $std->orig = 0;
-            $std->CSOSN = '102'; // Simples Nacional - sem permissão de crédito
-            $nfe->tagICMSSN($std);
+            if ($regimeNormal) {
+                if ($item->produto === null) {
+                    throw new \RuntimeException(
+                        'NFC-e no regime normal só aceita itens de produto. Um item sem produto (ex.: ticket de visita) '
+                        .'é serviço e não pode ser tributado como mercadoria - fale com o contador sobre a nota desse serviço.'
+                    );
+                }
 
-            $std = new \stdClass();
-            $std->item = $numeroItem;
-            $std->vTotTrib = 0;
-            $nfe->tagimposto($std);
+                $impostos = $this->impostosNfe->calcularItem($item->produto, $valorItem, 0.0, $contextoImpostos);
 
-            $this->tagPisCofinsIsento($nfe, $numeroItem);
+                if ($impostos['ipi'] !== null && isset($impostos['ipi']['vBC'])) {
+                    throw new \RuntimeException(
+                        "O produto \"{$item->produto->nome}\" tem IPI tributado e não pode ir em NFC-e. Emita uma NF-e para essa venda."
+                    );
+                }
+
+                // NFC-e não leva grupo de IPI; o IPI não tributado também fica de fora.
+                $impostos['ipi'] = null;
+
+                $this->tagsImpostosRegimeNormal($nfe, $numeroItem, $impostos);
+                $this->acumularImpostos($totaisImpostos, $impostos);
+
+                $item->cst_csosn = $impostos['icms']['cst'];
+                $item->base_calculo_icms = $impostos['icms']['vBC'];
+                $item->aliquota_icms = $impostos['icms']['pICMS'];
+                $item->valor_icms = $impostos['icms']['vICMS'];
+                $item->valor_pis = $impostos['pis']['valor'] ?? 0;
+                $item->valor_cofins = $impostos['cofins']['valor'] ?? 0;
+            } else {
+                $std = new \stdClass();
+                $std->item = $numeroItem;
+                $std->orig = 0;
+                $std->CSOSN = '102'; // Simples Nacional - sem permissão de crédito
+                $nfe->tagICMSSN($std);
+
+                $std = new \stdClass();
+                $std->item = $numeroItem;
+                $std->vTotTrib = 0;
+                $nfe->tagimposto($std);
+
+                $this->tagPisCofinsIsento($nfe, $numeroItem);
+            }
+
             $this->tagIBSCBS($nfe, $numeroItem, $valorItem, $item->produto);
         }
 
-        $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento);
+        if ($regimeNormal) {
+            $documento->valor_icms = $totaisImpostos['vICMS'];
+            $documento->valor_pis = $totaisImpostos['vPIS'];
+            $documento->valor_cofins = $totaisImpostos['vCOFINS'];
+        }
+
+        $this->finalizarTotaisETransporte($nfe, $valorTotal, $documento, $totaisImpostos);
 
         $xml = $nfe->montaNFe();
 

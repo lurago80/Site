@@ -354,7 +354,8 @@ class NfeAvulsaTest extends TestCase
         $this->app->instance(FiscalGatewayInterface::class, new class extends NfePhpFiscalGateway {
             public function emitir($documento, $itens, $empresa, $configFiscal, $certificado): ResultadoEmissaoFiscal
             {
-                $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfe'))
+                $montador = (int) $documento->modelo === 65 ? 'montarXmlNfce' : 'montarXmlNfe';
+                $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, $montador))
                     ->invoke($this, $documento, $itens, $empresa, $configFiscal);
 
                 return new ResultadoEmissaoFiscal('autorizada', str_repeat('1', 44), 'PROTOCOLO-TESTE', $xml);
@@ -533,5 +534,100 @@ class NfeAvulsaTest extends TestCase
         $item = DocumentoFiscalItem::find($itens[1]['id']);
         $unitario = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'valorUnitarioExato'))->invoke(new NfePhpFiscalGateway(), $item);
         $this->assertEqualsWithDelta(17.145, $unitario, 0.0000001);
+    }
+
+    private function documentoNfce(): DocumentoFiscal
+    {
+        return new DocumentoFiscal([
+            'empresa_id' => $this->empresa->id, 'tipo_operacao' => 'venda', 'modelo' => 65, 'serie' => '1', 'numero' => 7,
+            'ambiente' => 'homologacao', 'valor_produtos' => 40, 'total' => 40,
+        ]);
+    }
+
+    private function itemNfce(?Produto $produto, float $valor = 40.0): DocumentoFiscalItem
+    {
+        $item = new DocumentoFiscalItem([
+            'produto_id' => $produto?->id, 'ncm' => '22030000', 'cfop' => '5102',
+            'quantidade' => 2, 'valor_unitario' => $valor / 2, 'valor_total' => $valor,
+        ]);
+        $item->setRelation('produto', $produto);
+
+        return $item;
+    }
+
+    private function xmlNfce(DocumentoFiscal $documento, DocumentoFiscalItem $item): string
+    {
+        return (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfce'))
+            ->invoke(new NfePhpFiscalGateway(), $documento, collect([$item]), $this->empresa, ConfigFiscal::first());
+    }
+
+    public function test_nfce_no_regime_normal_traz_icms_pis_cofins_e_e_valida_no_schema(): void
+    {
+        $this->ativarRegimeNormal();
+        $this->produto->update(['cst_ipi' => null]); // sem IPI: venda no balcão
+
+        $documento = $this->documentoNfce();
+        $xml = $this->xmlNfce($documento, $this->itemNfce($this->produto->fresh()));
+
+        // consumidor final no estado, sem IPI/frete: base 40,00; ICMS 18% = 7,20
+        $this->assertStringContainsString('<ICMS00>', $xml);
+        $this->assertStringContainsString('<vICMS>7.20</vICMS>', $xml);
+        $this->assertStringContainsString('<PISAliq>', $xml);
+        $this->assertStringContainsString('<COFINSAliq>', $xml);
+        $this->assertStringNotContainsString('<IPI>', $xml);
+        $this->assertStringNotContainsString('<CSOSN>', $xml);
+        $this->assertEquals(7.20, (float) $documento->valor_icms);
+
+        $this->validarNoSchema($xml);
+    }
+
+    public function test_nfce_no_simples_continua_com_csosn(): void
+    {
+        $xml = $this->xmlNfce($this->documentoNfce(), $this->itemNfce($this->produto));
+
+        $this->assertStringContainsString('<CSOSN>102</CSOSN>', $xml);
+        $this->assertStringNotContainsString('<ICMS00>', $xml);
+    }
+
+    public function test_nfce_recusa_produto_com_ipi_tributado_e_item_sem_produto_no_regime_normal(): void
+    {
+        $this->ativarRegimeNormal(); // o produto de teste tem IPI 10% (CST 50)
+
+        try {
+            $this->xmlNfce($this->documentoNfce(), $this->itemNfce($this->produto->fresh()));
+            $this->fail('Deveria recusar produto com IPI tributado.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('IPI tributado', $e->getMessage());
+            $this->assertStringContainsString('Emita uma NF-e', $e->getMessage());
+        }
+
+        try {
+            $this->xmlNfce($this->documentoNfce(), $this->itemNfce(null));
+            $this->fail('Deveria recusar item sem produto.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('só aceita itens de produto', $e->getMessage());
+        }
+    }
+
+    public function test_emissao_de_nfce_pelo_servico_grava_os_impostos_no_documento_e_no_item(): void
+    {
+        $this->ativarRegimeNormal(); // troca o gateway pelo que monta o XML real
+        $this->produto->update(['cst_ipi' => null]);
+
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => null, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 40, 'data_venda' => now(),
+        ]);
+        $venda->itens()->create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $this->produto->id,
+            'quantidade' => 2, 'valor_unitario' => 20, 'valor_total' => 40,
+        ]);
+
+        $documento = app(\App\Services\Fiscal\EmissaoFiscalService::class)->emitir($venda->fresh(), 65);
+
+        $this->assertSame('autorizada', $documento->status);
+        $this->assertEquals(7.20, (float) $documento->valor_icms);
+        $this->assertSame('00', $documento->itens[0]->cst_csosn);
+        $this->assertEquals(7.20, (float) $documento->itens[0]->valor_icms);
     }
 }
