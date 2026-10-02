@@ -22,6 +22,21 @@
         .assinatura { margin-top: 50px; display: flex; gap: 40px; }
         .assinatura div { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 11px; color: #555; }
         .vazio { color: #555; padding: 10px 0; }
+        /* Modo bobina (impressora térmica 80 mm / ~48 colunas) */
+        body.bobina { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; max-width: 72mm; margin: 0; padding: 0; }
+        body.bobina h1 { font-size: 13px; text-align: center; }
+        body.bobina h2 { font-size: 11px; background: none; border-top: 1px dashed #000; border-bottom: 1px dashed #000; text-align: center; padding: 2px 0; margin: 8px 0 3px; }
+        body.bobina .sub { font-size: 10px; }
+        body.bobina table, body.bobina tbody { display: block; width: 100%; }
+        body.bobina thead, body.bobina .b-oculta { display: none; }
+        body.bobina tr { display: flex; flex-wrap: wrap; justify-content: space-between; border: 0; }
+        body.bobina th, body.bobina td { border: 0; padding: 1px 0; }
+        body.bobina td.b-obs { flex-basis: 100%; font-size: 10px; }
+        body.bobina tr.total td, body.bobina tr.resultado td { border-top: 1px dashed #000; }
+        body.bobina tr.resultado td { font-size: 12px; border-bottom: 1px dashed #000; }
+        body.bobina .assinatura { display: block; margin-top: 30px; }
+        body.bobina .assinatura div { margin-bottom: 26px; }
+        body.bobina .neg { color: #000; }
         @media print { .acoes { display: none; } body { margin: 10mm; max-width: none; } }
     </style>
 </head>
@@ -34,6 +49,7 @@
 
     <div class="acoes">
         <button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button>
+        <button type="button" onclick="imprimirBobina()">Imprimir 80 colunas (bobina)</button>
     </div>
 
     @if ($resumo === null)
@@ -73,10 +89,10 @@
             <tbody>
                 @forelse ($resumo['movimentos'] as $m)
                     <tr>
-                        <td>{{ $m->data_hora->format('d/m H:i') }}</td>
+                        <td class="b-oculta">{{ $m->data_hora->format('d/m H:i') }}</td>
                         <td>{{ $m->tipo === 'sangria' ? 'Sangria (saída)' : 'Suprimento (entrada)' }}</td>
-                        <td>{{ $m->usuario?->name ?? '—' }}</td>
-                        <td>{{ $m->observacao ?? '—' }}</td>
+                        <td class="b-oculta">{{ $m->usuario?->name ?? '—' }}</td>
+                        <td class="b-obs">{{ $m->observacao ?? '—' }}</td>
                         <td class="num {{ $m->tipo === 'sangria' ? 'neg' : '' }}">{{ $m->tipo === 'sangria' ? '− ' : '' }}{{ $brl($m->valor) }}</td>
                     </tr>
                 @empty
@@ -103,5 +119,18 @@
 
         <div class="assinatura"><div>Operador</div><div>Conferência / responsável</div></div>
     @endif
+    <script>
+        function imprimirBobina() {
+            const estilo = document.createElement('style');
+            estilo.textContent = '@page { size: 80mm auto; margin: 3mm; }';
+            document.head.appendChild(estilo);
+            document.body.classList.add('bobina');
+            window.addEventListener('afterprint', () => {
+                document.body.classList.remove('bobina');
+                estilo.remove();
+            }, { once: true });
+            window.print();
+        }
+    </script>
 </body>
 </html>
