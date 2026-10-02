@@ -23,7 +23,7 @@
         .assinatura div { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 11px; color: #555; }
         .vazio { color: #555; padding: 10px 0; }
         /* Modo bobina (impressora térmica 80 mm / ~48 colunas) */
-        body.bobina { font-family: 'Courier New', monospace; font-size: 11px; width: 72mm; max-width: 72mm; margin: 0; padding: 0; }
+        body.bobina { font-family: 'Courier New', monospace; font-size: 11px; width: 68mm; max-width: 68mm; margin: 0 auto; padding: 0 2mm; }
         body.bobina h1 { font-size: 13px; text-align: center; }
         body.bobina h2 { font-size: 11px; background: none; border-top: 1px dashed #000; border-bottom: 1px dashed #000; text-align: center; padding: 2px 0; margin: 8px 0 3px; }
         body.bobina .sub { font-size: 10px; }
@@ -122,7 +122,7 @@
     <script>
         function imprimirBobina() {
             const estilo = document.createElement('style');
-            estilo.textContent = '@page { size: 80mm auto; margin: 3mm; }';
+            estilo.textContent = '@page { size: 80mm auto; margin: 0; }';
             document.head.appendChild(estilo);
             document.body.classList.add('bobina');
             window.addEventListener('afterprint', () => {
