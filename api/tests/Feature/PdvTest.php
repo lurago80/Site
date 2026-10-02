@@ -680,7 +680,7 @@ class PdvTest extends TestCase
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_da_loja_com_visita_futura(): void
     {
         $visita = Produto::create([
-            'empresa_id' => $this->empresa->id, 'nome' => 'Visita guiada', 'tipo' => 'experiencia', 'preco_venda' => 50.00,
+            'empresa_id' => $this->empresa->id, 'nome' => 'Visita guiada', 'tipo' => 'agendamento', 'preco_venda' => 50.00,
         ]);
         $agenda = AgendaVisitacao::create([
             'empresa_id' => $this->empresa->id, 'produto_id' => $visita->id, 'data_hora' => now()->addDays(2),
