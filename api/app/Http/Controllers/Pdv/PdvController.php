@@ -324,6 +324,18 @@ class PdvController extends Controller
         return response()->json($caixa, 201);
     }
 
+    /** Extrato imprimível do turno de caixa (o último, ou o da abertura `?abertura=ID`). */
+    public function caixaExtratoImpressao(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return view('pdv.caixa-extrato', [
+            'empresaNome' => $empresaAtual?->nome_fantasia ?? $empresaAtual?->razao_social ?? $empresa,
+            'resumo' => $this->caixaService->resumoTurno($empresaAtual->id, $request->integer('abertura') ?: null),
+            'geradoEm' => now(),
+        ]);
+    }
+
     public function caixaExtrato(Request $request, string $empresa)
     {
         $empresaAtual = $request->attributes->get('empresaAtual');

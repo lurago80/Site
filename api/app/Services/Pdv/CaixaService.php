@@ -4,6 +4,7 @@ namespace App\Services\Pdv;
 
 use App\Models\Caixa;
 use App\Models\Empresa;
+use App\Models\Venda;
 
 /**
  * Controle de caixa físico do PDV (Escopo v2, decisão de 2026-07-21):
@@ -104,6 +105,83 @@ class CaixaService
             'data_hora' => now(),
             'observacao' => $observacao,
         ]);
+    }
+
+    /**
+     * Resumo de um turno de caixa (da abertura até o fechamento, ou até
+     * agora se ainda aberto): vendas do PDV por forma de pagamento (espécie),
+     * suprimentos, sangrias e o saldo esperado em dinheiro na gaveta.
+     * Sem $aberturaId, usa o turno mais recente.
+     *
+     * @return array<string, mixed>|null null quando a empresa nunca abriu o caixa
+     */
+    public function resumoTurno(int $empresaId, ?int $aberturaId = null): ?array
+    {
+        $abertura = Caixa::with('usuario:id,name')
+            ->where('empresa_id', $empresaId)
+            ->where('tipo', 'abertura')
+            ->when($aberturaId, fn ($q) => $q->where('id', $aberturaId))
+            ->latest('id')
+            ->first();
+
+        if ($abertura === null) {
+            return null;
+        }
+
+        $fechamento = Caixa::with('usuario:id,name')
+            ->where('empresa_id', $empresaId)
+            ->where('tipo', 'fechamento')
+            ->where('id', '>', $abertura->id)
+            ->orderBy('id')
+            ->first();
+
+        $fim = $fechamento?->data_hora ?? now();
+
+        $movimentos = Caixa::with('usuario:id,name')
+            ->where('empresa_id', $empresaId)
+            ->where('id', '>', $abertura->id)
+            ->when($fechamento, fn ($q) => $q->where('id', '<', $fechamento->id))
+            ->whereIn('tipo', ['suprimento', 'sangria'])
+            ->orderBy('id')
+            ->get();
+
+        $vendas = Venda::with('formaPagamento')
+            ->where('empresa_id', $empresaId)
+            ->where('canal', 'pdv')
+            ->where('status_pagamento', 'pago')
+            ->whereBetween('data_venda', [$abertura->data_hora, $fim])
+            ->get();
+
+        $porEspecie = $vendas
+            ->groupBy(fn (Venda $v) => $v->formaPagamento?->descricao ?? 'Não informada')
+            ->map(fn ($grupo, $descricao) => [
+                'descricao' => $descricao,
+                'dinheiro' => $grupo->first()->formaPagamento?->tipo === 'dinheiro',
+                'quantidade' => $grupo->count(),
+                'valor' => round($grupo->sum(fn (Venda $v) => (float) $v->valor_total), 2),
+            ])
+            ->sortByDesc('valor')
+            ->values();
+
+        $vendasDinheiro = (float) $porEspecie->where('dinheiro', true)->sum('valor');
+        $suprimentos = (float) $movimentos->where('tipo', 'suprimento')->sum('valor');
+        $sangrias = (float) $movimentos->where('tipo', 'sangria')->sum('valor');
+        $esperado = (float) $abertura->valor + $vendasDinheiro + $suprimentos - $sangrias;
+
+        return [
+            'abertura' => $abertura,
+            'fechamento' => $fechamento,
+            'fim' => $fim,
+            'movimentos' => $movimentos,
+            'por_especie' => $porEspecie,
+            'total_vendas' => round((float) $porEspecie->sum('valor'), 2),
+            'qtd_vendas' => $vendas->count(),
+            'vendas_dinheiro' => $vendasDinheiro,
+            'suprimentos' => $suprimentos,
+            'sangrias' => $sangrias,
+            'saldo_esperado' => round($esperado, 2),
+            'diferenca' => $fechamento ? round((float) $fechamento->valor - $esperado, 2) : null,
+        ];
     }
 
     private function aberturaEmAberto(int $empresaId): ?Caixa

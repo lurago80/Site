@@ -248,6 +248,7 @@
                 Verificar Ticket (F2)
             </button>
             <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/visitas-pagas') }}" target="_blank" rel="noopener" title="Lista de visitas pagas para conferência sem internet">Visitas pagas (PDF)</a>
+            <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/caixa-extrato-impressao') }}" target="_blank" rel="noopener" title="Extrato do caixa para conferência e impressão">Extrato do caixa</a>
             <span>{{ auth()->user()->name }}</span>
             <form method="POST" action="{{ url('/logout') }}" style="display:inline;">
                 @csrf

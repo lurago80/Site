@@ -677,6 +677,47 @@ class PdvTest extends TestCase
         $this->assertSame(18, $sabor2->fresh()->estoque_atual);
     }
 
+    public function test_extrato_do_caixa_mostra_especies_abertura_saidas_e_resultado(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $pix = FormaPagamento::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => 'PIX', 'tipo' => 'pix', 'codigo_tpag' => '17', 'ativo' => true,
+        ]);
+
+        $this->postJson("$base/caixa-abrir", ['valor' => 100])->assertCreated();
+
+        // 2 x R$ 18,00 em dinheiro = 36,00 ; 1 x R$ 18,00 no PIX
+        $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ])->assertCreated();
+        $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $pix->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ])->assertCreated();
+
+        $this->postJson("$base/caixa-suprimento", ['valor' => 20, 'observacao' => 'Troco extra'])->assertCreated();
+        $this->postJson("$base/caixa-sangria", ['valor' => 50, 'observacao' => 'Pagamento fornecedor'])->assertCreated();
+
+        // esperado em dinheiro: 100 + 36 + 20 - 50 = 106,00
+        $this->get("$base/caixa-extrato-impressao")
+            ->assertOk()
+            ->assertSee('PIX')
+            ->assertSee('Dinheiro')
+            ->assertSee('R$ 54,00')
+            ->assertSee('Pagamento fornecedor')
+            ->assertSee('R$ 106,00');
+
+        $this->postJson("$base/caixa-fechar", ['valor' => 104])->assertCreated();
+
+        $this->get("$base/caixa-extrato-impressao")
+            ->assertOk()
+            ->assertSee('Valor contado no fechamento')
+            ->assertSee('R$ -2,00');
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_da_loja_com_visita_futura(): void
     {
         $visita = Produto::create([
