@@ -100,6 +100,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::post('/caixa-suprimento', [PdvController::class, 'caixaSuprimento']);
     Route::get('/caixa-extrato', [PdvController::class, 'caixaExtrato']);
 
+    Route::get('/visitas-pagas', [PdvController::class, 'visitasPagas']);
     Route::get('/verificar', [PdvController::class, 'verificarTicket'])->middleware('conta_ativa');
     Route::get('/verificar/{vendaId}', [PdvController::class, 'buscarTicket']);
     Route::post('/verificar/{vendaId}/check-in', [PdvController::class, 'confirmarCheckIn']);

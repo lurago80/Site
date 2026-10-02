@@ -676,4 +676,42 @@ class PdvTest extends TestCase
         $this->assertSame(16, $sabor1->fresh()->estoque_atual);
         $this->assertSame(18, $sabor2->fresh()->estoque_atual);
     }
+
+    public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_da_loja_com_visita_futura(): void
+    {
+        $visita = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Visita guiada', 'tipo' => 'experiencia', 'preco_venda' => 50.00,
+        ]);
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $visita->id, 'data_hora' => now()->addDays(2),
+            'vagas_total' => 10, 'vagas_reservadas' => 3, 'status' => 'aberta', 'valor_visita' => 50.00,
+        ]);
+
+        $criar = function (string $canal, string $status, string $nomeCliente) use ($agenda, $visita) {
+            $cli = \App\Models\Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => $nomeCliente]);
+            $venda = \App\Models\Venda::create([
+                'empresa_id' => $this->empresa->id, 'cliente_id' => $cli->id, 'canal' => $canal,
+                'tipo_doc' => 'nao_fiscal', 'status_pagamento' => $status, 'valor_total' => 100.00,
+            ]);
+            \App\Models\ItemVenda::create([
+                'empresa_id' => $this->empresa->id, 'venda_id' => $venda->id, 'produto_id' => $visita->id,
+                'agenda_visitacao_id' => $agenda->id, 'quantidade' => 2, 'valor_unitario' => 50.00, 'valor_total' => 100.00,
+            ]);
+
+            return $venda;
+        };
+
+        $paga = $criar('site', 'pago', 'Cliente Pago Site');
+        $criar('site', 'pendente', 'Cliente Pendente');
+        $criar('pdv', 'pago', 'Cliente Balcao');
+
+        $this->get("/pdv/{$this->empresa->slug}/visitas-pagas")
+            ->assertOk()
+            ->assertSee('Cliente Pago Site')
+            ->assertSee('R$ 100,00')
+            ->assertDontSee('Cliente Pendente')
+            ->assertDontSee('Cliente Balcao');
+
+        $this->assertNotNull($paga->id);
+    }
 }

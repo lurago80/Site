@@ -7,6 +7,7 @@ use App\Models\AgendaVisitacao;
 use App\Models\Atendente;
 use App\Models\DescontoPdv;
 use App\Models\FormaPagamento;
+use App\Models\ItemVenda;
 use App\Models\Produto;
 use App\Models\Vendedor;
 use App\Models\Venda;
@@ -37,6 +38,52 @@ class PdvController extends Controller
             'empresaSlug' => $empresa,
             'pdvImpressaoDireta' => $empresaAtual?->pdv_impressao_direta ?? false,
             'logoEmpresaUrl' => $empresaAtual?->logo_url,
+        ]);
+    }
+
+    /**
+     * Lista de contingência (queda de internet): pedidos da loja virtual com
+     * visita paga, de hoje em diante, agrupados por horário. O número do
+     * pedido é o mesmo usado para validar o ticket na entrada.
+     */
+    public function visitasPagas(Request $request, string $empresa)
+    {
+        $itens = ItemVenda::query()
+            ->whereNotNull('agenda_visitacao_id')
+            ->whereHas('agendaVisitacao', fn ($q) => $q->where('data_hora', '>=', now()->startOfDay()))
+            ->whereHas('venda', fn ($q) => $q->where('canal', 'site')->where('status_pagamento', 'pago'))
+            ->with(['agendaVisitacao', 'venda.cliente', 'venda.formaPagamento'])
+            ->get();
+
+        $horarios = $itens
+            ->groupBy('agenda_visitacao_id')
+            ->map(function ($grupo) {
+                $linhas = $grupo->groupBy('venda_id')->map(function ($doVenda) {
+                    $venda = $doVenda->first()->venda;
+
+                    return (object) [
+                        'venda' => $venda,
+                        'tickets' => $doVenda->sum('quantidade'),
+                        'valor' => $doVenda->sum(fn ($i) => (float) $i->valor_total),
+                    ];
+                })->sortBy(fn ($l) => $l->venda->id)->values();
+
+                return (object) [
+                    'data_hora' => $grupo->first()->agendaVisitacao->data_hora,
+                    'linhas' => $linhas,
+                    'tickets' => $linhas->sum('tickets'),
+                    'valor' => $linhas->sum('valor'),
+                ];
+            })
+            ->sortBy('data_hora')
+            ->values();
+
+        return view('pdv.visitas-pagas', [
+            'empresaNome' => $request->attributes->get('empresaAtual')?->nome_fantasia
+                ?? $request->attributes->get('empresaAtual')?->razao_social
+                ?? $empresa,
+            'horarios' => $horarios,
+            'geradoEm' => now(),
         ]);
     }
 

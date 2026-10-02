@@ -74,6 +74,11 @@
         button.primario:hover { background: var(--accent-hover); }
         button.secundario { background: #384656; color: var(--text); border: 1px solid var(--border-strong); }
         button.secundario:hover { background: #40505f; }
+        a.btn-visitas-pagas {
+            background: #384656; color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px;
+            font-size: 13px; font-weight: 600; padding: 8px 14px; text-decoration: none; white-space: nowrap;
+        }
+        a.btn-visitas-pagas:hover { background: #40505f; }
         button.btn-verificar {
             background: var(--warn); color: #201a08; border: none; font-weight: 700;
             display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px;
@@ -242,6 +247,7 @@
                 </svg>
                 Verificar Ticket (F2)
             </button>
+            <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/visitas-pagas') }}" target="_blank" rel="noopener" title="Lista de visitas pagas para conferência sem internet">Visitas pagas (PDF)</a>
             <span>{{ auth()->user()->name }}</span>
             <form method="POST" action="{{ url('/logout') }}" style="display:inline;">
                 @csrf
