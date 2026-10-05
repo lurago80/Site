@@ -486,7 +486,9 @@ class DashboardController extends Controller
      */
     private function armazenarImagemProduto(\Illuminate\Http\UploadedFile $arquivo): string
     {
-        return $this->armazenarImagem($arquivo, 'produtos');
+        $caminho = app(\App\Services\Imagens\RedimensionadorImagem::class)->armazenar($arquivo, 'produtos');
+
+        return \Illuminate\Support\Facades\Storage::disk('public')->url($caminho);
     }
 
     /**
