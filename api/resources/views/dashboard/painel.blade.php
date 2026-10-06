@@ -1322,6 +1322,17 @@
                         </div>
                     </div>
                     <div class="linha-form">
+                        <div><label>Série NF-e</label><input type="number" id="cf-serie-nfe" min="0" max="889" style="width:80px"></div>
+                        <div><label>Último nº NF-e emitido</label><input type="number" id="cf-numero-nfe" min="0" style="width:130px"></div>
+                        <div><label>Série NFC-e</label><input type="number" id="cf-serie-nfce" min="0" max="889" style="width:80px"></div>
+                        <div><label>Último nº NFC-e emitido</label><input type="number" id="cf-numero-nfce" min="0" style="width:130px"></div>
+                    </div>
+                    <p style="font-size:11.5px; color:var(--cor-texto-suave); margin:0 0 8px;">
+                        A próxima nota usa o número seguinte ao "último emitido" (ex.: último 10, próxima 11). Se a empresa já emitiu
+                        notas em outro sistema na mesma série, informe aqui o último número usado; ao trocar de série, informe 0 para recomeçar do 1.
+                        Número já usado na SEFAZ é recusado (rejeição 539). Confirme com o contador antes de alterar.
+                    </p>
+                    <div class="linha-form">
                         <div><label>CSC (NFC-e)</label><input type="text" id="cf-csc"></div>
                         <div><label>ID do token CSC</label><input type="text" id="cf-csc-id" style="width:100px"></div>
                         <div><button class="acao" onclick="salvarConfigFiscal()">Salvar</button></div>
@@ -3977,6 +3988,10 @@
             document.getElementById('cf-ambiente').value = c.ambiente_ativo ?? 'homologacao';
             document.getElementById('cf-csc').value = c.csc_nfce ?? '';
             document.getElementById('cf-csc-id').value = c.id_token_csc ?? '';
+            document.getElementById('cf-serie-nfe').value = c.serie_nfe_atual ?? 1;
+            document.getElementById('cf-numero-nfe').value = c.numero_nfe_atual ?? 0;
+            document.getElementById('cf-serie-nfce').value = c.serie_nfce_atual ?? 1;
+            document.getElementById('cf-numero-nfce').value = c.numero_nfce_atual ?? 0;
             document.getElementById('cf-pis-cofins-exclui-icms').checked = c.pis_cofins_exclui_icms ?? true;
         }
 
@@ -3995,6 +4010,10 @@
                 ambiente_ativo: document.getElementById('cf-ambiente').value,
                 csc_nfce: document.getElementById('cf-csc').value || null,
                 id_token_csc: document.getElementById('cf-csc-id').value || null,
+                serie_nfe_atual: document.getElementById('cf-serie-nfe').value,
+                numero_nfe_atual: document.getElementById('cf-numero-nfe').value,
+                serie_nfce_atual: document.getElementById('cf-serie-nfce').value,
+                numero_nfce_atual: document.getElementById('cf-numero-nfce').value,
                 pis_cofins_exclui_icms: document.getElementById('cf-pis-cofins-exclui-icms').checked,
             };
             const resp = await fetch(`${base}/config-fiscal`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });

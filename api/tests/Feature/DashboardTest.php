@@ -836,6 +836,35 @@ class DashboardTest extends TestCase
         $this->assertSame('SP', $this->empresa->fresh()->uf);
     }
 
+    public function test_admin_define_serie_e_ultimo_numero_de_nfe_e_nfce(): void
+    {
+        $url = "/dashboard/{$this->empresa->slug}/config-fiscal";
+
+        $this->actingAs($this->admin)->putJson($url, [
+            'crt' => '3', 'ambiente_ativo' => 'producao',
+            'serie_nfe_atual' => 2, 'numero_nfe_atual' => 150, 'serie_nfce_atual' => 1, 'numero_nfce_atual' => 37,
+        ])->assertOk()
+            ->assertJsonPath('config_fiscal.serie_nfe_atual', '2')
+            ->assertJsonPath('config_fiscal.numero_nfe_atual', 150)
+            ->assertJsonPath('config_fiscal.numero_nfce_atual', 37);
+
+        // salvar sem os campos de numeração não mexe neles
+        $this->actingAs($this->admin)->putJson($url, ['crt' => '3', 'ambiente_ativo' => 'producao'])->assertOk();
+        $config = \App\Models\ConfigFiscal::where('empresa_id', $this->empresa->id)->first();
+        $this->assertSame('2', $config->serie_nfe_atual);
+        $this->assertSame(150, $config->numero_nfe_atual);
+    }
+
+    public function test_serie_fiscal_invalida_e_recusada(): void
+    {
+        $url = "/dashboard/{$this->empresa->slug}/config-fiscal";
+
+        foreach (['serie_nfe_atual' => 900, 'serie_nfce_atual' => -1, 'numero_nfe_atual' => -5, 'numero_nfce_atual' => 'abc'] as $campo => $valor) {
+            $this->actingAs($this->admin)->putJson($url, ['crt' => '1', 'ambiente_ativo' => 'homologacao', $campo => $valor])
+                ->assertStatus(422)->assertJsonValidationErrors($campo);
+        }
+    }
+
     public function test_atualizar_config_fiscal_sem_ambiente_falha(): void
     {
         $response = $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/config-fiscal", [

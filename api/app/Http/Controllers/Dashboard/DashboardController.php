@@ -1340,9 +1340,22 @@ class DashboardController extends Controller
             'csc_nfce' => ['nullable', 'string', 'max:255'],
             'id_token_csc' => ['nullable', 'string', 'max:255'],
             'pis_cofins_exclui_icms' => ['sometimes', 'boolean'],
+            // Série e último número já emitido de cada documento. O próximo número é "último + 1";
+            // série 890-999 é reservada (avulsa/SCAN), então o limite é 889.
+            'serie_nfe_atual' => ['sometimes', 'integer', 'between:0,889'],
+            'numero_nfe_atual' => ['sometimes', 'integer', 'min:0', 'max:999999999'],
+            'serie_nfce_atual' => ['sometimes', 'integer', 'between:0,889'],
+            'numero_nfce_atual' => ['sometimes', 'integer', 'min:0', 'max:999999999'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
+
+        // a série é guardada como texto (coluna string)
+        foreach (['serie_nfe_atual', 'serie_nfce_atual'] as $campoSerie) {
+            if (isset($dados[$campoSerie])) {
+                $dados[$campoSerie] = (string) $dados[$campoSerie];
+            }
+        }
 
         $empresaAtual->update(array_intersect_key($dados, array_flip([
             'uf', 'municipio', 'codigo_ibge_municipio', 'cep', 'logradouro', 'numero', 'bairro',
@@ -1352,6 +1365,7 @@ class DashboardController extends Controller
             ['empresa_id' => $empresaAtual->id],
             array_intersect_key($dados, array_flip([
                 'crt', 'inscricao_estadual', 'inscricao_municipal', 'ambiente_ativo', 'csc_nfce', 'id_token_csc', 'pis_cofins_exclui_icms',
+                'serie_nfe_atual', 'numero_nfe_atual', 'serie_nfce_atual', 'numero_nfce_atual',
             ]))
         );
 
