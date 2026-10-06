@@ -108,6 +108,45 @@ class CaixaService
     }
 
     /**
+     * Desfaz no caixa a entrada em dinheiro de uma venda cancelada: lança uma
+     * linha tipo=venda com valor negativo (o saldo soma as linhas de venda).
+     * Devolve null quando a venda nunca entrou no caixa (não havia caixa
+     * aberto na hora). O dinheiro só pode sair da gaveta do turno em que
+     * entrou - vender num turno e cancelar noutro quebraria o fechamento
+     * daquele turno, então isso é recusado.
+     */
+    public function estornarVenda(Empresa $empresa, int $usuarioId, Venda $venda): ?Caixa
+    {
+        $entrada = Caixa::where('empresa_id', $empresa->id)
+            ->where('tipo', 'venda')
+            ->where('observacao', "Venda #{$venda->id}")
+            ->first();
+
+        if ($entrada === null) {
+            return null;
+        }
+
+        $abertura = $this->aberturaEmAberto($empresa->id);
+
+        if ($abertura === null) {
+            throw new \RuntimeException('Esta venda foi paga em dinheiro: abra o caixa para estornar o valor antes de cancelar.');
+        }
+
+        if ($entrada->id < $abertura->id) {
+            throw new \RuntimeException('Esta venda em dinheiro é de um turno de caixa já fechado e não pode ser cancelada aqui.');
+        }
+
+        return Caixa::create([
+            'empresa_id' => $empresa->id,
+            'usuario_id' => $usuarioId,
+            'tipo' => 'venda',
+            'valor' => -abs((float) $entrada->valor),
+            'data_hora' => now(),
+            'observacao' => "Estorno da venda #{$venda->id} (cancelada)",
+        ]);
+    }
+
+    /**
      * Resumo de um turno de caixa (da abertura até o fechamento, ou até
      * agora se ainda aberto): vendas do PDV por forma de pagamento (espécie),
      * suprimentos, sangrias e o saldo esperado em dinheiro na gaveta.

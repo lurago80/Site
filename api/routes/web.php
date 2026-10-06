@@ -92,6 +92,8 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
     Route::get('/descontos', [PdvController::class, 'descontos']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
+    Route::get('/vendas-do-dia', [PdvController::class, 'vendasDoDia']);
+    Route::post('/vendas/{vendaId}/cancelar', [PdvController::class, 'cancelarVenda']);
 
     Route::get('/caixa-status', [PdvController::class, 'caixaStatus']);
     Route::post('/caixa-abrir', [PdvController::class, 'caixaAbrir']);

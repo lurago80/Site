@@ -12,6 +12,7 @@ use App\Models\Produto;
 use App\Models\Vendedor;
 use App\Models\Venda;
 use App\Services\Pdv\CaixaService;
+use App\Services\Pdv\CancelamentoVendaPdvService;
 use App\Services\Pdv\VendaPdvService;
 use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ class PdvController extends Controller
         private readonly VendaPdvService $vendaPdvService,
         private readonly CaixaService $caixaService,
         private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
+        private readonly CancelamentoVendaPdvService $cancelamentoVendaPdvService,
     ) {}
 
     public function caixa(Request $request, string $empresa)
@@ -36,6 +38,7 @@ class PdvController extends Controller
 
         return view('pdv.caixa', [
             'empresaSlug' => $empresa,
+            'podeCancelarVenda' => $request->user()->perfil === 'admin',
             'pdvImpressaoDireta' => $empresaAtual?->pdv_impressao_direta ?? false,
             'logoEmpresaUrl' => $empresaAtual?->logo_url,
         ]);
@@ -247,6 +250,61 @@ class PdvController extends Controller
         }
 
         return response()->json($venda, 201);
+    }
+
+    // ---- Cancelamento de venda (somente administrador) ----
+
+    /** Vendas do PDV de hoje (a mais recente primeiro), com o que é preciso para decidir o cancelamento. */
+    public function vendasDoDia(Request $request, string $empresa)
+    {
+        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem cancelar vendas.');
+
+        $vendas = Venda::query()
+            ->where('empresa_id', $request->attributes->get('empresaAtual')->id)
+            ->where('canal', 'pdv')
+            ->where('data_venda', '>=', now()->startOfDay())
+            ->with(['formaPagamento:id,descricao,tipo', 'documentoFiscal', 'canceladaPor:id,name', 'itens.produto:id,nome', 'itens.agendaVisitacao:id,data_hora'])
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get();
+
+        return response()->json($vendas->map(fn (Venda $v) => [
+            'id' => $v->id,
+            'data_venda' => $v->data_venda,
+            'valor_total' => $v->valor_total,
+            'forma_pagamento' => $v->formaPagamento?->descricao,
+            'itens' => $v->itens->map(fn (ItemVenda $i) => ($i->produto?->nome ?? 'Visita agendada').' x'.(int) $i->quantidade)->values(),
+            'documento' => $v->documentoFiscal ? [
+                'modelo' => $v->documentoFiscal->modelo,
+                'numero' => $v->documentoFiscal->numero,
+                'status' => $v->documentoFiscal->status,
+            ] : null,
+            'cancelada' => $v->status_pagamento === 'cancelado',
+            'cancelada_em' => $v->cancelada_em,
+            'cancelada_por' => $v->canceladaPor?->name,
+            'motivo_cancelamento' => $v->motivo_cancelamento,
+        ]));
+    }
+
+    public function cancelarVenda(Request $request, string $empresa, int $vendaId)
+    {
+        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem cancelar vendas.');
+
+        $dados = $request->validate([
+            'motivo' => ['required', 'string', 'max:255'],
+        ]);
+
+        $venda = Venda::query()
+            ->where('empresa_id', $request->attributes->get('empresaAtual')->id)
+            ->findOrFail($vendaId);
+
+        try {
+            $venda = $this->cancelamentoVendaPdvService->cancelar($venda, $request->user()->id, $dados['motivo']);
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($venda);
     }
 
     // ---- Controle de caixa (abertura, fechamento, sangria, suprimento) ----

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'canal', 'tipo_doc', 'status_pagamento', 'valor_total', 'comissao', 'data_venda',
     'cupom_id', 'desconto_pdv_id', 'valor_desconto', 'check_in_em', 'check_in_usuario_id',
     'tipo_entrega', 'valor_frete', 'endereco_entrega', 'status_envio', 'codigo_rastreio',
+    'cancelada_em', 'cancelada_por_usuario_id', 'motivo_cancelamento',
 ])]
 class Venda extends Model
 {
@@ -26,7 +27,13 @@ class Venda extends Model
             'endereco_entrega' => 'array',
             'data_venda' => 'datetime',
             'check_in_em' => 'datetime',
+            'cancelada_em' => 'datetime',
         ];
+    }
+
+    public function canceladaPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelada_por_usuario_id');
     }
 
     public function descontoPdv(): BelongsTo

@@ -418,11 +418,12 @@ class NfeAvulsaTest extends TestCase
     public function test_regime_normal_recusa_st_com_mensagem_clara(): void
     {
         $this->ativarRegimeNormal();
-        $this->produto->update(['cst_icms' => '60']);
+        // CST 60 (ST já cobrada) é suportado; o 10 (ST na própria operação) ainda não.
+        $this->produto->update(['cst_icms' => '10']);
 
         $mensagem = $this->postJson($this->url(), $this->payload())->assertStatus(422)->json('message');
 
-        $this->assertStringContainsString('CST de ICMS 60', $mensagem);
+        $this->assertStringContainsString('CST de ICMS 10', $mensagem);
         $this->assertStringContainsString('Substituição tributária', $mensagem);
     }
 
@@ -463,6 +464,33 @@ class NfeAvulsaTest extends TestCase
         $this->assertStringContainsString('<vPag>121.00</vPag>', $xml);
         $this->assertStringNotContainsString('<CSOSN>', $xml);
         $this->assertEquals(121.0, (float) $documento->total);
+
+        $this->validarNoSchema($xml);
+    }
+
+    public function test_nfce_com_cst_60_e_cartao_traz_grupo_card_e_e_valida_no_schema(): void
+    {
+        $this->ativarRegimeNormal();
+        $this->produto->update(['cst_icms' => '60', 'aliquota_icms' => null, 'cst_pis' => '04', 'cst_cofins' => '04', 'cst_ipi' => null, 'cfop_padrao' => '5405']);
+
+        $documento = new DocumentoFiscal([
+            'empresa_id' => $this->empresa->id, 'tipo_operacao' => 'venda', 'modelo' => 65, 'serie' => '1', 'numero' => 3,
+            'ambiente' => 'homologacao', 'valor_produtos' => 20, 'total' => 20, 'tpag' => '03',
+        ]);
+
+        $item = new DocumentoFiscalItem([
+            'produto_id' => $this->produto->id, 'ncm' => '22030000', 'cfop' => '5405',
+            'quantidade' => 1, 'valor_unitario' => 20, 'valor_total' => 20,
+        ]);
+        $item->setRelation('produto', $this->produto->fresh());
+
+        $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfce'))
+            ->invoke(new NfePhpFiscalGateway(), $documento, collect([$item]), $this->empresa, ConfigFiscal::first());
+
+        // ST já cobrada: o item leva só origem e CST, sem ICMS destacado
+        $this->assertStringContainsString('<ICMS><ICMS60><orig>0</orig><CST>60</CST></ICMS60></ICMS>', $xml);
+        $this->assertStringContainsString('<tPag>03</tPag>', $xml);
+        $this->assertStringContainsString('<card><tpIntegra>2</tpIntegra></card>', $xml);
 
         $this->validarNoSchema($xml);
     }

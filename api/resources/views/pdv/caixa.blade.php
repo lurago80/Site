@@ -211,6 +211,16 @@
         .modal-fechar:hover { color: var(--text); }
         .modal-verificar { position: relative; }
 
+        /* Modal de vendas do dia (cancelamento - só administrador) */
+        .modal-vendas { max-width: 820px; }
+        .tabela-vendas { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .tabela-vendas th, .tabela-vendas td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+        .tabela-vendas tr.cancelada td { color: var(--text-dim); text-decoration: line-through; }
+        .tabela-vendas tr.cancelada td.sem-risco { text-decoration: none; }
+        .tabela-vendas .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; border: 1px solid var(--border); }
+        .tabela-vendas button { padding: 5px 10px; font-size: 12px; }
+        .tabela-vendas .motivo { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
         .busca-verificar { display: flex; gap: 10px; margin-bottom: 18px; }
         .busca-verificar input { flex: 1; font-size: 14px; padding: 11px 13px; }
 
@@ -247,6 +257,9 @@
                 </svg>
                 Verificar Ticket (F2)
             </button>
+            @if ($podeCancelarVenda)
+                <button type="button" class="btn-verificar" onclick="abrirModalVendas()" title="Vendas de hoje - cancelar venda (somente administrador)">Vendas do dia / Cancelar</button>
+            @endif
             <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/visitas-pagas') }}" target="_blank" rel="noopener" title="Lista de visitas pagas para conferência sem internet">Visitas pagas (PDF)</a>
             <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/caixa-extrato-impressao') }}" target="_blank" rel="noopener" title="Extrato do caixa para conferência e impressão">Extrato do caixa</a>
             <span>{{ auth()->user()->name }}</span>
@@ -369,6 +382,21 @@
             <div id="verificar-resultado"></div>
         </div>
     </div>
+
+    @if ($podeCancelarVenda)
+    <div class="modal-overlay" id="modal-vendas-overlay">
+        <div class="modal-verificar modal-vendas">
+            <button type="button" class="modal-fechar" onclick="fecharModalVendas()">&times;</button>
+            <h2>Vendas do dia</h2>
+            <p class="modal-sub">Cancelar uma venda devolve o estoque, estorna o dinheiro no caixa e, se houver NFC-e autorizada, cancela a nota na SEFAZ. Fica registrado quem cancelou e o motivo.</p>
+            <p class="msg" id="vendas-msg"></p>
+            <table class="tabela-vendas">
+                <thead><tr><th>Nº</th><th>Hora</th><th>Itens</th><th>Total</th><th>Pagamento</th><th>Nota</th><th></th></tr></thead>
+                <tbody id="vendas-tbody"><tr><td colspan="7">Carregando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    @endif
 
     <script>
         const empresa = @json($empresaSlug);
@@ -972,11 +1000,74 @@
             renderizarVerificar(resposta);
         }
 
+        @if ($podeCancelarVenda)
+        // Vendas do dia / cancelamento (somente administrador - o servidor também confere o perfil)
+        function abrirModalVendas() {
+            document.getElementById('modal-vendas-overlay').classList.add('aberto');
+            carregarVendasDoDia();
+        }
+
+        function fecharModalVendas() {
+            document.getElementById('modal-vendas-overlay').classList.remove('aberto');
+        }
+
+        function rotuloNota(doc) {
+            if (!doc) return 'Sem nota';
+            const nomes = { autorizada: 'autorizada', cancelada: 'cancelada', rejeitada: 'rejeitada', contingencia: 'contingência' };
+            return `${doc.modelo === 55 ? 'NF-e' : 'NFC-e'} ${doc.numero} (${nomes[doc.status] || doc.status})`;
+        }
+
+        async function carregarVendasDoDia() {
+            const tbody = document.getElementById('vendas-tbody');
+            const resp = await fetch(`${base}/vendas-do-dia`, { headers: { 'Accept': 'application/json' } });
+            if (!resp.ok) { tbody.innerHTML = '<tr><td colspan="7">Não foi possível carregar as vendas.</td></tr>'; return; }
+            const vendas = await resp.json();
+            if (!vendas.length) { tbody.innerHTML = '<tr><td colspan="7">Nenhuma venda hoje.</td></tr>'; return; }
+
+            tbody.innerHTML = vendas.map(v => `
+                <tr class="${v.cancelada ? 'cancelada' : ''}">
+                    <td>#${v.id}</td>
+                    <td>${new Date(v.data_venda).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td>${escapeHtml(v.itens.join(', '))}</td>
+                    <td>R$ ${Number(v.valor_total).toFixed(2)}</td>
+                    <td>${escapeHtml(v.forma_pagamento || '-')}</td>
+                    <td>${escapeHtml(rotuloNota(v.documento))}</td>
+                    <td class="sem-risco">${v.cancelada
+                        ? `<span class="tag">Cancelada</span><span class="motivo">${escapeHtml(v.cancelada_por || '')} · ${escapeHtml(v.motivo_cancelamento || '')}</span>`
+                        : `<button class="secundario" onclick="cancelarVendaPdv(${v.id})">Cancelar</button>`}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function cancelarVendaPdv(id) {
+            const msg = document.getElementById('vendas-msg');
+            const motivo = prompt(`Cancelar a venda #${id}?\n\nInforme o motivo (mín. 15 caracteres):`);
+            if (!motivo) return;
+
+            msg.className = 'msg'; msg.textContent = 'Cancelando...';
+            const resp = await fetch(`${base}/vendas/${id}/cancelar`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ motivo }),
+            });
+            const resposta = await resp.json();
+
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || 'Não foi possível cancelar a venda.'; return; }
+
+            msg.className = 'msg ok'; msg.textContent = `Venda #${id} cancelada.`;
+            carregarVendasDoDia();
+            caixaAtualizarStatus();
+            carregarProdutos(document.getElementById('busca').value);
+            carregarAgenda();
+        }
+        @endif
+
         document.getElementById('busca').addEventListener('input', (e) => carregarProdutos(e.target.value));
         document.addEventListener('keydown', (e) => {
             if (e.key === 'F10') { e.preventDefault(); finalizarVenda(); }
             if (e.key === 'F2') { e.preventDefault(); abrirModalVerificar(); }
             if (e.key === 'Escape' && document.getElementById('modal-verificar-overlay').classList.contains('aberto')) { fecharModalVerificar(); }
+            @if ($podeCancelarVenda)
+            if (e.key === 'Escape' && document.getElementById('modal-vendas-overlay').classList.contains('aberto')) { fecharModalVendas(); }
+            @endif
         });
 
         carregarProdutos();
