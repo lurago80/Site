@@ -109,6 +109,17 @@ class ImpostosNfeServiceTest extends TestCase
         $this->assertSame(['cst' => '52', 'cEnq' => '999', 'vIPI' => 0.0], $r['ipi']);
     }
 
+    public function test_icms_cobrado_anteriormente_por_st_cst_60_nao_destaca_icms(): void
+    {
+        $r = $this->servico->calcularItem(
+            $this->produto(['cst_icms' => '60', 'aliquota_icms' => null, 'cst_pis' => '04', 'cst_cofins' => '04', 'cst_ipi' => null]),
+            100.00, 0, $this->contexto(),
+        );
+
+        $this->assertSame(['cst' => '60', 'vBC' => 0.0, 'pICMS' => 0.0, 'vICMS' => 0.0], $r['icms']);
+        $this->assertSame(['cst' => '04'], $r['pis']);
+    }
+
     public function test_produto_sem_ipi_nao_gera_grupo_de_ipi(): void
     {
         $r = $this->servico->calcularItem($this->produto(['cst_ipi' => null]), 100, 0, $this->contexto());
@@ -143,7 +154,6 @@ class ImpostosNfeServiceTest extends TestCase
     public static function casosRecusados(): array
     {
         return [
-            'ST (CST 60)' => [['cst_icms' => '60'], [], 'CST de ICMS 60'],
             'ST (CST 10)' => [['cst_icms' => '10'], [], 'CST de ICMS 10'],
             'sem CST de ICMS' => [['cst_icms' => null], [], 'sem CST de ICMS'],
             'CST 00 sem alíquota' => [['aliquota_icms' => null], [], 'sem alíquota de ICMS'],

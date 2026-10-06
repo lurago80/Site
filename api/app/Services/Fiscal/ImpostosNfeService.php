@@ -23,7 +23,7 @@ use App\Models\Produto;
  */
 class ImpostosNfeService
 {
-    private const ICMS_SUPORTADOS = ['00', '20', '40', '41', '50'];
+    private const ICMS_SUPORTADOS = ['00', '20', '40', '41', '50', '60'];
 
     /** UFs de origem (Sul e Sudeste, exceto ES) cuja alíquota interestadual para N/NE/CO/ES é 7%. */
     private const UF_ORIGEM_7 = ['SP', 'RJ', 'MG', 'PR', 'SC', 'RS'];
@@ -78,7 +78,9 @@ class ImpostosNfeService
             );
         }
 
-        if (in_array($cst, ['40', '41', '50'], true)) {
+        // 60 = ICMS cobrado anteriormente por substituição tributária: o revendedor
+        // não destaca ICMS na saída, então se comporta como CST sem imposto a calcular.
+        if (in_array($cst, ['40', '41', '50', '60'], true)) {
             return ['cst' => $cst, 'vBC' => 0.0, 'pICMS' => 0.0, 'vICMS' => 0.0];
         }
 

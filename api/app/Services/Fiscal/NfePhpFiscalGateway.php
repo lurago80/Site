@@ -893,6 +893,11 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         if ($tpag === '99') {
             $std->xPag = 'Outros';
         }
+        // Cartão de crédito/débito exige o grupo card (rejeição 391). 2 = não integrado
+        // (maquininha sem TEF): CNPJ da credenciadora, bandeira e autorização ficam opcionais.
+        if (in_array($tpag, ['03', '04'], true)) {
+            $std->tpIntegra = 2;
+        }
         $nfe->tagdetPag($std);
 
         if (! empty($documento->informacoes_adicionais)) {
