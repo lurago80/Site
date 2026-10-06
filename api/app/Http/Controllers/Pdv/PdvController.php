@@ -14,6 +14,7 @@ use App\Models\Venda;
 use App\Services\Pdv\CaixaService;
 use App\Services\Pdv\CancelamentoVendaPdvService;
 use App\Services\Pdv\VendaPdvService;
+use App\Services\Vendas\KitService;
 use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
 
@@ -30,6 +31,7 @@ class PdvController extends Controller
         private readonly CaixaService $caixaService,
         private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
         private readonly CancelamentoVendaPdvService $cancelamentoVendaPdvService,
+        private readonly KitService $kitService,
     ) {}
 
     public function caixa(Request $request, string $empresa)
@@ -139,14 +141,17 @@ class PdvController extends Controller
 
         return response()->json(
             Produto::query()
-                ->where('tipo', 'fisico')
+                ->where(fn ($q) => $q->where('tipo', 'fisico')->orWhere('eh_kit', true))
                 ->where('ativo', true)
-                ->where('eh_kit', false)
                 ->where('somente_loja_virtual', false)
                 ->when($busca, fn ($q, $termo) => $q->where('nome', 'ilike', "%{$termo}%"))
                 ->with(['variacoes' => fn ($q) => $q->where('ativo', true)->orderBy('tamanho')])
                 ->orderBy('nome')
                 ->get()
+                // Kit: manda a composição (itens fixos + grupos de escolha) para o caixa montar o kit.
+                ->map(fn (Produto $produto) => $produto->eh_kit
+                    ? array_merge($produto->toArray(), ['kit' => $this->kitService->resumo($produto)])
+                    : $produto)
         );
     }
 
@@ -208,6 +213,9 @@ class PdvController extends Controller
             'itens' => ['nullable', 'array'],
             'itens.*.produto_id' => ['required_with:itens', 'integer'],
             'itens.*.variacao_id' => ['nullable', 'integer'],
+            'itens.*.escolhas' => ['nullable', 'array'],
+            'itens.*.escolhas.*.variacao_id' => ['required', 'integer'],
+            'itens.*.escolhas.*.quantidade' => ['required', 'integer', 'min:1'],
             'itens.*.quantidade' => ['required_with:itens', 'integer', 'min:1'],
             'agenda_visitacao_id' => ['nullable', 'integer'],
             'agenda_quantidade' => ['nullable', 'required_with:agenda_visitacao_id', 'integer', 'min:1'],

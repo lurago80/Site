@@ -427,6 +427,28 @@
                     ? `<span class="minimo">Venda mínima: ${p.quantidade_minima_venda} un. (pode misturar variações)</span>`
                     : '';
 
+                if (p.kit) {
+                    const fixosHtml = p.kit.fixos.map(f => `<span class="minimo">${f.quantidade}x ${escapeHtml(f.nome)}</span>`).join('');
+                    const escolhasHtml = p.kit.escolhas.map((g, gi) => Array.from({ length: g.quantidade }, (_, n) => `
+                        <select class="kit-escolha-${p.id}" data-grupo="${gi}">
+                            <option value="">${escapeHtml(g.nome)} ${g.quantidade > 1 ? n + 1 : ''}</option>
+                            ${g.variacoes.map(v => `<option value="${v.id}" data-rotulo="${escapeHtml(g.nome)} (${escapeHtml(v.tamanho)})" ${v.estoque_atual <= 0 ? 'disabled' : ''}>${escapeHtml(v.tamanho)}${v.estoque_atual <= 0 ? ' (sem estoque)' : ''}</option>`).join('')}
+                        </select>`).join('')).join('');
+
+                    return `
+                        <div class="produto-btn">
+                            ${imagemHtml}
+                            <span class="nome">${escapeHtml(p.nome)} (kit)</span>
+                            <span class="preco">R$ ${Number(p.preco_venda).toFixed(2)}</span>
+                            ${fixosHtml}
+                            ${escolhasHtml}
+                            <button type="button" class="secundario" onclick="adicionarKit(${p.id})" ${p.kit.disponivel ? '' : 'disabled'}>
+                                ${p.kit.disponivel ? 'Adicionar kit' : 'Sem estoque'}
+                            </button>
+                        </div>
+                    `;
+                }
+
                 if (temVariacoes) {
                     const semEstoque = p.variacoes.every(v => v.estoque_atual <= 0);
                     const opcoes = p.variacoes.map(v => `
@@ -467,6 +489,31 @@
             const p = produtosCache.find(x => x.id === id);
             if (!p) return;
             adicionarProduto(p.id, p.nome, Number(p.preco_venda));
+        }
+
+        // Kit: cada escolha do cliente vira uma linha própria no carrinho (não soma com outro kit
+        // igual, pois os sabores podem ser diferentes). O preço é o do kit; a nota rateia entre os itens.
+        function adicionarKit(produtoId) {
+            const p = produtosCache.find(x => x.id === produtoId);
+            if (!p) return;
+
+            const selects = [...document.querySelectorAll(`.kit-escolha-${produtoId}`)];
+            if (selects.some(s => !s.value)) {
+                alert('Escolha todos os itens do kit antes de adicionar.');
+                return;
+            }
+
+            const porVariacao = {};
+            selects.forEach(s => { porVariacao[s.value] = (porVariacao[s.value] || 0) + 1; });
+            const escolhas = Object.entries(porVariacao).map(([variacaoId, quantidade]) => ({ variacao_id: Number(variacaoId), quantidade }));
+            const detalhes = selects.map(s => s.selectedOptions[0].dataset.rotulo).join(', ');
+
+            carrinho.push({
+                tipo: 'produto', id: p.id, variacaoId: null, tamanho: null, kit: true, escolhas,
+                nome: `${p.nome} (kit: ${detalhes})`, quantidade: 1, valorUnitario: Number(p.preco_venda),
+            });
+            selects.forEach(s => { s.value = ''; });
+            renderizarCarrinho();
         }
 
         function atualizarBotaoVariacao(produtoId) {
@@ -671,7 +718,7 @@
                     nome: document.getElementById('cliente-nome').value || null,
                     cpf_cnpj: document.getElementById('cliente-cpf').value || null,
                 },
-                itens: carrinho.filter(i => i.tipo === 'produto').map(i => ({ produto_id: i.id, variacao_id: i.variacaoId || null, quantidade: i.quantidade })),
+                itens: carrinho.filter(i => i.tipo === 'produto').map(i => ({ produto_id: i.id, variacao_id: i.variacaoId || null, quantidade: i.quantidade, ...(i.kit ? { escolhas: i.escolhas } : {}) })),
                 agenda_visitacao_id: agendaItem ? agendaItem.id : null,
                 agenda_quantidade: agendaItem ? agendaItem.quantidade : null,
                 cupom_codigo: agendaItem ? (document.getElementById('cupom-visita').value || null) : null,

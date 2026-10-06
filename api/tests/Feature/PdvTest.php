@@ -3,12 +3,16 @@
 namespace Tests\Feature;
 
 use App\Models\AgendaVisitacao;
+use App\Models\ConfigFiscal;
 use App\Models\Cupom;
 use App\Models\DescontoPdv;
+use App\Models\DocumentoFiscal;
 use App\Models\Empresa;
 use App\Models\FormaPagamento;
+use App\Models\KitComponente;
 use App\Models\Plano;
 use App\Models\Produto;
+use App\Models\ProdutoVariacao;
 use App\Models\User;
 use App\Models\Atendente;
 use App\Models\Vendedor;
@@ -89,21 +93,115 @@ class PdvTest extends TestCase
         $response->assertOk()->assertJsonCount(1);
     }
 
-    public function test_kit_nao_aparece_nem_e_vendido_no_pdv(): void
+    /**
+     * Kit "Caneca (fixa) + 2 cervejas à escolha" por R$ 50 (soma dos itens: 10 + 2 x 18 = 46).
+     *
+     * @return array{kit: Produto, caneca: Produto, sabores: array<int, ProdutoVariacao>}
+     */
+    private function criarKit(): array
     {
-        $kit = Produto::create([
-            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Chopp Caneca',
-            'tipo' => 'fisico', 'preco_venda' => 90.00, 'eh_kit' => true,
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca', 'tipo' => 'fisico', 'preco_venda' => 10, 'estoque_atual' => 5,
         ]);
+        $cerveja = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Artesanal', 'tipo' => 'fisico', 'preco_venda' => 18,
+        ]);
+        $sabores = collect(['Pilsen', 'IPA'])->map(fn ($nome) => ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => $nome, 'estoque_atual' => 10,
+        ]))->all();
+        $kit = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Caneca + 2 Cervejas',
+            'tipo' => 'fisico', 'preco_venda' => 50.00, 'eh_kit' => true,
+        ]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $caneca->id, 'tipo' => 'fixo', 'quantidade' => 1]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $cerveja->id, 'tipo' => 'escolha', 'quantidade' => 2]);
 
-        $this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=Kit Chopp")->assertOk()->assertJsonCount(0);
+        return compact('kit', 'caneca', 'sabores');
+    }
 
-        $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
-            'tipo_doc' => 'nao_fiscal',
+    private function venderKit(Produto $kit, array $escolhas, string $tipoDoc = 'nao_fiscal')
+    {
+        return $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => $tipoDoc,
             'atendente_id' => $this->atendentePadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
-            'itens' => [['produto_id' => $kit->id, 'quantidade' => 1]],
-        ])->assertStatus(422);
+            'itens' => [['produto_id' => $kit->id, 'quantidade' => 1, 'escolhas' => $escolhas]],
+        ]);
+    }
+
+    public function test_kit_aparece_no_pdv_com_a_composicao(): void
+    {
+        ['kit' => $kit] = $this->criarKit();
+
+        $json = collect($this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=Kit Caneca")->assertOk()->json())->firstWhere('id', $kit->id);
+
+        $this->assertTrue($json['kit']['disponivel']);
+        $this->assertSame('Caneca', $json['kit']['fixos'][0]['nome']);
+        $this->assertSame(2, $json['kit']['escolhas'][0]['quantidade']);
+        $this->assertCount(2, $json['kit']['escolhas'][0]['variacoes']);
+    }
+
+    public function test_venda_de_kit_cobra_o_preco_do_kit_e_baixa_cada_componente(): void
+    {
+        ['kit' => $kit, 'caneca' => $caneca, 'sabores' => [$pilsen, $ipa]] = $this->criarKit();
+
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 1], ['variacao_id' => $ipa->id, 'quantidade' => 1]])
+            ->assertCreated()
+            ->assertJsonPath('valor_total', '50.00')
+            ->assertJsonCount(3, 'itens.0.composicao');
+
+        $this->assertSame(4, $caneca->fresh()->estoque_atual);
+        $this->assertSame(9, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(9, $ipa->fresh()->estoque_atual);
+    }
+
+    public function test_venda_de_kit_exige_a_quantidade_de_escolhas_do_kit(): void
+    {
+        ['kit' => $kit, 'caneca' => $caneca, 'sabores' => [$pilsen]] = $this->criarKit();
+
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 1]])->assertStatus(422);
+
+        $this->assertSame(5, $caneca->fresh()->estoque_atual);
+        $this->assertSame(10, $pilsen->fresh()->estoque_atual);
+    }
+
+    public function test_nfce_do_kit_sai_com_um_item_por_componente_e_o_valor_do_kit_rateado(): void
+    {
+        ConfigFiscal::create([
+            'empresa_id' => $this->empresa->id, 'crt' => '1', 'serie_nfce_atual' => '1',
+            'numero_nfce_atual' => 0, 'ambiente_ativo' => 'homologacao',
+        ]);
+        ['kit' => $kit, 'sabores' => [$pilsen, $ipa]] = $this->criarKit();
+
+        $resposta = $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 1], ['variacao_id' => $ipa->id, 'quantidade' => 1]], 'fiscal')
+            ->assertCreated();
+
+        $itens = DocumentoFiscal::where('venda_id', $resposta->json('id'))->firstOrFail()->itens;
+
+        $this->assertCount(3, $itens);
+        $this->assertEqualsWithDelta(50.00, $itens->sum('valor_total'), 0.001);
+        // caneca: 10/46 de 50 = 10,87; cervejas: 18/46 de 50 = 19,57 (a última absorve o centavo)
+        $this->assertEqualsWithDelta(10.87, (float) $itens->firstWhere('descricao', 'Caneca')->valor_total, 0.001);
+    }
+
+    public function test_cancelar_venda_de_kit_devolve_o_estoque_de_cada_componente(): void
+    {
+        ['kit' => $kit, 'caneca' => $caneca, 'sabores' => [$pilsen, $ipa]] = $this->criarKit();
+        $admin = User::create([
+            'name' => 'Admin', 'email' => 'admin@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+
+        $vendaId = $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 2]])->assertCreated()->json('id');
+        $this->assertSame(8, $pilsen->fresh()->estoque_atual);
+
+        $this->actingAs($admin)
+            ->postJson("/pdv/{$this->empresa->slug}/vendas/{$vendaId}/cancelar", ['motivo' => 'Cliente desistiu da compra'])
+            ->assertOk();
+
+        $this->assertSame(5, $caneca->fresh()->estoque_atual);
+        $this->assertSame(10, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(10, $ipa->fresh()->estoque_atual);
     }
 
     public function test_produto_somente_loja_virtual_nao_aparece_nem_e_vendido_no_pdv(): void

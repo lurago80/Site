@@ -924,15 +924,34 @@ class EmissaoFiscalService
             'quantidade' => $itemVenda->quantidade,
         ]);
 
-        return $itens->map(function (array $selecao) use ($venda, $documento, $ufEmpresa, $ufCliente, $tipoOperacao) {
+        return $itens->flatMap(function (array $selecao) use ($venda, $documento, $ufEmpresa, $ufCliente, $tipoOperacao, $itensSelecionados) {
             $itemVenda = $selecao['item_venda'];
             $quantidade = $selecao['quantidade'];
+
+            // Kit (venda completa): uma linha por componente, com o valor do kit rateado.
+            if ($itensSelecionados === null && ! empty($itemVenda->composicao)) {
+                return collect($this->linhasDoItemDoPedido($itemVenda))->map(fn (array $linha) => new DocumentoFiscalItem([
+                    'empresa_id' => $venda->empresa_id,
+                    'documento_fiscal_id' => $documento->id,
+                    'item_venda_id' => $linha['item_venda_id'],
+                    'produto_id' => $linha['produto']?->id,
+                    'variacao_id' => $linha['variacao_id'],
+                    'descricao' => $linha['descricao'],
+                    'ncm' => $linha['produto']?->ncm,
+                    'cfop' => $ufEmpresa
+                        ? $this->cfopResolver->resolver($ufEmpresa, $ufCliente, $linha['produto']?->cfop_padrao, $tipoOperacao)
+                        : null,
+                    'quantidade' => $linha['quantidade'],
+                    'valor_unitario' => $linha['valor_unitario'],
+                    'valor_total' => $linha['valor_total'],
+                ]))->all();
+            }
 
             $cfop = $ufEmpresa
                 ? $this->cfopResolver->resolver($ufEmpresa, $ufCliente, $itemVenda->produto?->cfop_padrao, $tipoOperacao)
                 : null;
 
-            return new DocumentoFiscalItem([
+            return [new DocumentoFiscalItem([
                 'empresa_id' => $venda->empresa_id,
                 'documento_fiscal_id' => $documento->id,
                 'item_venda_id' => $itemVenda->id,
@@ -942,7 +961,7 @@ class EmissaoFiscalService
                 'quantidade' => $quantidade,
                 'valor_unitario' => $itemVenda->valor_unitario,
                 'valor_total' => round($quantidade * (float) $itemVenda->valor_unitario, 2),
-            ]);
+            ])];
         })->values();
     }
 

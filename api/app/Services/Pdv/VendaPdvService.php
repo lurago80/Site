@@ -15,6 +15,7 @@ use App\Models\Venda;
 use App\Models\Vendedor;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Fiscal\EmissaoFiscalService;
+use App\Services\Vendas\KitService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,6 +31,7 @@ class VendaPdvService
         private readonly ReservaVagaService $reservaVagaService,
         private readonly EmissaoFiscalService $emissaoFiscalService,
         private readonly CaixaService $caixaService,
+        private readonly KitService $kitService,
     ) {}
 
     public function finalizar(Empresa $empresa, array $dados, int $usuarioId): Venda
@@ -158,9 +160,28 @@ class VendaPdvService
     {
         $produto = Produto::findOrFail($item['produto_id']);
         abort_if(! $produto->ativo, 422, "\"{$produto->nome}\" está desativado e não pode ser vendido.");
-        abort_if($produto->eh_kit, 422, "O kit \"{$produto->nome}\" só é vendido na loja virtual.");
         abort_if($produto->somente_loja_virtual, 422, "\"{$produto->nome}\" só é vendido na loja virtual.");
         $quantidade = (int) $item['quantidade'];
+
+        if ($produto->eh_kit) {
+            // Preço fixo do kit; a nota rateia esse valor entre os componentes (composicao).
+            $composicao = $this->kitService->consumir($produto, $quantidade, $item['escolhas'] ?? []);
+            $valorItem = (float) $produto->preco_venda * $quantidade;
+            $comissaoItem = $vendedor ? round($valorItem * (float) $vendedor->percentual_comissao / 100, 2) : 0;
+
+            $venda->itens()->create([
+                'empresa_id' => $venda->empresa_id,
+                'produto_id' => $produto->id,
+                'quantidade' => $quantidade,
+                'valor_unitario' => $produto->preco_venda,
+                'valor_total' => $valorItem,
+                'comissao_percentual' => $vendedor?->percentual_comissao,
+                'comissao_valor' => $comissaoItem ?: null,
+                'composicao' => $composicao,
+            ]);
+
+            return [$valorItem, $comissaoItem];
+        }
 
         $variacao = null;
         if (! empty($item['variacao_id'])) {

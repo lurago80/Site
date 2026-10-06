@@ -132,4 +132,30 @@ class KitService
 
         return $composicao;
     }
+
+    /**
+     * Desfaz a baixa de `consumir()` (cancelamento de venda): devolve ao estoque
+     * cada componente gravado na composição do item. Variação própria volta na
+     * variação; variação vinculada e item fixo voltam no produto da linha.
+     *
+     * @param  array<int, array{produto_id: int, variacao_id?: int|null, tamanho?: string|null, quantidade: int}>  $composicao
+     */
+    public function devolver(array $composicao): void
+    {
+        foreach ($composicao as $componente) {
+            $quantidade = (int) $componente['quantidade'];
+
+            if (! empty($componente['variacao_id']) && ! empty($componente['tamanho'])) {
+                ProdutoVariacao::query()->whereKey($componente['variacao_id'])->increment('estoque_atual', $quantidade);
+
+                continue;
+            }
+
+            $produto = Produto::query()->lockForUpdate()->find($componente['produto_id']);
+
+            if ($produto !== null && $produto->estoque_atual !== null) {
+                $produto->increment('estoque_atual', $quantidade);
+            }
+        }
+    }
 }

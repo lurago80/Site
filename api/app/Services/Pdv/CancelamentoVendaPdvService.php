@@ -10,6 +10,7 @@ use App\Models\Produto;
 use App\Models\ProdutoVariacao;
 use App\Models\Venda;
 use App\Services\Fiscal\EmissaoFiscalService;
+use App\Services\Vendas\KitService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,6 +29,7 @@ class CancelamentoVendaPdvService
     public function __construct(
         private readonly EmissaoFiscalService $emissaoFiscalService,
         private readonly CaixaService $caixaService,
+        private readonly KitService $kitService,
     ) {}
 
     public function cancelar(Venda $venda, int $usuarioId, string $motivo): Venda
@@ -106,6 +108,12 @@ class CancelamentoVendaPdvService
     private function devolverItem(ItemVenda $item): void
     {
         $quantidade = (int) $item->quantidade;
+
+        if (! empty($item->composicao)) {
+            $this->kitService->devolver($item->composicao);
+
+            return;
+        }
 
         if ($item->agenda_visitacao_id !== null) {
             $agenda = AgendaVisitacao::query()->whereKey($item->agenda_visitacao_id)->lockForUpdate()->first();
