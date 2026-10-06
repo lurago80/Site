@@ -47,6 +47,10 @@ class ImportarPlanilhaFiscalProdutos extends Command
             $this->warn("Linha {$linha}: {$mensagem}");
         }
 
+        if ($resultado['avisos'] !== []) {
+            $this->comment(count($resultado['avisos']).' linha(s) com CSOSN em "CST ICMS" (ignorado, valor atual mantido).');
+        }
+
         $this->line(sprintf(
             '%d produto(s) a atualizar, %d sem alteração, %d com erro.',
             count($resultado['validas']), $resultado['sem_alteracao'], count($resultado['erros'])

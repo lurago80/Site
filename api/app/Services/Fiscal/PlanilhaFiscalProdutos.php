@@ -157,7 +157,7 @@ class PlanilhaFiscalProdutos
      * Lê a planilha devolvida e devolve [linhas válidas, erros, ignoradas].
      * Cada linha válida: ['produto' => Produto, 'dados' => array pronto para update].
      *
-     * @return array{validas: array<int, array{produto: Produto, dados: array}>, erros: array<int, string>, sem_alteracao: int}
+     * @return array{validas: array<int, array{produto: Produto, dados: array}>, erros: array<int, string>, avisos: array<int, string>, sem_alteracao: int}
      */
     public function ler(int $empresaId, string $caminho): array
     {
@@ -185,6 +185,7 @@ class PlanilhaFiscalProdutos
 
         $validas = [];
         $erros = [];
+        $avisos = [];
         $semAlteracao = 0;
 
         foreach ($linhas as $i => $linha) {
@@ -204,6 +205,16 @@ class PlanilhaFiscalProdutos
             $entrada = [];
             foreach (self::FISCAIS as $campo => [, $tipo]) {
                 $entrada[$campo] = $this->normalizar($linha[$mapa[$campo]] ?? null, $tipo);
+                // O contador costuma digitar com pontuação (ex.: 2203.00.00).
+                if (in_array($campo, ['ncm', 'cest', 'cfop_padrao', 'cfop_interestadual'], true) && is_string($entrada[$campo])) {
+                    $entrada[$campo] = preg_replace('/\D/', '', $entrada[$campo]) ?: null;
+                }
+            }
+
+            // CSOSN (3 dígitos, Simples Nacional) não cabe em cst_icms (CST de 2 dígitos): mantém o valor atual.
+            if (is_string($entrada['cst_icms']) && preg_match('/^\d{3}$/', $entrada['cst_icms'])) {
+                $avisos[$numero] = "{$produto->nome}: CSOSN {$entrada['cst_icms']} ignorado (CST ICMS mantido).";
+                $entrada['cst_icms'] = $produto->cst_icms;
             }
 
             $validador = Validator::make($entrada, array_map(fn ($c) => $c[2], self::FISCAIS));
@@ -245,7 +256,7 @@ class PlanilhaFiscalProdutos
             $validas[$numero] = ['produto' => $produto, 'dados' => $produto->getDirty()];
         }
 
-        return ['validas' => $validas, 'erros' => $erros, 'sem_alteracao' => $semAlteracao];
+        return ['validas' => $validas, 'erros' => $erros, 'avisos' => $avisos, 'sem_alteracao' => $semAlteracao];
     }
 
     private function gravar(Worksheet $aba, int $coluna, int $linha, mixed $valor, string $tipo): void
