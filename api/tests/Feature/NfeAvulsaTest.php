@@ -562,6 +562,60 @@ class NfeAvulsaTest extends TestCase
         $item = DocumentoFiscalItem::find($itens[1]['id']);
         $unitario = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'valorUnitarioExato'))->invoke(new NfePhpFiscalGateway(), $item);
         $this->assertEqualsWithDelta(17.145, $unitario, 0.0000001);
+
+        // XML da NFe do pedido (modelo 55, internet) com o kit aberto: precisa fechar e passar no XSD oficial
+        $documento = DocumentoFiscal::findOrFail($resposta->json('id'));
+        $this->assertSame(55, $documento->modelo);
+        $this->assertSame(2, (int) $documento->indicador_presenca);
+
+        $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfe'))->invoke(
+            new NfePhpFiscalGateway(),
+            $documento->load('cliente'),
+            $documento->itens()->with('produto')->get(),
+            $this->empresa,
+            ConfigFiscal::first(),
+        );
+
+        $this->assertStringContainsString('<indPres>2</indPres>', $xml);
+        $this->assertStringContainsString('<vNF>90.00</vNF>', $xml);
+        $this->validarNoSchema($xml);
+    }
+
+    public function test_nfce_do_kit_vendido_no_pdv_gera_xml_valido_no_schema(): void
+    {
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca', 'tipo' => 'fisico', 'preco_venda' => 10, 'ncm' => '69111010', 'cfop_padrao' => '5102',
+        ]);
+        $kit = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Kit Caneca + 2 Cervejas', 'tipo' => 'fisico', 'preco_venda' => 50, 'eh_kit' => true]);
+
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 50, 'data_venda' => now(),
+        ]);
+        $venda->itens()->create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $kit->id, 'quantidade' => 1,
+            'valor_unitario' => 50, 'valor_total' => 50,
+            'composicao' => [
+                ['produto_id' => $caneca->id, 'nome' => 'Caneca', 'variacao_id' => null, 'tamanho' => null, 'quantidade' => 1],
+                ['produto_id' => $this->produto->id, 'nome' => 'Cerveja Pilsen 600ml', 'variacao_id' => null, 'tamanho' => null, 'quantidade' => 2],
+            ],
+        ]);
+
+        $documento = app(\App\Services\Fiscal\EmissaoFiscalService::class)->emitir($venda->fresh('itens'), 65);
+
+        $this->assertCount(2, $documento->itens);
+        $this->assertEqualsWithDelta(50.0, (float) $documento->itens->sum('valor_total'), 0.001);
+
+        $xml = (new \ReflectionMethod(NfePhpFiscalGateway::class, 'montarXmlNfce'))->invoke(
+            new NfePhpFiscalGateway(),
+            $documento,
+            $documento->itens()->with('produto')->get(),
+            $this->empresa,
+            ConfigFiscal::first(),
+        );
+
+        $this->assertStringContainsString('<vNF>50.00</vNF>', $xml);
+        $this->validarNoSchema($xml);
     }
 
     private function documentoNfce(): DocumentoFiscal
