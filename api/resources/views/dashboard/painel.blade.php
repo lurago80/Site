@@ -698,11 +698,13 @@
                     <div class="linha-form">
                         <div><label>Nome</label><input type="text" id="ve-nome"></div>
                         <div><label>Telefone</label><input type="text" id="ve-telefone" style="width:140px"></div>
+                        <div><label>Chave PIX</label><input type="text" id="ve-pix" maxlength="77" style="width:240px" placeholder="CPF/CNPJ, e-mail, telefone ou chave aleatória"></div>
                         <div><label>Comissão (%)</label><input type="number" step="0.01" id="ve-comissao" value="5" style="width:100px"></div>
-                        <div><button class="acao" onclick="criarVendedor()">Cadastrar</button></div>
+                        <div><button class="acao" id="ve-botao" onclick="salvarVendedor()">Cadastrar</button></div>
+                        <div><button class="secundario" id="ve-cancelar" onclick="limparFormularioVendedor()" style="display:none;">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Nome</th><th>Telefone</th><th>Comissão</th></tr></thead>
+                        <thead><tr><th>Nome</th><th>Telefone</th><th>Chave PIX</th><th>Comissão</th><th></th></tr></thead>
                         <tbody id="tbody-vendedores"></tbody>
                     </table>
                     <p class="msg" id="msg-vendedores"></p>
@@ -722,7 +724,7 @@
                         <div><button class="secundario" onclick="carregarRelatorioVendedores()">Consultar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Vendedor</th><th>Vendas</th><th>Itens</th><th>Valor total</th></tr></thead>
+                        <thead><tr><th>Vendedor</th><th>Chave PIX</th><th>Vendas</th><th>Itens</th><th>Valor total</th></tr></thead>
                         <tbody id="tbody-relatorio-vendedores"></tbody>
                     </table>
                 </div>
@@ -2628,21 +2630,56 @@
             const resp = await fetch(`${base}/vendedores`);
             vendedoresCache = await resp.json();
             document.getElementById('tbody-vendedores').innerHTML = vendedoresCache.map(v => `
-                <tr><td>${v.nome}</td><td>${v.telefone || '-'}</td><td>${v.percentual_comissao}%</td></tr>
-            `).join('') || '<tr><td colspan="3">Nenhum vendedor cadastrado.</td></tr>';
+                <tr>
+                    <td>${esc(v.nome)}</td>
+                    <td>${esc(v.telefone || '-')}</td>
+                    <td>${esc(v.chave_pix || '-')}</td>
+                    <td>${v.percentual_comissao}%</td>
+                    <td><button class="secundario" onclick="editarVendedor(${v.id})">Editar</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum vendedor cadastrado.</td></tr>';
         }
 
-        async function criarVendedor() {
+        let vendedorEditandoId = null;
+
+        function limparFormularioVendedor() {
+            vendedorEditandoId = null;
+            document.getElementById('ve-nome').value = '';
+            document.getElementById('ve-telefone').value = '';
+            document.getElementById('ve-pix').value = '';
+            document.getElementById('ve-comissao').value = '5';
+            document.getElementById('ve-botao').textContent = 'Cadastrar';
+            document.getElementById('ve-cancelar').style.display = 'none';
+        }
+
+        function editarVendedor(id) {
+            const v = vendedoresCache.find(x => x.id === id);
+            if (!v) return;
+            vendedorEditandoId = id;
+            document.getElementById('ve-nome').value = v.nome;
+            document.getElementById('ve-telefone').value = v.telefone ?? '';
+            document.getElementById('ve-pix').value = v.chave_pix ?? '';
+            document.getElementById('ve-comissao').value = v.percentual_comissao;
+            document.getElementById('ve-botao').textContent = 'Salvar alterações';
+            document.getElementById('ve-cancelar').style.display = '';
+        }
+
+        async function salvarVendedor() {
             const dados = {
                 nome: document.getElementById('ve-nome').value,
                 telefone: document.getElementById('ve-telefone').value || null,
+                chave_pix: document.getElementById('ve-pix').value || null,
                 percentual_comissao: document.getElementById('ve-comissao').value ? Number(document.getElementById('ve-comissao').value) : 5,
             };
-            const resp = await fetch(`${base}/vendedores`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const editando = vendedorEditandoId !== null;
+            const resp = await fetch(editando ? `${base}/vendedores/${vendedorEditandoId}` : `${base}/vendedores`, {
+                method: editando ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados),
+            });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-vendedores');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
-            msg.className = 'msg ok'; msg.textContent = 'Vendedor cadastrado.';
+            msg.className = 'msg ok'; msg.textContent = editando ? 'Vendedor atualizado.' : 'Vendedor cadastrado.';
+            limparFormularioVendedor();
             carregarVendedores();
         }
 
@@ -2725,8 +2762,8 @@
             const resp = await fetch(`${base}/vendedores-relatorio?${params}`);
             const lista = await resp.json();
             document.getElementById('tbody-relatorio-vendedores').innerHTML = lista.map(r => `
-                <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
-            `).join('') || '<tr><td colspan="4">Nenhum vendedor cadastrado.</td></tr>';
+                <tr><td>${esc(r.nome)}</td><td>${esc(r.chave_pix || '-')}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+            `).join('') || '<tr><td colspan="5">Nenhum vendedor cadastrado.</td></tr>';
         }
 
         let descontosPdvCache = [];

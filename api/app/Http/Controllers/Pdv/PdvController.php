@@ -175,7 +175,8 @@ class PdvController extends Controller
     public function vendedores(Request $request, string $empresa)
     {
         return response()->json(
-            Vendedor::where('ativo', true)->orderBy('nome')->get()
+            // o operador do caixa não precisa (nem deve) ver a chave PIX do vendedor
+            Vendedor::where('ativo', true)->orderBy('nome')->get()->each->makeHidden('chave_pix')
         );
     }
 

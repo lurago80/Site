@@ -325,6 +325,17 @@ class PdvTest extends TestCase
         $response->assertJsonPath('atendente.nome', 'Quem Operou o Caixa');
     }
 
+    public function test_lista_de_vendedores_do_pdv_nao_expoe_a_chave_pix(): void
+    {
+        Vendedor::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Vendedor Pix', 'percentual_comissao' => 5,
+            'ativo' => true, 'chave_pix' => 'pix@exemplo.com',
+        ]);
+
+        $this->getJson("/pdv/{$this->empresa->slug}/vendedores")
+            ->assertOk()->assertJsonPath('0.nome', 'Vendedor Pix')->assertJsonMissingPath('0.chave_pix');
+    }
+
     public function test_lista_atendentes_ativos_para_o_pdv(): void
     {
         Atendente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Ativo', 'ativo' => true]);

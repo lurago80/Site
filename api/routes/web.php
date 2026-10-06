@@ -143,6 +143,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
 
     Route::get('/vendedores', [DashboardController::class, 'vendedores']);
     Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);
+    Route::put('/vendedores/{vendedorId}', [DashboardController::class, 'atualizarVendedor']);
     Route::get('/vendedores-relatorio', [DashboardController::class, 'relatorioVendedores']);
 
     Route::get('/atendentes', [DashboardController::class, 'atendentes']);

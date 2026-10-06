@@ -149,6 +149,68 @@ class DashboardTest extends TestCase
         $response->assertCreated()->assertJsonPath('nome', 'Vendedor Teste');
     }
 
+    public function test_vendedor_guarda_a_chave_pix_sem_espacos_nas_pontas(): void
+    {
+        $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Vendedor Pix', 'chave_pix' => '  vendedor@exemplo.com  ',
+        ])->assertCreated()->assertJsonPath('chave_pix', 'vendedor@exemplo.com');
+
+        $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Sem Pix', 'chave_pix' => '   ',
+        ])->assertCreated()->assertJsonPath('chave_pix', null);
+    }
+
+    public function test_chave_pix_muito_longa_e_recusada(): void
+    {
+        $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Vendedor', 'chave_pix' => str_repeat('a', 78),
+        ])->assertStatus(422)->assertJsonValidationErrors('chave_pix');
+    }
+
+    public function test_admin_edita_vendedor_existente_e_inclui_a_chave_pix(): void
+    {
+        $id = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Vendedor Antigo', 'percentual_comissao' => 5,
+        ])->json('id');
+
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/vendedores/{$id}", [
+            'nome' => 'Vendedor Antigo', 'percentual_comissao' => 7.5, 'chave_pix' => '12345678909',
+        ])->assertOk()->assertJsonPath('chave_pix', '12345678909')->assertJsonPath('percentual_comissao', '7.50');
+
+        // salvar sem informar a chave não apaga a que já existe
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/vendedores/{$id}", ['telefone' => '19999990000'])
+            ->assertOk()->assertJsonPath('chave_pix', '12345678909');
+    }
+
+    public function test_so_admin_edita_vendedor_e_so_admin_ve_a_chave_pix(): void
+    {
+        $id = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Vendedor Pix', 'chave_pix' => 'chave-secreta-123',
+        ])->json('id');
+
+        $this->actingAs($this->atendente)->putJson("/dashboard/{$this->empresa->slug}/vendedores/{$id}", ['nome' => 'X'])
+            ->assertStatus(403);
+
+        $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/vendedores")
+            ->assertOk()->assertJsonPath('0.chave_pix', 'chave-secreta-123');
+
+        $this->actingAs($this->atendente)->getJson("/dashboard/{$this->empresa->slug}/vendedores")
+            ->assertOk()->assertJsonMissingPath('0.chave_pix');
+    }
+
+    public function test_relatorio_de_vendedores_mostra_a_chave_pix_so_para_admin(): void
+    {
+        $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Vendedor Pix', 'chave_pix' => 'pix@exemplo.com',
+        ])->assertCreated();
+
+        $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/vendedores-relatorio")
+            ->assertOk()->assertJsonPath('0.chave_pix', 'pix@exemplo.com');
+
+        $this->actingAs($this->atendente)->getJson("/dashboard/{$this->empresa->slug}/vendedores-relatorio")
+            ->assertOk()->assertJsonMissingPath('0.chave_pix');
+    }
+
     public function test_admin_cadastra_atendente(): void
     {
         $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/atendentes", [

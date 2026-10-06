@@ -715,8 +715,11 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
+        $vendedores = Vendedor::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get();
+
+        // A chave PIX é dado financeiro do vendedor: só o administrador vê.
         return response()->json(
-            Vendedor::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
+            $request->user()->perfil === 'admin' ? $vendedores : $vendedores->each->makeHidden('chave_pix')
         );
     }
 
@@ -725,16 +728,50 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
             'telefone' => ['nullable', 'string', 'max:20'],
+            'chave_pix' => ['nullable', 'string', 'max:77'],
             'percentual_comissao' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $dados['percentual_comissao'] ??= 5;
+        $dados['chave_pix'] = $this->normalizarChavePix($dados['chave_pix'] ?? null);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         $vendedor = Vendedor::create($dados + ['empresa_id' => $empresaAtual->id, 'ativo' => true]);
 
         return response()->json($vendedor, 201);
+    }
+
+    public function atualizarVendedor(Request $request, string $empresa, int $vendedorId)
+    {
+        $this->exigirAdmin($request);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $vendedor = Vendedor::where('empresa_id', $empresaAtual->id)->findOrFail($vendedorId);
+
+        $dados = $request->validate([
+            'nome' => ['sometimes', 'required', 'string', 'max:255'],
+            'telefone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'chave_pix' => ['sometimes', 'nullable', 'string', 'max:77'],
+            'percentual_comissao' => ['sometimes', 'required', 'numeric', 'min:0', 'max:100'],
+            'ativo' => ['sometimes', 'boolean'],
+        ]);
+
+        if (array_key_exists('chave_pix', $dados)) {
+            $dados['chave_pix'] = $this->normalizarChavePix($dados['chave_pix']);
+        }
+
+        $vendedor->update($dados);
+
+        return response()->json($vendedor->fresh());
+    }
+
+    /** Tira espaços das pontas; vazio vira nulo (sem chave cadastrada). */
+    private function normalizarChavePix(?string $chave): ?string
+    {
+        $chave = trim((string) $chave);
+
+        return $chave === '' ? null : $chave;
     }
 
     // ---- Atendentes (quem opera a venda no PDV - diferente do vendedor/guia) ----
@@ -819,9 +856,15 @@ class DashboardController extends Controller
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json(
-            $this->relatorioVendasPorPessoa('vendedor_id', Vendedor::class, $empresaAtual, $dados)
-        );
+        $relatorio = $this->relatorioVendasPorPessoa('vendedor_id', Vendedor::class, $empresaAtual, $dados);
+
+        // A comissão é paga por PIX: o administrador vê a chave ao lado de cada vendedor.
+        if ($request->user()->perfil === 'admin') {
+            $chaves = Vendedor::where('empresa_id', $empresaAtual->id)->pluck('chave_pix', 'id');
+            $relatorio = $relatorio->map(fn (array $linha) => $linha + ['chave_pix' => $chaves[$linha['id']] ?? null]);
+        }
+
+        return response()->json($relatorio->values());
     }
 
     /**
