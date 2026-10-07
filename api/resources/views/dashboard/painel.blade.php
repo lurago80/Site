@@ -261,9 +261,11 @@
                         <div class="grupo-campos">
                             <h3>Kit (opcional)</h3>
                             <p style="font-size:13px; color:#666; margin:0 0 10px">
-                                Um kit é vendido <strong>só na loja virtual</strong>, por um preço fixo (campo "Preço de venda" da aba Geral).
-                                Monte a composição abaixo: produto <em>sem variações</em> entra fixo no kit (ex.: 1 caneca); produto
-                                <em>com variações</em> o cliente escolhe os sabores/tipos (ex.: 3 cervejas entre as opções, podendo repetir).
+                                Um kit é vendido por um preço fixo (campo "Preço de venda" da aba Geral).
+                                Monte a composição abaixo. <em>Fixo</em>: o item sempre vem no kit (ex.: 1 caneca). <em>À escolha do cliente</em>:
+                                produto <em>com variações</em> o cliente escolhe o sabor/tipo (ex.: 3 cervejas entre as opções, podendo repetir);
+                                produto <em>sem variações</em> a opção é o próprio produto. Itens à escolha com o mesmo <em>Grupo</em> são uma escolha
+                                só, com limite conjunto (ex.: grupo "Copo" com Windsor e Caldereta, quantidade 1 = leva um ou outro).
                                 O estoque de cada item é baixado na venda. O kit não tem estoque próprio e não tem tamanhos.
                             </p>
                             <p class="msg" id="msg-pr-kit-aviso">Salve o produto primeiro para poder montar o kit.</p>
@@ -271,7 +273,7 @@
                                 <label style="font-weight:normal"><input type="checkbox" id="pr-eh-kit" onchange="alternarKitProduto()"> Este produto é um kit</label>
                                 <div id="pr-kit-composicao" style="display:none; margin-top:10px;">
                                     <table>
-                                        <thead><tr><th>Produto</th><th>Como entra no kit</th><th>Quantidade</th><th></th></tr></thead>
+                                        <thead><tr><th>Produto</th><th>Como entra no kit</th><th>Grupo (opcional)</th><th>Quantidade</th><th></th></tr></thead>
                                         <tbody id="tbody-pr-kit"></tbody>
                                     </table>
                                     <div style="margin-top:8px;"><button type="button" onclick="adicionarComponenteKit()">+ Adicionar item ao kit</button></div>
@@ -1918,27 +1920,38 @@
                 }).join('');
         }
 
+        // Fixo = sempre vem no kit. À escolha = o cliente escolhe (variação do produto, ou o próprio produto
+        // quando ele não tem variações). Itens à escolha com o mesmo "Grupo" são uma escolha só (limite conjunto).
         function linhaComponenteKit(produtoAtualId, comp) {
-            const ativas = comp ? (produtosCache.find(x => x.id === comp.produto_id)?.variacoes || []).filter(v => v.ativo).length : 0;
+            const modo = comp?.tipo ?? 'fixo';
             return `
                 <tr>
                     <td><select class="kit-produto" onchange="atualizarLinhaKit(this)">
                         <option value="">Selecione...</option>${opcoesComponenteKit(produtoAtualId, comp?.produto_id)}
                     </select></td>
-                    <td class="kit-modo">${comp ? (ativas ? 'Cliente escolhe entre as variações' : 'Fixo (sempre vem)') : '-'}</td>
+                    <td><select class="kit-modo" onchange="atualizarLinhaKit(this)">
+                        <option value="fixo" ${modo === 'fixo' ? 'selected' : ''}>Fixo (sempre vem)</option>
+                        <option value="escolha" ${modo === 'escolha' ? 'selected' : ''}>À escolha do cliente</option>
+                    </select></td>
+                    <td><input type="text" class="kit-grupo" maxlength="40" value="${esc(comp?.grupo ?? '')}" placeholder="ex.: Copo" style="width:110px" title="Itens à escolha com o mesmo grupo dividem o limite (ex.: Copo Windsor e Copo Caldereta, máx. 1)"></td>
                     <td><input type="number" class="kit-quantidade" min="1" max="99" value="${comp?.quantidade ?? 1}" style="width:80px"></td>
                     <td><button type="button" class="secundario" onclick="this.closest('tr').remove()">Remover</button></td>
                 </tr>`;
         }
 
-        function atualizarLinhaKit(select) {
-            const ativas = Number(select.selectedOptions[0]?.dataset.variacoes || 0);
-            select.closest('tr').querySelector('.kit-modo').textContent = !select.value ? '-' : ativas ? 'Cliente escolhe entre as variações' : 'Fixo (sempre vem)';
+        // Produto com variações só pode ser à escolha; o grupo só vale para item à escolha.
+        function atualizarLinhaKit(elemento) {
+            const tr = elemento.closest('tr');
+            const produto = tr.querySelector('.kit-produto');
+            const modo = tr.querySelector('.kit-modo');
+            if (Number(produto.selectedOptions[0]?.dataset.variacoes || 0) > 0) modo.value = 'escolha';
+            tr.querySelector('.kit-grupo').disabled = modo.value !== 'escolha';
         }
 
         function adicionarComponenteKit() {
             const produtoId = document.getElementById('bloco-pr-kit').dataset.produtoId;
             document.getElementById('tbody-pr-kit').insertAdjacentHTML('beforeend', linhaComponenteKit(produtoId, null));
+            atualizarLinhaKit(document.querySelector('#tbody-pr-kit tr:last-child .kit-modo'));
         }
 
         function alternarKitProduto() {
@@ -1963,6 +1976,7 @@
             document.getElementById('pr-eh-kit').checked = !!dados.eh_kit;
             document.getElementById('pr-kit-total-escolhas').value = dados.kit_total_escolhas ?? '';
             document.getElementById('tbody-pr-kit').innerHTML = dados.componentes.map(c => linhaComponenteKit(produtoId, c)).join('');
+            document.querySelectorAll('#tbody-pr-kit .kit-modo').forEach(atualizarLinhaKit);
             alternarKitProduto();
         }
 
@@ -1974,10 +1988,12 @@
                 .map(tr => {
                     const sel = tr.querySelector('.kit-produto');
                     const ativas = Number(sel.selectedOptions[0]?.dataset.variacoes || 0);
+                    const tipo = ativas ? 'escolha' : tr.querySelector('.kit-modo').value;
                     return {
                         produto_id: Number(sel.value),
-                        tipo: ativas ? 'escolha' : 'fixo',
+                        tipo,
                         quantidade: Number(tr.querySelector('.kit-quantidade').value || 1),
+                        grupo: tipo === 'escolha' ? (tr.querySelector('.kit-grupo').value.trim() || null) : null,
                     };
                 })
                 .filter(c => c.produto_id);

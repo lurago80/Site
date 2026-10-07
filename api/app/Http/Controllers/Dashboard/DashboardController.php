@@ -295,7 +295,16 @@ class DashboardController extends Controller
             'componentes.*.tipo' => ['required', 'string', 'in:fixo,escolha'],
             'componentes.*.produto_id' => ['required', 'integer'],
             'componentes.*.quantidade' => ['required', 'integer', 'min:1', 'max:99'],
+            'componentes.*.grupo' => ['nullable', 'string', 'max:40'],
         ]);
+
+        // grupo só faz sentido em item à escolha; em branco = o produto é o seu próprio grupo
+        $dados['componentes'] = array_map(function (array $c) {
+            $grupo = trim((string) ($c['grupo'] ?? ''));
+            $c['grupo'] = $c['tipo'] === 'escolha' && $grupo !== '' ? $grupo : null;
+
+            return $c;
+        }, $dados['componentes']);
 
         if ($dados['eh_kit']) {
             abort_if($dados['componentes'] === [], 422, 'Informe ao menos um item do kit.');
@@ -315,11 +324,6 @@ class DashboardController extends Controller
                 abort_if($item === null, 422, 'Produto do kit não encontrado.');
                 abort_if($item->eh_kit, 422, "\"{$item->nome}\" é um kit e não pode compor outro kit.");
                 abort_if(
-                    $componente['tipo'] === 'escolha' && $item->variacoes_ativas_count === 0,
-                    422,
-                    "\"{$item->nome}\" precisa ter variações (sabores/tamanhos) para ser escolhido no kit."
-                );
-                abort_if(
                     $componente['tipo'] === 'fixo' && $item->variacoes_ativas_count > 0,
                     422,
                     "\"{$item->nome}\" tem variações - use o tipo \"escolha\" para ele."
@@ -327,12 +331,15 @@ class DashboardController extends Controller
             }
 
             if (! empty($dados['kit_total_escolhas'])) {
-                $tetoEscolhas = collect($dados['componentes'])->where('tipo', 'escolha')->sum('quantidade');
+                // teto de cada grupo (itens com o mesmo grupo dividem o limite) somado
+                $tetoEscolhas = collect($dados['componentes'])->where('tipo', 'escolha')
+                    ->groupBy(fn ($c) => $c['grupo'] !== null ? 'g:'.mb_strtolower($c['grupo']) : 'p:'.$c['produto_id'])
+                    ->sum(fn ($itens) => $itens->max('quantidade'));
 
                 abort_if(
                     $tetoEscolhas < $dados['kit_total_escolhas'],
                     422,
-                    "O total de itens à escolha ({$dados['kit_total_escolhas']}) é maior que a soma das quantidades dos itens com variações ({$tetoEscolhas})."
+                    "O total de itens à escolha ({$dados['kit_total_escolhas']}) é maior que a soma dos limites dos itens à escolha ({$tetoEscolhas})."
                 );
             }
         }
@@ -355,6 +362,7 @@ class DashboardController extends Controller
                     'produto_id' => $componente['produto_id'],
                     'tipo' => $componente['tipo'],
                     'quantidade' => $componente['quantidade'],
+                    'grupo' => $componente['grupo'],
                 ]);
             }
         });
@@ -372,6 +380,7 @@ class DashboardController extends Controller
                 'produto_id' => $c->produto_id,
                 'nome' => $c->produto?->nome,
                 'quantidade' => $c->quantidade,
+                'grupo' => $c->grupo,
             ])->values(),
         ];
     }

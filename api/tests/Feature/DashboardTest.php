@@ -498,8 +498,7 @@ class DashboardTest extends TestCase
 
         $this->actingAs($this->admin)->getJson($url)->assertOk()->assertJsonPath('componentes.1.nome', 'Cerveja');
 
-        // "escolha" exige variações; "fixo" não pode ter variações; kit dentro de kit não vale.
-        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [['tipo' => 'escolha', 'produto_id' => $caneca->id, 'quantidade' => 3]]])->assertStatus(422);
+        // "fixo" não pode ter variações; kit dentro de kit não vale.
         $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [['tipo' => 'fixo', 'produto_id' => $cerveja->id, 'quantidade' => 1]]])->assertStatus(422);
         $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => [['tipo' => 'fixo', 'produto_id' => $kit->id, 'quantidade' => 1]]])->assertStatus(422);
         $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'componentes' => []])->assertStatus(422);
@@ -507,6 +506,30 @@ class DashboardTest extends TestCase
         // Desligar o kit limpa a composição.
         $this->actingAs($this->admin)->putJson($url, ['eh_kit' => false, 'componentes' => []])->assertOk()->assertJsonCount(0, 'componentes');
         $this->assertFalse($kit->fresh()->eh_kit);
+    }
+
+    public function test_admin_monta_kit_coringa_com_itens_simples_em_um_grupo_e_total_de_escolhas(): void
+    {
+        $cerveja = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cerveja', 'tipo' => 'fisico', 'preco_venda' => 18]);
+        ProdutoVariacao::create(['empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'IPA', 'estoque_atual' => 5]);
+        $windsor = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Copo Windsor', 'tipo' => 'fisico', 'preco_venda' => 20, 'estoque_atual' => 5]);
+        $caldereta = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Copo Caldereta', 'tipo' => 'fisico', 'preco_venda' => 20, 'estoque_atual' => 5]);
+        $kit = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Kit Coringa', 'tipo' => 'fisico', 'preco_venda' => 75]);
+
+        $url = "/dashboard/{$this->empresa->slug}/produtos/{$kit->id}/kit";
+
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'kit_total_escolhas' => 3, 'componentes' => [
+            ['tipo' => 'escolha', 'produto_id' => $cerveja->id, 'quantidade' => 3],
+            ['tipo' => 'escolha', 'produto_id' => $windsor->id, 'quantidade' => 1, 'grupo' => 'Copo'],
+            ['tipo' => 'escolha', 'produto_id' => $caldereta->id, 'quantidade' => 1, 'grupo' => 'Copo'],
+        ]])->assertOk()->assertJsonPath('kit_total_escolhas', 3)->assertJsonPath('componentes.1.grupo', 'Copo');
+
+        // o total não pode passar da soma dos limites (3 + 1 = 4)
+        $this->actingAs($this->admin)->putJson($url, ['eh_kit' => true, 'kit_total_escolhas' => 5, 'componentes' => [
+            ['tipo' => 'escolha', 'produto_id' => $cerveja->id, 'quantidade' => 3],
+            ['tipo' => 'escolha', 'produto_id' => $windsor->id, 'quantidade' => 1, 'grupo' => 'Copo'],
+            ['tipo' => 'escolha', 'produto_id' => $caldereta->id, 'quantidade' => 1, 'grupo' => 'Copo'],
+        ]])->assertStatus(422);
     }
 
     public function test_produto_somente_loja_virtual_e_criado_ja_visivel_na_loja_e_fora_do_pdv(): void

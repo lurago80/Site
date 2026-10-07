@@ -102,7 +102,7 @@ class Produto extends Model
 
     public function componentes(): HasMany
     {
-        return $this->hasMany(KitComponente::class, 'kit_id');
+        return $this->hasMany(KitComponente::class, 'kit_id')->orderBy('id');
     }
 
     /**

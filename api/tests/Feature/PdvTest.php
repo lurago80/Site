@@ -234,6 +234,80 @@ class PdvTest extends TestCase
         $this->assertSame(5, $windsor->fresh()->estoque_atual);
     }
 
+    /**
+     * Kit Coringa como no cadastro real: cerveja com variações (teto 3) + COPO WINDSOR e COPO CALDERETA,
+     * produtos simples no mesmo grupo "Copo" (teto conjunto 1), total de 3 itens.
+     *
+     * @return array{kit: Produto, pilsen: ProdutoVariacao, windsor: Produto, caldereta: Produto}
+     */
+    private function criarKitCoringaComCoposSimples(): array
+    {
+        $cerveja = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Artesanal', 'tipo' => 'fisico', 'preco_venda' => 18]);
+        $pilsen = ProdutoVariacao::create(['empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => 'Pilsen', 'estoque_atual' => 10]);
+        $windsor = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Copo Windsor', 'tipo' => 'fisico', 'preco_venda' => 20, 'estoque_atual' => 5]);
+        $caldereta = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Copo Caldereta', 'tipo' => 'fisico', 'preco_venda' => 20, 'estoque_atual' => 5]);
+        $kit = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Coringa', 'tipo' => 'fisico',
+            'preco_venda' => 75.00, 'eh_kit' => true, 'kit_total_escolhas' => 3,
+        ]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $cerveja->id, 'tipo' => 'escolha', 'quantidade' => 3]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $windsor->id, 'tipo' => 'escolha', 'quantidade' => 1, 'grupo' => 'Copo']);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $caldereta->id, 'tipo' => 'escolha', 'quantidade' => 1, 'grupo' => 'Copo']);
+
+        return compact('kit', 'pilsen', 'windsor', 'caldereta');
+    }
+
+    public function test_kit_coringa_com_copos_simples_baixa_o_copo_escolhido_e_o_cancelamento_devolve(): void
+    {
+        ['kit' => $kit, 'pilsen' => $pilsen, 'windsor' => $windsor, 'caldereta' => $caldereta] = $this->criarKitCoringaComCoposSimples();
+        $admin = User::create([
+            'name' => 'Admin', 'email' => 'admin2@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+
+        $vendaId = $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 2], ['produto_id' => $caldereta->id, 'quantidade' => 1]])
+            ->assertCreated()->assertJsonCount(2, 'itens.0.composicao')->json('id');
+
+        $this->assertSame(8, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(4, $caldereta->fresh()->estoque_atual);
+        $this->assertSame(5, $windsor->fresh()->estoque_atual);
+
+        $this->actingAs($admin)->postJson("/pdv/{$this->empresa->slug}/vendas/{$vendaId}/cancelar", ['motivo' => 'Teste de cancelamento do kit coringa'])->assertOk();
+
+        $this->assertSame(10, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(5, $caldereta->fresh()->estoque_atual);
+    }
+
+    public function test_kit_coringa_com_copos_simples_aceita_so_um_copo_no_total_do_grupo(): void
+    {
+        ['kit' => $kit, 'pilsen' => $pilsen, 'windsor' => $windsor, 'caldereta' => $caldereta] = $this->criarKitCoringaComCoposSimples();
+
+        // Windsor + Caldereta = 2 copos no grupo "Copo" (máx. 1)
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 1], ['produto_id' => $windsor->id, 'quantidade' => 1], ['produto_id' => $caldereta->id, 'quantidade' => 1]])
+            ->assertStatus(422);
+        // produto fora do kit não vale como opção
+        $outro = Produto::create(['empresa_id' => $this->empresa->id, 'nome' => 'Outro', 'tipo' => 'fisico', 'preco_venda' => 5, 'estoque_atual' => 3]);
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 2], ['produto_id' => $outro->id, 'quantidade' => 1]])->assertStatus(422);
+
+        $this->assertSame(10, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(5, $windsor->fresh()->estoque_atual);
+        $this->assertSame(3, $outro->fresh()->estoque_atual);
+    }
+
+    public function test_kit_coringa_com_copos_simples_vai_para_o_pdv_com_um_grupo_copo(): void
+    {
+        ['kit' => $kit] = $this->criarKitCoringaComCoposSimples();
+
+        $json = collect($this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=Coringa")->assertOk()->json())->firstWhere('id', $kit->id);
+
+        $this->assertCount(2, $json['kit']['escolhas']);
+        $this->assertSame('Copo', $json['kit']['escolhas'][1]['nome']);
+        $this->assertSame(1, $json['kit']['escolhas'][1]['quantidade']);
+        $this->assertSame(['Copo Windsor', 'Copo Caldereta'], collect($json['kit']['escolhas'][1]['variacoes'])->pluck('tamanho')->all());
+        $this->assertTrue($json['kit']['escolhas'][1]['variacoes'][0]['simples']);
+        $this->assertTrue($json['kit']['disponivel']);
+    }
+
     public function test_kit_coringa_vai_para_o_pdv_com_o_total_de_escolhas(): void
     {
         ['kit' => $kit] = $this->criarKitCoringa();

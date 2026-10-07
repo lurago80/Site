@@ -454,7 +454,8 @@
 
                 if (p.kit) {
                     const fixosHtml = p.kit.fixos.map(f => `<span class="minimo">${f.quantidade}x ${escapeHtml(f.nome)}</span>`).join('');
-                    const opcaoVariacao = (g, gi, v) => `<option value="${v.id}" data-grupo="${gi}" data-rotulo="${escapeHtml(g.nome)} (${escapeHtml(v.tamanho)})" ${v.estoque_atual <= 0 ? 'disabled' : ''}>${escapeHtml(v.tamanho)}${v.estoque_atual <= 0 ? ' (sem estoque)' : ''}</option>`;
+                    // opção = variação do produto (v:ID) ou o próprio produto simples do kit (p:ID)
+                    const opcaoVariacao = (g, gi, v) => `<option value="${v.simples ? `p:${v.produto_id}` : `v:${v.variacao_id}`}" data-grupo="${gi}" data-rotulo="${v.simples ? escapeHtml(v.tamanho) : `${escapeHtml(g.nome)} (${escapeHtml(v.tamanho)})`}" ${v.estoque_atual <= 0 ? 'disabled' : ''}>${escapeHtml(v.tamanho)}${v.estoque_atual <= 0 ? ' (sem estoque)' : ''}</option>`;
 
                     // Escolha livre (ex.: Kit Coringa): N campos iguais, cada um aceita qualquer item dos grupos;
                     // o máximo de cada grupo (ex.: 1 copo) é conferido ao adicionar.
@@ -555,7 +556,10 @@
 
             const porVariacao = {};
             selects.forEach(s => { porVariacao[s.value] = (porVariacao[s.value] || 0) + 1; });
-            const escolhas = Object.entries(porVariacao).map(([variacaoId, quantidade]) => ({ variacao_id: Number(variacaoId), quantidade }));
+            const escolhas = Object.entries(porVariacao).map(([opcao, quantidade]) => {
+                const [tipo, id] = opcao.split(':');
+                return tipo === 'p' ? { produto_id: Number(id), quantidade } : { variacao_id: Number(id), quantidade };
+            });
             const detalhes = selects.map(s => s.selectedOptions[0].dataset.rotulo).join(', ');
 
             carrinho.push({

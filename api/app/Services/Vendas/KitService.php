@@ -2,20 +2,27 @@
 
 namespace App\Services\Vendas;
 
+use App\Models\KitComponente;
 use App\Models\Produto;
 use App\Models\ProdutoVariacao;
+use Illuminate\Support\Collection;
 
 /**
  * Regras do kit (ex.: 1 caneca + 3 cervejas à escolha): valida a escolha do
  * cliente, baixa o estoque de cada componente e devolve a composição que
  * fica registrada no item da venda. Preço é o do próprio kit (fixo).
+ *
+ * Itens "à escolha" podem ser produtos com variações (o cliente escolhe a
+ * variação) ou produtos simples (a opção é o próprio produto). Itens com o
+ * mesmo `grupo` formam uma escolha só, com limite conjunto.
+ *
  * Deve rodar dentro de DB::transaction - qualquer abort desfaz as baixas.
  */
 class KitService
 {
     /**
-     * Payload do kit para o catálogo público: itens fixos, grupos de escolha
-     * (com as variações e o estoque de cada uma) e se há estoque para vender.
+     * Payload do kit para o catálogo/PDV: itens fixos, grupos de escolha
+     * (com as opções e o estoque de cada uma) e se há estoque para vender.
      */
     public function resumo(Produto $kit): array
     {
@@ -27,43 +34,62 @@ class KitService
         $fixos = [];
         $escolhas = [];
         $disponivel = $kit->componentes->isNotEmpty();
+        $escolhaLivre = $kit->kit_total_escolhas !== null;
 
-        foreach ($kit->componentes as $componente) {
+        foreach ($kit->componentes->where('tipo', 'fixo') as $componente) {
             $produto = $componente->produto;
 
-            if ($componente->tipo === 'fixo') {
-                $fixos[] = ['produto_id' => $produto->id, 'nome' => $produto->nome, 'quantidade' => $componente->quantidade];
-                $disponivel = $disponivel && ($produto->estoque_atual === null || $produto->estoque_atual >= $componente->quantidade);
+            $fixos[] = ['produto_id' => $produto->id, 'nome' => $produto->nome, 'quantidade' => $componente->quantidade];
+            $disponivel = $disponivel && ($produto->estoque_atual === null || $produto->estoque_atual >= $componente->quantidade);
+        }
 
-                continue;
+        foreach ($this->grupos($kit) as $componentes) {
+            $opcoes = collect();
+
+            foreach ($componentes as $componente) {
+                $produto = $componente->produto;
+
+                if ($produto->variacoes->isEmpty()) {
+                    // produto simples: a opção é o próprio produto
+                    $opcoes->push([
+                        'id' => null, 'variacao_id' => null, 'produto_id' => $produto->id, 'simples' => true,
+                        'tamanho' => $produto->nome,
+                        'estoque_atual' => $produto->ativo ? ($produto->estoque_atual ?? ProdutoVariacao::ESTOQUE_ILIMITADO_EXIBIDO) : 0,
+                    ]);
+
+                    continue;
+                }
+
+                foreach ($produto->variacoes->filter(fn ($v) => $v->disponivelParaVenda()) as $v) {
+                    $opcoes->push([
+                        'id' => $v->id, 'variacao_id' => $v->id, 'produto_id' => null, 'simples' => false,
+                        'tamanho' => $v->tamanho, 'estoque_atual' => $v->estoqueParaExibir(),
+                    ]);
+                }
             }
 
-            $variacoes = $produto->variacoes->filter(fn ($v) => $v->disponivelParaVenda())->map(fn ($v) => [
-                'id' => $v->id, 'tamanho' => $v->tamanho, 'estoque_atual' => $v->estoqueParaExibir(),
-            ])->values();
+            $quantidade = $this->quantidadeDoGrupo($componentes);
 
             $escolhas[] = [
-                'produto_id' => $produto->id,
-                'nome' => $produto->nome,
-                'quantidade' => $componente->quantidade,
-                'variacoes' => $variacoes,
+                'produto_id' => $componentes->first()->produto_id,
+                'nome' => $this->nomeDoGrupo($componentes),
+                'quantidade' => $quantidade,
+                'variacoes' => $opcoes->values(),
             ];
+
             // na escolha livre a quantidade do grupo é só um teto - quem confere o estoque é o total, abaixo
-            $disponivel = $disponivel && ($kit->kit_total_escolhas !== null || $variacoes->sum('estoque_atual') >= $componente->quantidade);
+            $disponivel = $disponivel && ($escolhaLivre || $opcoes->sum('estoque_atual') >= $quantidade);
         }
 
-        // Escolha livre: o total é montado misturando os grupos (cada grupo limitado à sua quantidade).
-        $total = $kit->kit_total_escolhas;
-
-        if ($total !== null) {
-            $disponivel = $disponivel && collect($escolhas)->sum(fn ($g) => min($g['quantidade'], $g['variacoes']->sum('estoque_atual'))) >= $total;
+        if ($escolhaLivre) {
+            $disponivel = $disponivel && collect($escolhas)->sum(fn ($g) => min($g['quantidade'], $g['variacoes']->sum('estoque_atual'))) >= $kit->kit_total_escolhas;
         }
 
-        return ['fixos' => $fixos, 'escolhas' => $escolhas, 'total_escolhas' => $total, 'disponivel' => $disponivel];
+        return ['fixos' => $fixos, 'escolhas' => $escolhas, 'total_escolhas' => $kit->kit_total_escolhas, 'disponivel' => $disponivel];
     }
 
     /**
-     * @param  array<int, array{variacao_id: int, quantidade: int}>  $escolhas
+     * @param  array<int, array{variacao_id?: int|null, produto_id?: int|null, quantidade: int}>  $escolhas
      * @return array<int, array{produto_id: int, nome: string, variacao_id: int|null, tamanho: string|null, quantidade: int}>
      */
     public function consumir(Produto $kit, int $quantidadeKits, array $escolhas): array
@@ -89,27 +115,63 @@ class KitService
             ];
         }
 
-        $grupos = $kit->componentes->where('tipo', 'escolha')->keyBy('produto_id');
+        $grupos = $this->grupos($kit);
+        $componentesEscolha = $kit->componentes->where('tipo', 'escolha')->keyBy('produto_id');
+        $grupoDoProduto = collect();
+        foreach ($grupos as $chave => $itens) {
+            foreach ($itens as $c) {
+                $grupoDoProduto->put($c->produto_id, $chave);
+            }
+        }
 
-        // A mesma variação pode vir repetida (ou o cliente pode repetir o
-        // mesmo sabor) - soma antes de validar/baixar.
-        $porVariacao = [];
+        // A mesma opção pode vir repetida (ou o cliente pode repetir o mesmo
+        // sabor) - soma antes de validar/baixar.
+        $porOpcao = [];
         foreach ($escolhas as $escolha) {
-            $porVariacao[(int) $escolha['variacao_id']] = ($porVariacao[(int) $escolha['variacao_id']] ?? 0) + (int) $escolha['quantidade'];
+            $chave = ! empty($escolha['variacao_id']) ? 'v:'.(int) $escolha['variacao_id'] : 'p:'.(int) ($escolha['produto_id'] ?? 0);
+            $porOpcao[$chave] = ($porOpcao[$chave] ?? 0) + (int) $escolha['quantidade'];
         }
 
         $totalPorGrupo = [];
 
-        foreach ($porVariacao as $variacaoId => $quantidade) {
-            $variacao = ProdutoVariacao::lockForUpdate()->where('ativo', true)->find($variacaoId);
+        foreach ($porOpcao as $chave => $quantidade) {
+            [$tipoOpcao, $id] = explode(':', $chave);
+            $id = (int) $id;
+
+            if ($tipoOpcao === 'p') {
+                // opção = produto simples do kit
+                $produto = Produto::lockForUpdate()->where('ativo', true)->find($id);
+
+                abort_if(
+                    $produto === null || ! $grupoDoProduto->has($id) || $produto->variacoes()->where('ativo', true)->exists(),
+                    422,
+                    "Escolha inválida para o kit \"{$kit->nome}\"."
+                );
+
+                if ($produto->estoque_atual !== null) {
+                    abort_if($produto->estoque_atual < $quantidade, 409, "Estoque insuficiente para {$produto->nome}.");
+                    $produto->decrement('estoque_atual', $quantidade);
+                }
+
+                $totalPorGrupo[$grupoDoProduto[$id]] = ($totalPorGrupo[$grupoDoProduto[$id]] ?? 0) + $quantidade;
+
+                $composicao[] = [
+                    'produto_id' => $produto->id, 'nome' => $produto->nome,
+                    'variacao_id' => null, 'tamanho' => null, 'quantidade' => $quantidade,
+                ];
+
+                continue;
+            }
+
+            $variacao = ProdutoVariacao::lockForUpdate()->where('ativo', true)->find($id);
 
             abort_if(
-                $variacao === null || ! $grupos->has($variacao->produto_id) || ! $variacao->disponivelParaVenda(),
+                $variacao === null || ! $grupoDoProduto->has($variacao->produto_id) || ! $variacao->disponivelParaVenda(),
                 422,
                 "Escolha inválida para o kit \"{$kit->nome}\"."
             );
 
-            $pai = $grupos[$variacao->produto_id]->produto;
+            $pai = $componentesEscolha[$variacao->produto_id]->produto;
             $nomeProduto = $pai->nome;
 
             // vinculada: baixa o estoque do produto real e a composição registra esse produto
@@ -117,7 +179,8 @@ class KitService
             $vinculada = $variacao->produto_vinculado_id !== null;
             $produtoDaLinha = $variacao->produtoParaFaturar($pai);
 
-            $totalPorGrupo[$variacao->produto_id] = ($totalPorGrupo[$variacao->produto_id] ?? 0) + $quantidade;
+            $chaveGrupo = $grupoDoProduto[$variacao->produto_id];
+            $totalPorGrupo[$chaveGrupo] = ($totalPorGrupo[$chaveGrupo] ?? 0) + $quantidade;
 
             $composicao[] = [
                 'produto_id' => $produtoDaLinha->id,
@@ -137,26 +200,26 @@ class KitService
                 "Escolha exatamente {$esperadoTotal} item(ns) para o kit \"{$kit->nome}\"."
             );
 
-            foreach ($grupos as $produtoId => $grupo) {
-                $maximo = $grupo->quantidade * $quantidadeKits;
+            foreach ($grupos as $chave => $componentes) {
+                $maximo = $this->quantidadeDoGrupo($componentes) * $quantidadeKits;
 
                 abort_if(
-                    ($totalPorGrupo[$produtoId] ?? 0) > $maximo,
+                    ($totalPorGrupo[$chave] ?? 0) > $maximo,
                     422,
-                    "O kit \"{$kit->nome}\" aceita no máximo {$maximo} unidade(s) de {$grupo->produto->nome}."
+                    "O kit \"{$kit->nome}\" aceita no máximo {$maximo} unidade(s) de {$this->nomeDoGrupo($componentes)}."
                 );
             }
 
             return $composicao;
         }
 
-        foreach ($grupos as $produtoId => $grupo) {
-            $esperado = $grupo->quantidade * $quantidadeKits;
+        foreach ($grupos as $chave => $componentes) {
+            $esperado = $this->quantidadeDoGrupo($componentes) * $quantidadeKits;
 
             abort_if(
-                ($totalPorGrupo[$produtoId] ?? 0) !== $esperado,
+                ($totalPorGrupo[$chave] ?? 0) !== $esperado,
                 422,
-                "Escolha exatamente {$esperado} unidade(s) de {$grupo->produto->nome} para o kit \"{$kit->nome}\"."
+                "Escolha exatamente {$esperado} unidade(s) de {$this->nomeDoGrupo($componentes)} para o kit \"{$kit->nome}\"."
             );
         }
 
@@ -187,5 +250,32 @@ class KitService
                 $produto->increment('estoque_atual', $quantidade);
             }
         }
+    }
+
+    /**
+     * Grupos de escolha do kit, na ordem de cadastro: itens com o mesmo
+     * `grupo` ficam juntos; sem grupo, cada produto é o seu próprio grupo.
+     *
+     * @return Collection<string, Collection<int, KitComponente>>
+     */
+    private function grupos(Produto $kit): Collection
+    {
+        $kit->loadMissing('componentes.produto');
+
+        return $kit->componentes->where('tipo', 'escolha')->groupBy(
+            fn (KitComponente $c) => filled($c->grupo) ? 'g:'.mb_strtolower(trim($c->grupo)) : 'p:'.$c->produto_id
+        );
+    }
+
+    private function quantidadeDoGrupo(Collection $componentes): int
+    {
+        return (int) $componentes->max('quantidade');
+    }
+
+    private function nomeDoGrupo(Collection $componentes): string
+    {
+        $primeiro = $componentes->first();
+
+        return filled($primeiro->grupo) ? trim($primeiro->grupo) : $primeiro->produto->nome;
     }
 }
