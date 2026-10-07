@@ -454,11 +454,24 @@
 
                 if (p.kit) {
                     const fixosHtml = p.kit.fixos.map(f => `<span class="minimo">${f.quantidade}x ${escapeHtml(f.nome)}</span>`).join('');
-                    const escolhasHtml = p.kit.escolhas.map((g, gi) => Array.from({ length: g.quantidade }, (_, n) => `
-                        <select class="kit-escolha-${p.id}" data-grupo="${gi}">
-                            <option value="">${escapeHtml(g.nome)} ${g.quantidade > 1 ? n + 1 : ''}</option>
-                            ${g.variacoes.map(v => `<option value="${v.id}" data-rotulo="${escapeHtml(g.nome)} (${escapeHtml(v.tamanho)})" ${v.estoque_atual <= 0 ? 'disabled' : ''}>${escapeHtml(v.tamanho)}${v.estoque_atual <= 0 ? ' (sem estoque)' : ''}</option>`).join('')}
-                        </select>`).join('')).join('');
+                    const opcaoVariacao = (g, gi, v) => `<option value="${v.id}" data-grupo="${gi}" data-rotulo="${escapeHtml(g.nome)} (${escapeHtml(v.tamanho)})" ${v.estoque_atual <= 0 ? 'disabled' : ''}>${escapeHtml(v.tamanho)}${v.estoque_atual <= 0 ? ' (sem estoque)' : ''}</option>`;
+
+                    // Escolha livre (ex.: Kit Coringa): N campos iguais, cada um aceita qualquer item dos grupos;
+                    // o máximo de cada grupo (ex.: 1 copo) é conferido ao adicionar.
+                    const escolhasHtml = p.kit.total_escolhas
+                        ? Array.from({ length: p.kit.total_escolhas }, (_, n) => `
+                            <select class="kit-escolha-${p.id}">
+                                <option value="">Item ${n + 1}</option>
+                                ${p.kit.escolhas.map((g, gi) => `<optgroup label="${escapeHtml(g.nome)}">${g.variacoes.map(v => opcaoVariacao(g, gi, v)).join('')}</optgroup>`).join('')}
+                            </select>`).join('')
+                        : p.kit.escolhas.map((g, gi) => Array.from({ length: g.quantidade }, (_, n) => `
+                            <select class="kit-escolha-${p.id}">
+                                <option value="">${escapeHtml(g.nome)} ${g.quantidade > 1 ? n + 1 : ''}</option>
+                                ${g.variacoes.map(v => opcaoVariacao(g, gi, v)).join('')}
+                            </select>`).join('')).join('');
+                    const limitesHtml = p.kit.total_escolhas
+                        ? `<span class="minimo">Escolha ${p.kit.total_escolhas} itens (${p.kit.escolhas.map(g => `máx. ${g.quantidade} ${escapeHtml(g.nome)}`).join(', ')})</span>`
+                        : '';
 
                     return `
                         <div class="produto-btn">
@@ -466,6 +479,7 @@
                             <span class="nome">${escapeHtml(p.nome)} (kit)</span>
                             <span class="preco">R$ ${Number(p.preco_venda).toFixed(2)}</span>
                             ${fixosHtml}
+                            ${limitesHtml}
                             ${escolhasHtml}
                             <button type="button" class="secundario" onclick="adicionarKit(${p.id})" ${p.kit.disponivel ? '' : 'disabled'}>
                                 ${p.kit.disponivel ? 'Adicionar kit' : 'Sem estoque'}
@@ -526,6 +540,17 @@
             if (selects.some(s => !s.value)) {
                 alert('Escolha todos os itens do kit antes de adicionar.');
                 return;
+            }
+
+            // Escolha livre: respeita o máximo de cada grupo (ex.: no máximo 1 copo)
+            if (p.kit.total_escolhas) {
+                const porGrupo = {};
+                selects.forEach(s => { const g = s.selectedOptions[0].dataset.grupo; porGrupo[g] = (porGrupo[g] || 0) + 1; });
+                const excedido = p.kit.escolhas.find((g, gi) => (porGrupo[gi] || 0) > g.quantidade);
+                if (excedido) {
+                    alert(`Este kit aceita no máximo ${excedido.quantidade} ${excedido.nome}.`);
+                    return;
+                }
             }
 
             const porVariacao = {};

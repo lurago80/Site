@@ -275,6 +275,15 @@
                                         <tbody id="tbody-pr-kit"></tbody>
                                     </table>
                                     <div style="margin-top:8px;"><button type="button" onclick="adicionarComponenteKit()">+ Adicionar item ao kit</button></div>
+                                    <div style="margin-top:12px;">
+                                        <label for="pr-kit-total-escolhas">Total de itens à escolha (opcional)</label>
+                                        <input type="number" id="pr-kit-total-escolhas" min="1" max="99" style="width:80px" placeholder="-">
+                                        <p style="font-size:12px; color:#666; margin:4px 0 0">
+                                            Deixe em branco para que cada item com variações tenha a quantidade exata da tabela. Preenchido, o cliente monta
+                                            esse total misturando os itens, e a "Quantidade" de cada item passa a ser o <strong>máximo</strong> dele
+                                            (ex.: Kit Coringa = 3; Cerveja 3 + Copo 1 → 3 cervejas ou 2 cervejas + 1 copo).
+                                        </p>
+                                    </div>
                                 </div>
                                 <div style="margin-top:10px;"><button type="button" class="acao" onclick="salvarKitProduto()">Salvar kit</button></div>
                                 <p class="msg" id="msg-pr-kit"></p>
@@ -1952,6 +1961,7 @@
             const resp = await fetch(`${base}/produtos/${produtoId}/kit`, { headers: { 'Accept': 'application/json' } });
             const dados = await resp.json();
             document.getElementById('pr-eh-kit').checked = !!dados.eh_kit;
+            document.getElementById('pr-kit-total-escolhas').value = dados.kit_total_escolhas ?? '';
             document.getElementById('tbody-pr-kit').innerHTML = dados.componentes.map(c => linhaComponenteKit(produtoId, c)).join('');
             alternarKitProduto();
         }
@@ -1973,7 +1983,7 @@
                 .filter(c => c.produto_id);
 
             const resp = await fetch(`${base}/produtos/${produtoId}/kit`, {
-                method: 'PUT', headers: headersJson, body: JSON.stringify({ eh_kit: ehKit, componentes }),
+                method: 'PUT', headers: headersJson, body: JSON.stringify({ eh_kit: ehKit, kit_total_escolhas: Number(document.getElementById('pr-kit-total-escolhas').value) || null, componentes }),
             });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-pr-kit');

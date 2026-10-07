@@ -165,6 +165,86 @@ class PdvTest extends TestCase
         $this->assertSame(10, $pilsen->fresh()->estoque_atual);
     }
 
+    /**
+     * Kit Coringa: 3 itens à escolha - 3 cervejas OU 2 cervejas + 1 copo (Windsor ou Caldereta).
+     * Cerveja entra com teto 3 e Copo com teto 1.
+     *
+     * @return array{kit: Produto, cervejas: array<int, ProdutoVariacao>, copos: array<int, ProdutoVariacao>}
+     */
+    private function criarKitCoringa(): array
+    {
+        $cerveja = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Artesanal', 'tipo' => 'fisico', 'preco_venda' => 18,
+        ]);
+        $cervejas = collect(['Pilsen', 'IPA'])->map(fn ($nome) => ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $cerveja->id, 'tamanho' => $nome, 'estoque_atual' => 10,
+        ]))->all();
+        $copo = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Copo', 'tipo' => 'fisico', 'preco_venda' => 20,
+        ]);
+        $copos = collect(['Windsor', 'Caldereta'])->map(fn ($nome) => ProdutoVariacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $copo->id, 'tamanho' => $nome, 'estoque_atual' => 5,
+        ]))->all();
+        $kit = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Coringa', 'tipo' => 'fisico',
+            'preco_venda' => 60.00, 'eh_kit' => true, 'kit_total_escolhas' => 3,
+        ]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $cerveja->id, 'tipo' => 'escolha', 'quantidade' => 3]);
+        KitComponente::create(['empresa_id' => $this->empresa->id, 'kit_id' => $kit->id, 'produto_id' => $copo->id, 'tipo' => 'escolha', 'quantidade' => 1]);
+
+        return compact('kit', 'cervejas', 'copos');
+    }
+
+    public function test_kit_coringa_aceita_tres_cervejas(): void
+    {
+        ['kit' => $kit, 'cervejas' => [$pilsen, $ipa]] = $this->criarKitCoringa();
+
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 2], ['variacao_id' => $ipa->id, 'quantidade' => 1]])
+            ->assertCreated()->assertJsonPath('valor_total', '60.00');
+
+        $this->assertSame(8, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(9, $ipa->fresh()->estoque_atual);
+    }
+
+    public function test_kit_coringa_aceita_duas_cervejas_e_um_copo_windsor_ou_caldereta(): void
+    {
+        ['kit' => $kit, 'cervejas' => [$pilsen], 'copos' => [$windsor, $caldereta]] = $this->criarKitCoringa();
+
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 2], ['variacao_id' => $caldereta->id, 'quantidade' => 1]])
+            ->assertCreated()->assertJsonCount(2, 'itens.0.composicao');
+
+        $this->assertSame(8, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(4, $caldereta->fresh()->estoque_atual);
+        $this->assertSame(5, $windsor->fresh()->estoque_atual);
+    }
+
+    public function test_kit_coringa_recusa_mais_de_um_copo_e_total_diferente_de_tres(): void
+    {
+        ['kit' => $kit, 'cervejas' => [$pilsen], 'copos' => [$windsor, $caldereta]] = $this->criarKitCoringa();
+
+        // 1 cerveja + 2 copos: passa do máximo de copos
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 1], ['variacao_id' => $windsor->id, 'quantidade' => 1], ['variacao_id' => $caldereta->id, 'quantidade' => 1]])
+            ->assertStatus(422);
+        // só 2 itens
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 2]])->assertStatus(422);
+        // 4 itens
+        $this->venderKit($kit, [['variacao_id' => $pilsen->id, 'quantidade' => 4]])->assertStatus(422);
+
+        $this->assertSame(10, $pilsen->fresh()->estoque_atual);
+        $this->assertSame(5, $windsor->fresh()->estoque_atual);
+    }
+
+    public function test_kit_coringa_vai_para_o_pdv_com_o_total_de_escolhas(): void
+    {
+        ['kit' => $kit] = $this->criarKitCoringa();
+
+        $json = collect($this->getJson("/pdv/{$this->empresa->slug}/produtos?busca=Coringa")->assertOk()->json())->firstWhere('id', $kit->id);
+
+        $this->assertSame(3, $json['kit']['total_escolhas']);
+        $this->assertTrue($json['kit']['disponivel']);
+        $this->assertCount(2, $json['kit']['escolhas']);
+    }
+
     public function test_nfce_do_kit_sai_com_um_item_por_componente_e_o_valor_do_kit_rateado(): void
     {
         ConfigFiscal::create([

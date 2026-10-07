@@ -48,10 +48,18 @@ class KitService
                 'quantidade' => $componente->quantidade,
                 'variacoes' => $variacoes,
             ];
-            $disponivel = $disponivel && $variacoes->sum('estoque_atual') >= $componente->quantidade;
+            // na escolha livre a quantidade do grupo é só um teto - quem confere o estoque é o total, abaixo
+            $disponivel = $disponivel && ($kit->kit_total_escolhas !== null || $variacoes->sum('estoque_atual') >= $componente->quantidade);
         }
 
-        return ['fixos' => $fixos, 'escolhas' => $escolhas, 'disponivel' => $disponivel];
+        // Escolha livre: o total é montado misturando os grupos (cada grupo limitado à sua quantidade).
+        $total = $kit->kit_total_escolhas;
+
+        if ($total !== null) {
+            $disponivel = $disponivel && collect($escolhas)->sum(fn ($g) => min($g['quantidade'], $g['variacoes']->sum('estoque_atual'))) >= $total;
+        }
+
+        return ['fixos' => $fixos, 'escolhas' => $escolhas, 'total_escolhas' => $total, 'disponivel' => $disponivel];
     }
 
     /**
@@ -118,6 +126,28 @@ class KitService
                 'tamanho' => $vinculada ? null : $variacao->tamanho,
                 'quantidade' => $quantidade,
             ];
+        }
+
+        if ($kit->kit_total_escolhas !== null) {
+            $esperadoTotal = $kit->kit_total_escolhas * $quantidadeKits;
+
+            abort_if(
+                array_sum($totalPorGrupo) !== $esperadoTotal,
+                422,
+                "Escolha exatamente {$esperadoTotal} item(ns) para o kit \"{$kit->nome}\"."
+            );
+
+            foreach ($grupos as $produtoId => $grupo) {
+                $maximo = $grupo->quantidade * $quantidadeKits;
+
+                abort_if(
+                    ($totalPorGrupo[$produtoId] ?? 0) > $maximo,
+                    422,
+                    "O kit \"{$kit->nome}\" aceita no máximo {$maximo} unidade(s) de {$grupo->produto->nome}."
+                );
+            }
+
+            return $composicao;
         }
 
         foreach ($grupos as $produtoId => $grupo) {

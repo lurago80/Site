@@ -290,6 +290,7 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'eh_kit' => ['required', 'boolean'],
+            'kit_total_escolhas' => ['nullable', 'integer', 'min:1', 'max:99'],
             'componentes' => ['present', 'array'],
             'componentes.*.tipo' => ['required', 'string', 'in:fixo,escolha'],
             'componentes.*.produto_id' => ['required', 'integer'],
@@ -324,10 +325,23 @@ class DashboardController extends Controller
                     "\"{$item->nome}\" tem variações - use o tipo \"escolha\" para ele."
                 );
             }
+
+            if (! empty($dados['kit_total_escolhas'])) {
+                $tetoEscolhas = collect($dados['componentes'])->where('tipo', 'escolha')->sum('quantidade');
+
+                abort_if(
+                    $tetoEscolhas < $dados['kit_total_escolhas'],
+                    422,
+                    "O total de itens à escolha ({$dados['kit_total_escolhas']}) é maior que a soma das quantidades dos itens com variações ({$tetoEscolhas})."
+                );
+            }
         }
 
         DB::transaction(function () use ($dados, $produto, $empresaAtual) {
-            $produto->update(['eh_kit' => $dados['eh_kit']]);
+            $produto->update([
+                'eh_kit' => $dados['eh_kit'],
+                'kit_total_escolhas' => $dados['eh_kit'] ? ($dados['kit_total_escolhas'] ?? null) : null,
+            ]);
             KitComponente::where('kit_id', $produto->id)->delete();
 
             if (! $dados['eh_kit']) {
@@ -352,6 +366,7 @@ class DashboardController extends Controller
     {
         return [
             'eh_kit' => $produto->eh_kit,
+            'kit_total_escolhas' => $produto->kit_total_escolhas,
             'componentes' => $produto->componentes()->with('produto:id,nome')->get()->map(fn ($c) => [
                 'tipo' => $c->tipo,
                 'produto_id' => $c->produto_id,

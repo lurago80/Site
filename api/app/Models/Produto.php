@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'empresa_id', 'fornecedor_id', 'grupo_id', 'nome', 'codigo', 'descricao', 'categoria', 'tipo', 'unidade',
-    'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'loja_virtual', 'somente_loja_virtual', 'eh_kit', 'ncm', 'cfop_padrao',
+    'preco_venda', 'preco_custo', 'estoque_atual', 'ativo', 'loja_virtual', 'somente_loja_virtual', 'eh_kit', 'kit_total_escolhas', 'ncm', 'cfop_padrao',
 
     // Campos gerais
     'estoque_minimo', 'quantidade_minima_venda', 'imagem_url', 'pesavel', 'valor_atacado', 'codigo_barras',
