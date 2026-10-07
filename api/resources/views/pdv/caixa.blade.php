@@ -388,7 +388,7 @@
         <div class="modal-verificar">
             <button type="button" class="modal-fechar" onclick="fecharModalVendedor()">&times;</button>
             <h2>Cadastrar vendedor</h2>
-            <p class="modal-sub">Informe os dados do vendedor (guia). A comissão é de 5%.</p>
+            <p class="modal-sub">Informe os dados do vendedor (guia).</p>
 
             <div class="campo" style="margin-bottom:12px;">
                 <label for="novo-vendedor-nome">Nome *</label>
