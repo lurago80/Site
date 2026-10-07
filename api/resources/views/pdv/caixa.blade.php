@@ -260,6 +260,7 @@
             @if ($podeCancelarVenda)
                 <button type="button" class="btn-verificar" onclick="abrirModalVendas()" title="Vendas de hoje - cancelar venda (somente administrador)">Vendas do dia / Cancelar</button>
             @endif
+            <button type="button" class="btn-verificar" onclick="abrirModalVendedor()" title="Cadastrar um novo vendedor (guia)">Cadastrar vendedor</button>
             <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/visitas-pagas') }}" target="_blank" rel="noopener" title="Lista de visitas pagas para conferência sem internet">Visitas pagas (PDF)</a>
             <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/caixa-extrato-impressao') }}" target="_blank" rel="noopener" title="Extrato do caixa para conferência e impressão">Extrato do caixa</a>
             <span>{{ auth()->user()->name }}</span>
@@ -380,6 +381,30 @@
             <p class="msg" id="verificar-msg"></p>
 
             <div id="verificar-resultado"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-vendedor-overlay">
+        <div class="modal-verificar">
+            <button type="button" class="modal-fechar" onclick="fecharModalVendedor()">&times;</button>
+            <h2>Cadastrar vendedor</h2>
+            <p class="modal-sub">Informe os dados do vendedor (guia). A comissão é de 5%.</p>
+
+            <div class="campo" style="margin-bottom:12px;">
+                <label for="novo-vendedor-nome">Nome *</label>
+                <input type="text" id="novo-vendedor-nome" maxlength="255" style="width:100%;">
+            </div>
+            <div class="campo" style="margin-bottom:12px;">
+                <label for="novo-vendedor-telefone">Celular *</label>
+                <input type="text" id="novo-vendedor-telefone" maxlength="20" inputmode="tel" placeholder="(00) 00000-0000" style="width:100%;">
+            </div>
+            <div class="campo" style="margin-bottom:12px;">
+                <label for="novo-vendedor-pix">Chave PIX *</label>
+                <input type="text" id="novo-vendedor-pix" maxlength="77" placeholder="CPF, celular, e-mail ou chave aleatória" style="width:100%;">
+            </div>
+
+            <button class="primario" style="width:100%;" onclick="salvarNovoVendedor()">Salvar vendedor</button>
+            <p class="msg" id="novo-vendedor-msg"></p>
         </div>
     </div>
 
@@ -1047,6 +1072,50 @@
             renderizarVerificar(resposta);
         }
 
+        // Cadastro rápido de vendedor (comissão fixa de 5% definida no servidor)
+        function abrirModalVendedor() {
+            ['nome', 'telefone', 'pix'].forEach(c => { document.getElementById(`novo-vendedor-${c}`).value = ''; });
+            const msg = document.getElementById('novo-vendedor-msg');
+            msg.className = 'msg'; msg.textContent = '';
+            document.getElementById('modal-vendedor-overlay').classList.add('aberto');
+            document.getElementById('novo-vendedor-nome').focus();
+        }
+
+        function fecharModalVendedor() {
+            document.getElementById('modal-vendedor-overlay').classList.remove('aberto');
+        }
+
+        async function salvarNovoVendedor() {
+            const msg = document.getElementById('novo-vendedor-msg');
+            const nome = document.getElementById('novo-vendedor-nome').value.trim();
+            const telefone = document.getElementById('novo-vendedor-telefone').value.trim();
+            const chavePix = document.getElementById('novo-vendedor-pix').value.trim();
+
+            if (!nome || !telefone || !chavePix) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Preencha nome, celular e chave PIX.';
+                return;
+            }
+
+            const resp = await fetch(`${base}/vendedores`, {
+                method: 'POST', headers: headersJson,
+                body: JSON.stringify({ nome, telefone, chave_pix: chavePix }),
+            });
+            const resposta = await resp.json();
+
+            if (!resp.ok) {
+                msg.className = 'msg erro';
+                msg.textContent = resposta.message || 'Não foi possível cadastrar o vendedor.';
+                return;
+            }
+
+            await carregarVendedores();
+            document.getElementById('vendedor').value = resposta.id;
+            msg.className = 'msg ok';
+            msg.textContent = `Vendedor ${resposta.nome} cadastrado e selecionado na venda.`;
+            setTimeout(fecharModalVendedor, 900);
+        }
+
         @if ($podeCancelarVenda)
         // Vendas do dia / cancelamento (somente administrador - o servidor também confere o perfil)
         function abrirModalVendas() {
@@ -1112,6 +1181,7 @@
             if (e.key === 'F10') { e.preventDefault(); finalizarVenda(); }
             if (e.key === 'F2') { e.preventDefault(); abrirModalVerificar(); }
             if (e.key === 'Escape' && document.getElementById('modal-verificar-overlay').classList.contains('aberto')) { fecharModalVerificar(); }
+            if (e.key === 'Escape' && document.getElementById('modal-vendedor-overlay').classList.contains('aberto')) { fecharModalVendedor(); }
             @if ($podeCancelarVenda)
             if (e.key === 'Escape' && document.getElementById('modal-vendas-overlay').classList.contains('aberto')) { fecharModalVendas(); }
             @endif

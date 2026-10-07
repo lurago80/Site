@@ -180,6 +180,30 @@ class PdvController extends Controller
         );
     }
 
+    /**
+     * Cadastro rápido de vendedor pelo caixa (o atendente não acessa a
+     * retaguarda). Comissão fixa em 5%; ajustes ficam com o administrador.
+     */
+    public function criarVendedor(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'nome' => ['required', 'string', 'max:255'],
+            'telefone' => ['required', 'string', 'max:20'],
+            'chave_pix' => ['required', 'string', 'max:77'],
+        ]);
+
+        $vendedor = Vendedor::create([
+            'empresa_id' => $request->attributes->get('empresaAtual')->id,
+            'nome' => trim($dados['nome']),
+            'telefone' => trim($dados['telefone']),
+            'chave_pix' => trim($dados['chave_pix']),
+            'percentual_comissao' => 5,
+            'ativo' => true,
+        ]);
+
+        return response()->json($vendedor->makeHidden('chave_pix'), 201);
+    }
+
     public function atendentes(Request $request, string $empresa)
     {
         return response()->json(

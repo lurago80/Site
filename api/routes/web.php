@@ -88,6 +88,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/produtos', [PdvController::class, 'produtos']);
     Route::get('/visitas', [PdvController::class, 'agenda']);
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
+    Route::post('/vendedores', [PdvController::class, 'criarVendedor']);
     Route::get('/atendentes', [PdvController::class, 'atendentes']);
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
     Route::get('/descontos', [PdvController::class, 'descontos']);

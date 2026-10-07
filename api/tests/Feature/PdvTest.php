@@ -336,6 +336,27 @@ class PdvTest extends TestCase
             ->assertOk()->assertJsonPath('0.nome', 'Vendedor Pix')->assertJsonMissingPath('0.chave_pix');
     }
 
+    public function test_pdv_cadastra_vendedor_com_comissao_fixa_de_5_por_cento(): void
+    {
+        $this->postJson("/pdv/{$this->empresa->slug}/vendedores", [
+            'nome' => 'Guia Novo', 'telefone' => '(54) 99999-0000', 'chave_pix' => 'guia@exemplo.com',
+            'percentual_comissao' => 30, // ignorado: o PDV não define comissão
+        ])->assertCreated()->assertJsonPath('nome', 'Guia Novo')->assertJsonMissingPath('chave_pix');
+
+        $vendedor = Vendedor::where('nome', 'Guia Novo')->firstOrFail();
+        $this->assertSame('5.00', $vendedor->percentual_comissao);
+        $this->assertSame('guia@exemplo.com', $vendedor->chave_pix);
+        $this->assertSame('(54) 99999-0000', $vendedor->telefone);
+        $this->assertTrue($vendedor->ativo);
+        $this->assertSame($this->empresa->id, $vendedor->empresa_id);
+    }
+
+    public function test_pdv_exige_nome_celular_e_chave_pix_ao_cadastrar_vendedor(): void
+    {
+        $this->postJson("/pdv/{$this->empresa->slug}/vendedores", ['nome' => 'Sem Dados'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['telefone', 'chave_pix']);
+    }
+
     public function test_lista_atendentes_ativos_para_o_pdv(): void
     {
         Atendente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Ativo', 'ativo' => true]);
