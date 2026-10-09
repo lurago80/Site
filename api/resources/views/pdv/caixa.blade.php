@@ -750,7 +750,9 @@
         // bater o mínimo (ex.: caixa fechada de 6 cervejas).
         function validarQuantidadeMinima() {
             const totalPorProduto = {};
-            carrinho.filter(i => i.tipo === 'produto').forEach(i => {
+            // kit não entra: a quantidade no carrinho é o nº de kits, não o nº de
+            // itens escolhidos dentro dele (isso já é validado pelo próprio kit).
+            carrinho.filter(i => i.tipo === 'produto' && !i.kit).forEach(i => {
                 totalPorProduto[i.id] = (totalPorProduto[i.id] || 0) + i.quantidade;
             });
 
