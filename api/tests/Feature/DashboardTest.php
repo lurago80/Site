@@ -996,4 +996,71 @@ class DashboardTest extends TestCase
 
         $response->assertStatus(422);
     }
+
+    public function test_relatorios_de_vendas_itens_mais_vendidos_curva_abc_e_lucratividade(): void
+    {
+        $atendente = \App\Models\Atendente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Atendente Relatório Vendas', 'ativo' => true,
+        ]);
+
+        $caro = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Produto Caro',
+            'tipo' => 'fisico', 'preco_venda' => 100, 'preco_custo' => 60,
+        ]);
+        $barato = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Produto Barato',
+            'tipo' => 'fisico', 'preco_venda' => 10, 'preco_custo' => 9,
+        ]);
+
+        $venda1 = Venda::create([
+            'empresa_id' => $this->empresa->id, 'atendente_id' => $atendente->id,
+            'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago', 'valor_total' => 100, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda1->id, 'produto_id' => $caro->id,
+            'quantidade' => 1, 'valor_unitario' => 100, 'valor_total' => 100, 'custo_total' => 60,
+        ]);
+
+        $venda2 = Venda::create([
+            'empresa_id' => $this->empresa->id, 'atendente_id' => $atendente->id,
+            'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago', 'valor_total' => 30, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda2->id, 'produto_id' => $barato->id,
+            'quantidade' => 3, 'valor_unitario' => 10, 'valor_total' => 30, 'custo_total' => 27,
+        ]);
+
+        // venda cancelada não deve entrar em nenhum relatório
+        $cancelada = Venda::create([
+            'empresa_id' => $this->empresa->id, 'atendente_id' => $atendente->id,
+            'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'cancelado', 'cancelada_em' => now(),
+            'valor_total' => 500, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $cancelada->id, 'produto_id' => $caro->id,
+            'quantidade' => 5, 'valor_unitario' => 100, 'valor_total' => 500, 'custo_total' => 300,
+        ]);
+
+        $vendas = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/vendas-relatorio")->assertOk();
+        $vendas->assertJsonCount(2, 'linhas');
+        $vendas->assertJsonPath('totais.valor_total', 130);
+
+        $itens = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/itens-vendidos-relatorio")->assertOk();
+        $itens->assertJsonCount(2, 'linhas');
+        $itens->assertJsonPath('totais.quantidade', 4);
+
+        $maisVendidos = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/produtos-mais-vendidos-relatorio")->assertOk();
+        $maisVendidos->assertJsonPath('linhas.0.produto', 'Produto Barato'); // 3 unidades > 1 unidade
+        $maisVendidos->assertJsonPath('linhas.0.quantidade', 3);
+
+        $abc = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/curva-abc-relatorio")->assertOk();
+        $abc->assertJsonPath('linhas.0.produto', 'Produto Caro'); // maior faturamento primeiro
+        $abc->assertJsonPath('linhas.0.classe', 'A'); // 100/130 = 76,9% acumulado
+        $abc->assertJsonPath('linhas.1.classe', 'C'); // 130/130 = 100% acumulado
+
+        $lucratividade = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/lucratividade-relatorio")->assertOk();
+        $lucratividade->assertJsonPath('linhas.0.produto', 'Produto Caro'); // maior margem em R$ (40 > 3)
+        $lucratividade->assertJsonPath('linhas.0.margem', 40);
+        $lucratividade->assertJsonPath('totais.margem', 43);
+    }
 }

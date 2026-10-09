@@ -80,6 +80,9 @@
             <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
             <button onclick="mostrarSecao('relatorio-descontos', this)">Relatório de Descontos</button>
 
+            <div class="grupo-label">Relatórios</div>
+            <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
+
             <div class="grupo-label">Financeiro</div>
             <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
             <button onclick="mostrarSecao('plano-contas', this)">Plano de Contas</button>
@@ -1049,6 +1052,62 @@
                 </div>
             </section>
 
+            <section id="secao-relatorios-vendas" class="secao">
+                <h1>Relatórios de Vendas</h1>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="rv-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rv-fim"></div>
+                        <div><button class="acao" onclick="carregarRelatoriosVendas()">Consultar</button></div>
+                        <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                    </div>
+                    <p class="msg" id="msg-relatorios-vendas"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Vendas do período</h2>
+                    <table>
+                        <thead><tr><th>#</th><th>Data</th><th>Canal</th><th>Atendente</th><th>Vendedor</th><th>Forma pgto.</th><th>Itens</th><th>Desconto</th><th>Total</th></tr></thead>
+                        <tbody id="tbody-rv-vendas"></tbody>
+                    </table>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-rv-vendas"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Itens vendidos</h2>
+                    <table>
+                        <thead><tr><th>Venda</th><th>Data</th><th>Produto</th><th>Variação</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Custo</th></tr></thead>
+                        <tbody id="tbody-rv-itens"></tbody>
+                    </table>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-rv-itens"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Produtos mais vendidos</h2>
+                    <table>
+                        <thead><tr><th>Produto</th><th>Qtd</th><th>Valor vendido</th></tr></thead>
+                        <tbody id="tbody-rv-mais-vendidos"></tbody>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Curva ABC (por faturamento)</h2>
+                    <table>
+                        <thead><tr><th>Produto</th><th>Valor vendido</th><th>%</th><th>% acumulado</th><th>Classe</th></tr></thead>
+                        <tbody id="tbody-rv-abc"></tbody>
+                    </table>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Lucratividade por produto</h2>
+                    <table>
+                        <thead><tr><th>Produto</th><th>Valor vendido</th><th>Custo</th><th>Margem</th><th>Margem %</th></tr></thead>
+                        <tbody id="tbody-rv-lucratividade"></tbody>
+                    </table>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-rv-lucratividade"></p>
+                </div>
+            </section>
+
             <section id="secao-bancos" class="secao">
                 <h1>Bancos</h1>
                 <div class="card">
@@ -1622,6 +1681,7 @@
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
+            'relatorios-vendas': carregarRelatoriosVendas,
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
@@ -3291,6 +3351,77 @@
                 linha('Faturamento bruto (antes do custo e do desconto)', r.memo.faturamento_bruto, memo) +
                 linha('Custo das vendas', r.memo.custo_total, memo) +
                 linha('001.015 - Descontos concedidos (informativa, já deduzida da receita)', r.memo.descontos_concedidos, memo);
+        }
+
+        // ---- Relatórios de vendas ----
+
+        async function carregarRelatoriosVendas() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('rv-inicio').value;
+            const fim = document.getElementById('rv-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const msg = document.getElementById('msg-relatorios-vendas');
+            msg.className = 'msg'; msg.textContent = 'Carregando...';
+
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+            try {
+                const [vendas, itens, maisVendidos, abc, lucratividade] = await Promise.all([
+                    fetch(`${base}/vendas-relatorio?${params}`).then(r => r.json()),
+                    fetch(`${base}/itens-vendidos-relatorio?${params}`).then(r => r.json()),
+                    fetch(`${base}/produtos-mais-vendidos-relatorio?${params}`).then(r => r.json()),
+                    fetch(`${base}/curva-abc-relatorio?${params}`).then(r => r.json()),
+                    fetch(`${base}/lucratividade-relatorio?${params}`).then(r => r.json()),
+                ]);
+                msg.textContent = '';
+
+                document.getElementById('tbody-rv-vendas').innerHTML = vendas.linhas.map(v => `
+                    <tr>
+                        <td>${v.id}</td><td>${v.data} ${v.hora}</td><td>${esc(v.canal)}</td>
+                        <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
+                        <td>${esc(v.forma_pagamento ?? '-')}</td><td>${v.itens}</td>
+                        <td>${brl(v.valor_desconto)}</td><td>${brl(v.valor_total)}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="9">Nenhuma venda no período.</td></tr>';
+                document.getElementById('totais-rv-vendas').textContent =
+                    `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns) - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}`;
+
+                document.getElementById('tbody-rv-itens').innerHTML = itens.linhas.map(i => `
+                    <tr>
+                        <td>${i.venda_id}</td><td>${i.data}</td><td>${esc(i.produto)}</td>
+                        <td>${esc(i.variacao ?? '-')}</td><td>${i.quantidade}</td>
+                        <td>${brl(i.valor_unitario)}</td><td>${brl(i.valor_total)}</td><td>${brl(i.custo_total)}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="8">Nenhum item no período.</td></tr>';
+                document.getElementById('totais-rv-itens').textContent =
+                    `${itens.totais.itens} linha(s) - ${itens.totais.quantidade} unidade(s) - total ${brl(itens.totais.valor_total)} - custo ${brl(itens.totais.custo_total)}`;
+
+                document.getElementById('tbody-rv-mais-vendidos').innerHTML = maisVendidos.linhas.map(p => `
+                    <tr><td>${esc(p.produto)}</td><td>${p.quantidade}</td><td>${brl(p.valor_total)}</td></tr>
+                `).join('') || '<tr><td colspan="3">Nenhum produto vendido no período.</td></tr>';
+
+                document.getElementById('tbody-rv-abc').innerHTML = abc.linhas.map(p => `
+                    <tr>
+                        <td>${esc(p.produto)}</td><td>${brl(p.valor_total)}</td>
+                        <td>${p.percentual}%</td><td>${p.percentual_acumulado}%</td>
+                        <td><strong>${p.classe}</strong></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="5">Nenhum produto vendido no período.</td></tr>';
+
+                document.getElementById('tbody-rv-lucratividade').innerHTML = lucratividade.linhas.map(p => `
+                    <tr>
+                        <td>${esc(p.produto)}</td><td>${brl(p.valor_total)}</td><td>${brl(p.custo_total)}</td>
+                        <td>${brl(p.margem)}</td><td>${p.margem_percentual}%</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="5">Nenhum produto vendido no período.</td></tr>';
+                document.getElementById('totais-rv-lucratividade').textContent =
+                    `Total vendido ${brl(lucratividade.totais.valor_total)} - custo ${brl(lucratividade.totais.custo_total)} - margem ${brl(lucratividade.totais.margem)} (${lucratividade.totais.margem_percentual}%)`;
+            } catch (erro) {
+                msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar os relatórios.';
+                console.error(erro);
+            }
         }
 
         // ---- Bancos ----

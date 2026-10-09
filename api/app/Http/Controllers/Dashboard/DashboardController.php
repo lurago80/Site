@@ -33,6 +33,7 @@ use App\Models\Venda;
 use App\Services\Vendas\LancamentoVendaService;
 use App\Models\Vendedor;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -1345,6 +1346,222 @@ class DashboardController extends Controller
                 'faturamento_bruto' => $faturamentoBruto,
                 'custo_total' => $custoTotal,
                 'descontos_concedidos' => $descontos,
+            ],
+        ]);
+    }
+
+    // ---- Relatórios de vendas ----
+
+    /**
+     * Base das vendas no período (fuso de Brasília), excluindo canceladas.
+     * Usada pelos relatórios de vendas, itens vendidos, produtos mais
+     * vendidos, curva ABC e lucratividade.
+     */
+    private function vendasNoPeriodo(array $dados)
+    {
+        $fuso = 'America/Sao_Paulo';
+
+        return Venda::where('status_pagamento', '!=', 'cancelado')
+            ->whereNull('cancelada_em')
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()));
+    }
+
+    /** Vendas do período: uma linha por venda, com canal, atendente, vendedor e forma de pagamento. */
+    public function relatorioVendas(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $fuso = 'America/Sao_Paulo';
+
+        $vendas = $this->vendasNoPeriodo($dados)
+            ->with(['atendente:id,nome', 'vendedor:id,nome', 'formaPagamento:id,descricao'])
+            ->withCount('itens')
+            ->orderBy('data_venda')
+            ->orderBy('id')
+            ->get();
+
+        $linhas = $vendas->map(function (Venda $v) use ($fuso) {
+            $data = $v->data_venda->copy()->setTimezone($fuso);
+
+            return [
+                'id' => $v->id,
+                'data' => $data->format('d/m/Y'),
+                'hora' => $data->format('H:i'),
+                'canal' => $v->canal,
+                'tipo_doc' => $v->tipo_doc,
+                'status_pagamento' => $v->status_pagamento,
+                'atendente' => $v->atendente?->nome,
+                'vendedor' => $v->vendedor?->nome,
+                'forma_pagamento' => $v->formaPagamento?->descricao,
+                'itens' => $v->itens_count,
+                'valor_desconto' => round((float) $v->valor_desconto, 2),
+                'valor_total' => round((float) $v->valor_total, 2),
+            ];
+        })->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'vendas' => $linhas->count(),
+                'itens' => (int) $linhas->sum('itens'),
+                'valor_desconto' => round((float) $linhas->sum('valor_desconto'), 2),
+                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+            ],
+        ]);
+    }
+
+    /** Itens vendidos no período: uma linha por item de venda (produto/variação, quantidade e valores). */
+    public function relatorioItensVendidos(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $fuso = 'America/Sao_Paulo';
+
+        $itens = ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
+            ->whereNull('agenda_visitacao_id')
+            ->with(['produto:id,nome', 'produtoVariacao:id,tamanho', 'venda:id,data_venda'])
+            ->orderBy('venda_id')
+            ->get();
+
+        $linhas = $itens->map(fn (ItemVenda $i) => [
+            'venda_id' => $i->venda_id,
+            'data' => $i->venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+            'produto' => $i->produto?->nome ?? '(produto removido)',
+            'variacao' => $i->produtoVariacao?->tamanho,
+            'quantidade' => (int) $i->quantidade,
+            'valor_unitario' => round((float) $i->valor_unitario, 2),
+            'valor_total' => round((float) $i->valor_total, 2),
+            'custo_total' => round((float) $i->custo_total, 2),
+        ])->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'itens' => $linhas->count(),
+                'quantidade' => (int) $linhas->sum('quantidade'),
+                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+                'custo_total' => round((float) $linhas->sum('custo_total'), 2),
+            ],
+        ]);
+    }
+
+    /** Agrupa os itens do período por produto, somando quantidade e valor vendido. */
+    private function itensAgrupadosPorProduto(array $dados): Collection
+    {
+        return ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
+            ->whereNull('agenda_visitacao_id')
+            ->whereNotNull('produto_id')
+            ->with('produto:id,nome')
+            ->get()
+            ->groupBy('produto_id')
+            ->map(fn (Collection $itens) => [
+                'produto_id' => $itens->first()->produto_id,
+                'produto' => $itens->first()->produto?->nome ?? '(produto removido)',
+                'quantidade' => (int) $itens->sum('quantidade'),
+                'valor_total' => round((float) $itens->sum('valor_total'), 2),
+                'custo_total' => round((float) $itens->sum('custo_total'), 2),
+            ])
+            ->values();
+    }
+
+    /** Ranking de produtos por quantidade vendida no período. */
+    public function relatorioProdutosMaisVendidos(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $linhas = $this->itensAgrupadosPorProduto($dados)->sortByDesc('quantidade')->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'produtos' => $linhas->count(),
+                'quantidade' => (int) $linhas->sum('quantidade'),
+                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+            ],
+        ]);
+    }
+
+    /**
+     * Curva ABC por faturamento: produtos ordenados do maior para o menor valor
+     * vendido, classificados conforme o percentual acumulado (A até 80%, B até
+     * 95%, C no restante).
+     */
+    public function relatorioCurvaAbc(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $produtos = $this->itensAgrupadosPorProduto($dados)->sortByDesc('valor_total')->values();
+        $valorTotalGeral = (float) $produtos->sum('valor_total');
+
+        $acumulado = 0.0;
+        $linhas = $produtos->map(function (array $p) use (&$acumulado, $valorTotalGeral) {
+            $acumulado += $p['valor_total'];
+            $percentualAcumulado = $valorTotalGeral > 0 ? round($acumulado / $valorTotalGeral * 100, 2) : 0;
+
+            return $p + [
+                'percentual' => $valorTotalGeral > 0 ? round($p['valor_total'] / $valorTotalGeral * 100, 2) : 0,
+                'percentual_acumulado' => $percentualAcumulado,
+                'classe' => $percentualAcumulado <= 80 ? 'A' : ($percentualAcumulado <= 95 ? 'B' : 'C'),
+            ];
+        })->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'produtos' => $linhas->count(),
+                'valor_total' => round($valorTotalGeral, 2),
+                'classe_a' => $linhas->where('classe', 'A')->count(),
+                'classe_b' => $linhas->where('classe', 'B')->count(),
+                'classe_c' => $linhas->where('classe', 'C')->count(),
+            ],
+        ]);
+    }
+
+    /** Lucratividade por produto no período: receita, custo, margem em R$ e em %. */
+    public function relatorioLucratividade(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $linhas = $this->itensAgrupadosPorProduto($dados)
+            ->map(function (array $p) {
+                $margem = round($p['valor_total'] - $p['custo_total'], 2);
+
+                return $p + [
+                    'margem' => $margem,
+                    'margem_percentual' => $p['valor_total'] > 0 ? round($margem / $p['valor_total'] * 100, 2) : 0,
+                ];
+            })
+            ->sortByDesc('margem')
+            ->values();
+
+        $valorTotal = (float) $linhas->sum('valor_total');
+        $custoTotal = (float) $linhas->sum('custo_total');
+        $margemTotal = round($valorTotal - $custoTotal, 2);
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'produtos' => $linhas->count(),
+                'valor_total' => round($valorTotal, 2),
+                'custo_total' => round($custoTotal, 2),
+                'margem' => $margemTotal,
+                'margem_percentual' => $valorTotal > 0 ? round($margemTotal / $valorTotal * 100, 2) : 0,
             ],
         ]);
     }
