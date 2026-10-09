@@ -1310,7 +1310,11 @@ class DashboardController extends Controller
         $faturamentoBruto = round((float) (clone $itens)->sum('valor_total'), 2);
         $custoTotal = round((float) (clone $itens)->sum('custo_total'), 2);
 
-        // Outras despesas: contas a pagar do período, exceto 001.015 (já deduzida da receita).
+        // Outras despesas: contas a pagar do período + lançamentos automáticos (ex.: consumo
+        // interno), exceto 001.015 (já deduzida da receita).
+        $lancadoPorConta = (clone $lancamentos)->where('origem', '!=', 'desconto')
+            ->selectRaw('plano_conta_id, sum(valor) as total')->groupBy('plano_conta_id')->pluck('total', 'plano_conta_id');
+
         $despesas = PlanoContas::where('empresa_id', $empresaAtual->id)
             ->where('tipo', 'despesa')
             ->where('codigo', '!=', LancamentoVendaService::CONTA_DESCONTOS['codigo'])
@@ -1322,7 +1326,7 @@ class DashboardController extends Controller
                 'total' => round((float) ContaPagar::where('plano_conta_id', $p->id)
                     ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('vencimento', '>=', $d))
                     ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('vencimento', '<=', $d))
-                    ->sum('valor'), 2),
+                    ->sum('valor') + ($lancadoPorConta[$p->id] ?? 0), 2),
             ])
             ->filter(fn (array $linha) => $linha['total'] != 0)
             ->values();
