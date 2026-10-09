@@ -240,8 +240,6 @@ class KitService
 
             if (! empty($componente['variacao_id']) && ! empty($componente['tamanho'])) {
                 ProdutoVariacao::query()->whereKey($componente['variacao_id'])->increment('estoque_atual', $quantidade);
-
-                continue;
             }
 
             $produto = Produto::query()->lockForUpdate()->find($componente['produto_id']);

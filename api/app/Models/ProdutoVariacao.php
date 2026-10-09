@@ -86,6 +86,11 @@ class ProdutoVariacao extends Model
 
         abort_if(! $permitirNegativo && $this->estoque_atual < $quantidade, 409, "Estoque insuficiente para {$rotulo}.");
         $this->decrement('estoque_atual', $quantidade);
+
+        $produto = Produto::lockForUpdate()->find($this->produto_id);
+        if ($produto !== null && $produto->estoque_atual !== null) {
+            $produto->decrement('estoque_atual', $quantidade);
+        }
     }
 
     /** O produto que sai no pedido/nota: o vinculado, quando existe; senão o pai. */

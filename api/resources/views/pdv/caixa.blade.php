@@ -32,6 +32,8 @@
             overflow: hidden;
         }
 
+        .rodape-in9 { flex-shrink: 0; text-align: center; font-size: 11px; color: var(--text-dim); padding: 4px 10px; background: var(--bg-elev); border-top: 1px solid var(--border); }
+
         /* Cabeçalho */
         .topo {
             display: flex; justify-content: space-between; align-items: center;
@@ -261,7 +263,7 @@
                 <button type="button" class="btn-verificar" onclick="abrirModalVendas()" title="Vendas de hoje - cancelar venda (somente administrador)">Vendas do dia / Cancelar</button>
             @endif
             <button type="button" class="btn-verificar" onclick="abrirModalVendedor()" title="Cadastrar um novo vendedor (guia)">Cadastrar vendedor</button>
-            <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/visitas-pagas') }}" target="_blank" rel="noopener" title="Lista de visitas pagas para conferência sem internet">Visitas pagas (PDF)</a>
+            <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/visitas-pagas') }}" target="_blank" rel="noopener" title="Lista de visitas pagas para conferência sem internet">Visitas de hoje (PDF)</a>
             <a class="btn-visitas-pagas" href="{{ url('/pdv/'.$empresaSlug.'/caixa-extrato-impressao') }}" target="_blank" rel="noopener" title="Extrato do caixa para conferência e impressão">Extrato do caixa</a>
             <span>{{ auth()->user()->name }}</span>
             <form method="POST" action="{{ url('/logout') }}" style="display:inline;">
@@ -355,6 +357,12 @@
                     <select id="desconto-pdv" onchange="renderizarCarrinho()"><option value="">Sem desconto</option></select>
                 </div>
             </div>
+            <div class="linha" id="linha-motivo-desconto" style="display:none;">
+                <div class="campo">
+                    <label for="motivo-desconto">Motivo do desconto <span style="color:#c62828;">*</span></label>
+                    <input type="text" id="motivo-desconto" maxlength="255" placeholder="Ex.: cliente antigo, parceria, aniversário...">
+                </div>
+            </div>
 
             <button class="primario btn-finalizar" onclick="finalizarVenda()">Finalizar Venda (F10)</button>
             <p class="msg" id="msg-venda"></p>
@@ -422,6 +430,8 @@
         </div>
     </div>
     @endif
+
+    <footer class="rodape-in9">By In9ve Informática 2026</footer>
 
     <script>
         const empresa = @json($empresaSlug);
@@ -597,13 +607,28 @@
             document.getElementById('lista-agenda').innerHTML = horarios.map(a => `
                 <div class="agenda-item">
                     ${new Date(a.data_hora).toLocaleString('pt-BR')} — ${a.vagas_disponiveis} vagas — R$ ${Number(a.valor_visita).toFixed(2)}
-                    <button class="secundario" style="float:right;" onclick="adicionarAgenda(${a.id}, '${a.data_hora}', ${a.valor_visita})">+</button>
+                    <button class="secundario" style="float:right;" onclick="adicionarAgenda(${a.id}, '${a.data_hora}', ${a.valor_visita}, ${a.vagas_disponiveis})">+</button>
                 </div>
             `).join('') || '<p style="color:#9aa5b1; font-size:12px;">Nenhum horário em aberto.</p>';
         }
 
         let vendedoresCache = [];
         let atendentesCache = [];
+        let indicacoesCache = [];
+
+        // Indicação sempre em MAIÚSCULAS e sem acentos (padrão para facilitar a busca).
+        function normalizarCampoIndicacao(campo) {
+            const posicao = campo.selectionStart;
+            campo.value = campo.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+            try { campo.setSelectionRange(posicao, posicao); } catch (e) {}
+        }
+
+        async function carregarIndicacoes() {
+            try {
+                const resp = await fetch(`${base}/indicacoes`);
+                indicacoesCache = resp.ok ? await resp.json() : [];
+            } catch (e) { indicacoesCache = []; }
+        }
 
         async function carregarVendedores() {
             const resp = await fetch(`${base}/vendedores`);
@@ -636,9 +661,20 @@
             renderizarCarrinho();
         }
 
-        function adicionarAgenda(id, dataHora, valor) {
-            carrinho = carrinho.filter(i => i.tipo !== 'agenda'); // só uma reserva por venda, por simplicidade
-            carrinho.push({ tipo: 'agenda', id, nome: `Visita ${new Date(dataHora).toLocaleString('pt-BR')}`, quantidade: 1, valorUnitario: valor });
+        function adicionarAgenda(id, dataHora, valor, vagas) {
+            // Clicar de novo no mesmo horário soma mais um ingresso (até o limite de vagas);
+            // escolher outro horário troca a reserva (uma reserva por venda).
+            const existente = carrinho.find(i => i.tipo === 'agenda' && i.id === id);
+            if (existente) {
+                if (vagas && existente.quantidade >= vagas) {
+                    alert(`Só há ${vagas} vaga(s) disponível(is) neste horário.`);
+                    return;
+                }
+                existente.quantidade++;
+            } else {
+                carrinho = carrinho.filter(i => i.tipo !== 'agenda');
+                carrinho.push({ tipo: 'agenda', id, vagas, nome: `Visita ${new Date(dataHora).toLocaleString('pt-BR')}`, quantidade: 1, valorUnitario: valor });
+            }
             renderizarCarrinho();
         }
 
@@ -665,6 +701,7 @@
             const desconto = descontoSelecionado();
             const valorDesconto = desconto ? calcularDescontoPdv(desconto) : 0;
             document.getElementById('linha-desconto').style.display = valorDesconto > 0 ? '' : 'none';
+            document.getElementById('linha-motivo-desconto').style.display = desconto ? '' : 'none';
             document.getElementById('linha-total-final').style.display = valorDesconto > 0 ? '' : 'none';
             if (valorDesconto > 0) {
                 document.getElementById('rotulo-desconto').textContent = desconto.descricao;
@@ -675,7 +712,11 @@
 
         let descontosPdvCache = [];
 
+        // Cortesia = desconto de 100% sobre a venda toda (produtos e visitas).
+        const CORTESIA = { id: 'cortesia', cortesia: true, descricao: 'Cortesia', percentual: 100, aplica_em: 'tudo' };
+
         function descontoSelecionado() {
+            if (document.getElementById('desconto-pdv').value === 'cortesia') return CORTESIA;
             const id = Number(document.getElementById('desconto-pdv').value);
             return descontosPdvCache.find(d => d.id === id) || null;
         }
@@ -683,6 +724,9 @@
         // Mesma regra do servidor (DescontoPdv::calcular): produtos = todo o
         // valor dos produtos; visitas = no máximo 2 tickets por vez.
         function calcularDescontoPdv(desconto) {
+            if (desconto.cortesia) {
+                return Math.round(carrinho.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0) * 100) / 100;
+            }
             const percentual = Number(desconto.percentual) / 100;
             if (desconto.aplica_em === 'visitas') {
                 const agenda = carrinho.find(i => i.tipo === 'agenda');
@@ -696,7 +740,7 @@
         async function carregarDescontosPdv() {
             const resp = await fetch(`${base}/descontos`);
             descontosPdvCache = await resp.json();
-            document.getElementById('desconto-pdv').innerHTML = '<option value="">Sem desconto</option>' +
+            document.getElementById('desconto-pdv').innerHTML = '<option value="">Sem desconto</option><option value="cortesia">CORTESIA (100%)</option>' +
                 descontosPdvCache.map(d => `<option value="${d.id}">${escapeHtml(d.descricao)} (${Number(d.percentual)}% - ${d.aplica_em === 'visitas' ? 'visitas' : 'produtos'})</option>`).join('');
         }
 
@@ -742,6 +786,23 @@
             }
 
             const descontoPdv = descontoSelecionado();
+            const motivoDesconto = document.getElementById('motivo-desconto').value.trim();
+            if (descontoPdv && !motivoDesconto) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Informe o motivo do desconto.';
+                document.getElementById('motivo-desconto').focus();
+                return;
+            }
+            if (descontoPdv && descontoPdv.cortesia && document.getElementById('cupom-visita').value) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Cortesia não combina com cupom. Escolha um dos dois.';
+                return;
+            }
+            if (descontoPdv && descontoPdv.cortesia && document.getElementById('tipo-doc').value === 'fiscal') {
+                msg.className = 'msg erro';
+                msg.textContent = 'Cortesia não pode ter nota fiscal (valor zero). Use o documento não fiscal.';
+                return;
+            }
             if (descontoPdv && calcularDescontoPdv(descontoPdv) <= 0) {
                 msg.className = 'msg erro';
                 msg.textContent = descontoPdv.aplica_em === 'visitas'
@@ -776,7 +837,9 @@
                 agenda_visitacao_id: agendaItem ? agendaItem.id : null,
                 agenda_quantidade: agendaItem ? agendaItem.quantidade : null,
                 cupom_codigo: agendaItem ? (document.getElementById('cupom-visita').value || null) : null,
-                desconto_pdv_id: descontoPdv ? descontoPdv.id : null,
+                desconto_pdv_id: descontoPdv && !descontoPdv.cortesia ? descontoPdv.id : null,
+                cortesia: !!(descontoPdv && descontoPdv.cortesia),
+                motivo_desconto: descontoPdv ? motivoDesconto : null,
             };
 
             btn.disabled = true;
@@ -808,11 +871,15 @@
             imprimirCupom(resposta);
 
             carrinho = [];
-            renderizarCarrinho();
             document.getElementById('cliente-nome').value = '';
             document.getElementById('cliente-cpf').value = '';
             document.getElementById('cupom-visita').value = '';
             document.getElementById('desconto-pdv').value = '';
+            document.getElementById('motivo-desconto').value = '';
+            document.getElementById('linha-motivo-desconto').style.display = 'none';
+            document.getElementById('vendedor').value = '';
+            document.getElementById('atendente').value = '';
+            document.getElementById('forma-pagamento').value = '';
             renderizarCarrinho();
             carregarAgenda();
         }
@@ -822,9 +889,31 @@
             return chave.replace(/(\d{4})(?=\d)/g, '$1 ');
         }
 
+        // Envia o cupom/DANFE ao cliente (WhatsApp ou e-mail) por link assinado.
+        async function enviarDocumentoFiscal(documentoId, telefoneSugerido, emailSugerido) {
+            const canalResp = prompt('Enviar por:\n1 = WhatsApp\n2 = E-mail', '1');
+            if (canalResp === null) return;
+            const canal = canalResp.trim() === '2' ? 'email' : 'whatsapp';
+            const destino = prompt(canal === 'email' ? 'E-mail do cliente:' : 'Celular do cliente (com DDD):',
+                canal === 'email' ? (emailSugerido || '') : (telefoneSugerido || ''));
+            if (!destino) return;
+            const resp = await fetch(`${base}/documentos/${documentoId}/enviar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '' },
+                body: JSON.stringify({ canal, destino }),
+            });
+            const dados = await resp.json().catch(() => ({}));
+            alert(dados.message || (resp.ok ? 'Enviado.' : `Erro ${resp.status} ao enviar.`));
+        }
+
         function imprimirCupom(venda) {
             const empresa = venda.empresa || {};
             const doc = venda.documento_fiscal;
+            // NFC-e emitida: usa o DANFE NFC-e completo gerado pelo servidor (QR Code, pagamento, protocolo...)
+            if (doc && doc.id && Number(doc.modelo) === 65 && doc.chave_acesso) {
+                window.open(`${base}/documentos/${doc.id}/cupom${pdvImpressaoDireta ? '?imprimir=1' : ''}`, 'cupom', 'width=380,height=760');
+                return;
+            }
             const dataVenda = new Date(venda.data_venda || Date.now());
             const linhaItens = (venda.itens || []).map(item => {
                 const nome = item.produto
@@ -872,10 +961,10 @@
                     @page { size: 80mm auto; margin: 0; }
                     * { box-sizing: border-box; }
                     html, body { width: 80mm; }
-                    body { font-family: 'Courier New', monospace; font-size: 12px; color: #000; margin: 0 auto; padding: 12px; }
+                    body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; font-weight: 700; color: #000; margin: 0 auto; padding: 12px; -webkit-font-smoothing: none; }
                     .centro { text-align: center; }
-                    .sep { border-top: 1px dashed #000; margin: 8px 0; }
-                    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                    .sep { border-top: 2px dashed #000; margin: 8px 0; }
+                    table { width: 100%; border-collapse: collapse; font-size: 13px; }
                     td { padding: 1px 0; }
                     .totais-cupom { display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:8px; }
                     .btn-imprimir { display:block; width:100%; margin-top:10px; padding:8px; font-size:13px; cursor:pointer; }
@@ -897,13 +986,14 @@
                     <div class="sep"></div>
                     <table><tbody>${linhaItens}</tbody></table>
                     <div class="sep"></div>
-                    ${Number(venda.valor_desconto) > 0 ? `<div class="totais-cupom" style="font-weight:normal;"><span>Desconto${venda.desconto_pdv ? ' - ' + venda.desconto_pdv.descricao : ''}</span><span>- R$ ${Number(venda.valor_desconto).toFixed(2)}</span></div>` : ''}
+                    ${Number(venda.valor_desconto) > 0 ? `<div class="totais-cupom" style="font-weight:normal;"><span>${venda.cortesia ? 'Cortesia' : 'Desconto' + (venda.desconto_pdv ? ' - ' + venda.desconto_pdv.descricao : '')}</span><span>- R$ ${Number(venda.valor_desconto).toFixed(2)}</span></div>` : ''}
                     <div class="totais-cupom"><span>TOTAL</span><span>R$ ${Number(venda.valor_total).toFixed(2)}</span></div>
                     ${venda.forma_pagamento ? `<div>Forma de pagamento: ${venda.forma_pagamento.descricao}</div>` : ''}
                     ${blocoFiscal}
                     <div class="sep"></div>
                     <div class="centro" style="font-size:10px;">Obrigado pela preferência!</div>
                     ${pdvImpressaoDireta ? '' : '<button class="btn-imprimir" onclick="window.print()">Imprimir cupom</button>'}
+                    ${doc && doc.id ? `<button class="btn-imprimir" onclick="window.opener && window.opener.enviarDocumentoFiscal(${doc.id}, ${JSON.stringify((venda.cliente && venda.cliente.telefone) || '').replace(/"/g, '&quot;')}, ${JSON.stringify((venda.cliente && venda.cliente.email) || '').replace(/"/g, '&quot;')})">Enviar por WhatsApp / e-mail</button>` : ''}
                 </body></html>
             `);
             janela.document.close();
@@ -1021,7 +1111,8 @@
                 tituloStatus = 'Entrada já confirmada';
                 detalheStatus = `Confirmado em ${formatarDataHoraV(venda.check_in_em)}${venda.check_in_usuario ? ' por ' + venda.check_in_usuario.name : ''}.` +
                     (venda.atendente ? ` Atendente: ${venda.atendente.nome}.` : '') +
-                    (venda.vendedor ? ` Vendedor: ${venda.vendedor.nome}.` : '');
+                    (venda.vendedor ? ` Vendedor: ${venda.vendedor.nome}.` : '') +
+                    (venda.indicacao ? ` Indicação: ${venda.indicacao.nome}.` : '');
             } else {
                 tituloStatus = 'Comprovante válido';
                 detalheStatus = `Pedido #${venda.id} pago${venda.cliente ? ' - Cliente: ' + venda.cliente.nome : ''}.`;
@@ -1050,6 +1141,15 @@
                         <span>Total</span>
                         <span>R$ ${Number(venda.valor_total).toFixed(2)}</span>
                     </div>
+                    ${jaTeveCheckin && pago ? `
+                        <div class="titulo-secao-v" style="margin-top:14px;">Indicação</div>
+                        <div class="campo" style="margin-bottom:4px;">
+                            <input type="text" id="verificar-indicacao" list="lista-indicacoes" maxlength="120" autocomplete="off" value="${escapeHtml(venda.indicacao?.nome || '')}" placeholder="Como chegou até nós (deixe em branco para remover)" oninput="normalizarCampoIndicacao(this)" style="width:100%; text-transform:uppercase;">
+                            <datalist id="lista-indicacoes">${indicacoesCache.map(i => `<option value="${escapeHtml(i.nome)}"></option>`).join('')}</datalist>
+                            <small style="display:block; color:var(--text-dim); margin-top:3px;">Use LETRAS MAIÚSCULAS e SEM ACENTO (ex.: HOTEL FAZENDA) — o sistema ajusta automaticamente.</small>
+                        </div>
+                        <button class="primario" style="width:100%; margin-top:8px;" onclick="salvarIndicacaoModal(${venda.id})">Salvar indicação</button>
+                    ` : ''}
                     ${!jaTeveCheckin && pago ? `
                         <div class="titulo-secao-v" style="margin-top:14px;">Atendimento</div>
                         <div class="campo" style="margin-bottom:8px;">
@@ -1066,10 +1166,39 @@
                                 ${atendentesCache.map(a => `<option value="${a.id}">${a.nome}</option>`).join('')}
                             </select>
                         </div>
+                        <div class="campo" style="margin-bottom:4px; margin-top:8px;">
+                            <label for="verificar-indicacao">Indicação (como chegou até nós)</label>
+                            <input type="text" id="verificar-indicacao" list="lista-indicacoes" maxlength="120" autocomplete="off" placeholder="Digite para buscar ou cadastrar uma nova" oninput="normalizarCampoIndicacao(this)" style="width:100%; text-transform:uppercase;">
+                            <small style="display:block; color:var(--text-dim); margin-top:3px;">Use LETRAS MAIÚSCULAS e SEM ACENTO (ex.: HOTEL FAZENDA) — o sistema ajusta automaticamente.</small>
+                            <datalist id="lista-indicacoes">${indicacoesCache.map(i => `<option value="${escapeHtml(i.nome)}"></option>`).join('')}</datalist>
+                        </div>
                         <button class="primario" style="width:100%; margin-top:10px;" onclick="confirmarEntradaModal(${venda.id})">Confirmar entrada</button>
                     ` : ''}
                 </div>
             `;
+        }
+
+        async function salvarIndicacaoModal(id) {
+            const msg = document.getElementById('verificar-msg');
+            const indicacao = (document.getElementById('verificar-indicacao')?.value || '').trim();
+
+            const resp = await fetch(`${base}/verificar/${id}/indicacao`, {
+                method: 'POST',
+                headers: headersJson,
+                body: JSON.stringify({ indicacao: indicacao || null }),
+            });
+            const resposta = await resp.json().catch(() => ({}));
+
+            if (!resp.ok) {
+                msg.className = 'msg erro';
+                msg.textContent = resposta.message || 'Não foi possível salvar a indicação.';
+                return;
+            }
+
+            msg.className = 'msg ok';
+            msg.textContent = indicacao ? 'Indicação salva.' : 'Indicação removida.';
+            carregarIndicacoes();
+            renderizarVerificar(resposta);
         }
 
         async function confirmarEntradaModal(id) {
@@ -1086,7 +1215,11 @@
             const resp = await fetch(`${base}/verificar/${id}/check-in`, {
                 method: 'POST',
                 headers: headersJson,
-                body: JSON.stringify({ atendente_id: Number(atendenteId), vendedor_id: vendedorId ? Number(vendedorId) : null }),
+                body: JSON.stringify({
+                    atendente_id: Number(atendenteId),
+                    vendedor_id: vendedorId ? Number(vendedorId) : null,
+                    indicacao: (document.getElementById('verificar-indicacao')?.value || '').trim() || null,
+                }),
             });
             const resposta = await resp.json();
 
@@ -1098,6 +1231,7 @@
 
             msg.className = 'msg ok';
             msg.textContent = 'Entrada confirmada com sucesso!';
+            carregarIndicacoes(); // inclui uma indicação recém-cadastrada nas próximas buscas
             renderizarVerificar(resposta);
         }
 
@@ -1220,6 +1354,7 @@
         carregarAgenda();
         carregarVendedores();
         carregarAtendentes();
+        carregarIndicacoes();
         carregarFormasPagamento();
         carregarDescontosPdv();
         caixaAtualizarStatus();

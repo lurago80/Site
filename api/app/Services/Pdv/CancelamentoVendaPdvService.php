@@ -134,8 +134,7 @@ class CancelamentoVendaPdvService
 
             if ($variacao !== null && $variacao->produto_vinculado_id === null) {
                 $variacao->increment('estoque_atual', $quantidade);
-
-                return;
+                // segue para também devolver o estoque total do produto pai, abaixo
             }
 
             // variação vinculada: o estoque que baixou foi o do produto vinculado (= produto do item)
