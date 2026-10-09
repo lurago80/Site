@@ -89,6 +89,8 @@
         <div id="resultado"></div>
     </div>
 
+    <footer style="text-align:center; font-size:11px; color:var(--text-dim); padding:18px 10px;">By In9ve Informática 2026</footer>
+
     <script>
         const empresa = @json($empresaSlug);
         const base = `{{ url('/pdv') }}/${empresa}`;

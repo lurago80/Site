@@ -21,6 +21,8 @@
         @keyframes aba-fade { from { opacity: 0; } to { opacity: 1; } }
         .conteudo { flex: 1; padding: 28px; max-width: 1400px; }
         .secao { display: none; }
+        @media print { .sidebar, #secao-relatorio-descontos .linha-form { display: none !important; } .conteudo { max-width: none; padding: 0; } }
+        .rodape-in9 { margin-top: 40px; padding: 14px 0 4px; border-top: 1px solid var(--cor-borda); text-align: center; font-size: 12px; color: var(--cor-texto-suave); }
         .secao.ativa { display: block; }
         .secao > h1 { margin-bottom: 18px; }
         .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
@@ -73,8 +75,10 @@
             <button onclick="mostrarSecao('compras', this)">Entrada de Notas</button>
             <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
             <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
+            <button onclick="mostrarSecao('indicacoes', this)">Indicações</button>
             <button onclick="mostrarSecao('cupons', this)">Cupons de Desconto</button>
             <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
+            <button onclick="mostrarSecao('relatorio-descontos', this)">Relatório de Descontos</button>
 
             <div class="grupo-label">Financeiro</div>
             <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
@@ -125,13 +129,14 @@
                         <div><label>Data/hora</label><input type="datetime-local" id="ag-data"></div>
                         <div><label>Vagas totais</label><input type="number" id="ag-vagas" style="width:100px"></div>
                         <div><label>Valor por visitante (R$)</label><input type="number" step="0.01" id="ag-valor" style="width:120px"></div>
+                        <div><label>Custo por visitante (R$)</label><input type="number" step="0.01" min="0" id="ag-custo" style="width:120px"></div>
                         <div><label>Vendedor</label><select id="ag-vendedor" style="min-width:160px"><option value="">Nenhum</option></select></div>
                         <div><label>Atendente</label><select id="ag-atendente" style="min-width:160px"><option value="">Nenhum</option></select></div>
                         <div><button class="acao" id="ag-botao" onclick="salvarAgenda()">Adicionar horário</button></div>
                         <div><button class="secundario" onclick="limparFormularioAgenda()" style="display:none;" id="ag-cancelar">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Data/hora</th><th>Vagas</th><th>Valor</th><th>Vendedor</th><th>Atendente</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Data/hora</th><th>Vagas</th><th>Valor</th><th>Custo</th><th>Vendedor</th><th>Atendente</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-agenda"></tbody>
                     </table>
                     <p class="msg" id="msg-agenda"></p>
@@ -741,6 +746,25 @@
                 </div>
             </section>
 
+            <section id="secao-indicacoes" class="secao">
+                <h1>Indicações</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Como os clientes chegaram até a empresa. O atendente informa a indicação ao validar o ticket no PDV;
+                    os nomes já cadastrados são reaproveitados nas próximas validações.
+                </p>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="ind-rel-inicio"></div>
+                        <div><label>Até</label><input type="date" id="ind-rel-fim"></div>
+                        <div><button class="secundario" onclick="carregarRelatorioIndicacoes()">Consultar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Indicação</th><th>Pedidos</th><th>Visitantes</th><th>Valor total</th></tr></thead>
+                        <tbody id="tbody-indicacoes"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <section id="secao-atendentes" class="secao">
                 <h1>Atendentes</h1>
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
@@ -876,6 +900,28 @@
                 </div>
             </section>
 
+            <section id="secao-relatorio-descontos" class="secao">
+                <h1>Relatório de Descontos e Cortesias</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Vendas com desconto ou cortesia (100%) aplicadas no PDV, com o motivo informado pelo atendente.
+                    Vendas canceladas não entram.
+                </p>
+                <div class="card" id="area-relatorio-descontos">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="rd-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rd-fim"></div>
+                        <div><button class="acao" onclick="carregarRelatorioDescontos()">Consultar</button></div>
+                        <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Data</th><th>Hora</th><th>Venda nº</th><th>Tipo</th><th>Valor total</th><th>Desconto</th><th>Valor líquido</th><th>Atendente</th><th>Motivo</th></tr></thead>
+                        <tbody id="tbody-relatorio-descontos"></tbody>
+                        <tfoot id="tfoot-relatorio-descontos"></tfoot>
+                    </table>
+                    <p class="msg" id="msg-relatorio-descontos"></p>
+                </div>
+            </section>
+
             <section id="secao-caixa-consulta" class="secao">
                 <h1>Caixa (consulta)</h1>
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
@@ -982,6 +1028,24 @@
                         <thead><tr><th>Categoria</th><th>Tipo</th><th>Total</th><th>Pago</th><th>Em aberto</th></tr></thead>
                         <tbody id="tbody-relatorio-plano-contas"></tbody>
                     </table>
+                    <p style="font-size:11.5px; color:var(--cor-texto-suave); margin:8px 0 0;">
+                        <strong>001.015 - Descontos concedidos</strong> é informativa: o desconto já foi deduzido da receita
+                        (002.001 / 002.002), então ela não deve ser somada de novo como despesa.
+                    </p>
+                </div>
+                <div class="card" id="area-resultado">
+                    <h2 style="font-size:14px; margin-top:0;">Resultado do período</h2>
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="res-inicio"></div>
+                        <div><label>Até</label><input type="date" id="res-fim"></div>
+                        <div><button class="acao" onclick="carregarResultadoPeriodo()">Consultar</button></div>
+                        <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Linha</th><th style="text-align:right">Valor</th></tr></thead>
+                        <tbody id="tbody-resultado"></tbody>
+                    </table>
+                    <p class="msg" id="msg-resultado"></p>
                 </div>
             </section>
 
@@ -1234,6 +1298,7 @@
                                 <option value="autorizada">Autorizada</option>
                                 <option value="cancelada">Cancelada</option>
                                 <option value="rejeitada">Rejeitada</option>
+                                <option value="inutilizada">Inutilizada</option>
                                 <option value="contingencia">Contingência</option>
                             </select>
                         </div>
@@ -1529,6 +1594,7 @@
                     </div>
                 </div>
             </section>
+            <footer class="rodape-in9">By In9ve Informática 2026</footer>
         </div>
     </div>
 
@@ -1548,12 +1614,14 @@
             fornecedores: carregarFornecedores,
             compras: carregarCompras,
             vendedores: () => { carregarVendedores(); carregarRelatorioVendedores(); },
+            indicacoes: () => carregarRelatorioIndicacoes(),
             atendentes: carregarAtendentes,
             cupons: () => { carregarCupons(); carregarCuponsLote(1); },
             'descontos-pdv': carregarDescontosPdv,
+            'relatorio-descontos': carregarRelatorioDescontos,
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
-            'plano-contas': () => { carregarPlanoContas(); },
+            'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
@@ -1609,6 +1677,7 @@
                     <td>${new Date(a.data_hora).toLocaleString('pt-BR')}</td>
                     <td>${a.vagas_reservadas}/${a.vagas_total}</td>
                     <td>R$ ${Number(a.valor_visita).toFixed(2)}</td>
+                    <td>R$ ${Number(a.custo_visita ?? 0).toFixed(2)}</td>
                     <td>${a.vendedor ? a.vendedor.nome : '-'}</td>
                     <td>${a.atendente ? a.atendente.nome : '-'}</td>
                     <td><span class="status status-${a.status}">${a.status}</span></td>
@@ -1617,7 +1686,7 @@
                         <button class="secundario" onclick="excluirAgenda(${a.id})">Excluir</button>
                     </td>
                 </tr>
-            `).join('') || '<tr><td colspan="7">Nenhum horário cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="8">Nenhum horário cadastrado.</td></tr>';
         }
 
         function dataHoraParaInput(dataHoraIso) {
@@ -1634,6 +1703,7 @@
             document.getElementById('ag-data').value = dataHoraParaInput(a.data_hora);
             document.getElementById('ag-vagas').value = a.vagas_total;
             document.getElementById('ag-valor').value = a.valor_visita;
+            document.getElementById('ag-custo').value = a.custo_visita ?? '';
             document.getElementById('ag-vendedor').value = a.vendedor_id ?? '';
             document.getElementById('ag-atendente').value = a.atendente_id ?? '';
             document.getElementById('ag-botao').textContent = 'Salvar edição';
@@ -1645,6 +1715,7 @@
             document.getElementById('ag-data').value = '';
             document.getElementById('ag-vagas').value = '';
             document.getElementById('ag-valor').value = '';
+            document.getElementById('ag-custo').value = '';
             document.getElementById('ag-vendedor').value = '';
             document.getElementById('ag-atendente').value = '';
             document.getElementById('ag-botao').textContent = 'Adicionar horário';
@@ -1676,6 +1747,7 @@
                 data_hora: new Date(document.getElementById('ag-data').value).toISOString(),
                 vagas_total: Number(document.getElementById('ag-vagas').value),
                 valor_visita: Number(document.getElementById('ag-valor').value),
+                custo_visita: Number(document.getElementById('ag-custo').value || 0),
                 vendedor_id: document.getElementById('ag-vendedor').value || null,
                 atendente_id: document.getElementById('ag-atendente').value || null,
             };
@@ -2762,6 +2834,44 @@
             carregarAtendentes();
         }
 
+        async function carregarRelatorioDescontos() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('rd-inicio').value;
+            const fim = document.getElementById('rd-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const msg = document.getElementById('msg-relatorio-descontos');
+            const resp = await fetch(`${base}/descontos-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const { linhas, totais } = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            document.getElementById('tbody-relatorio-descontos').innerHTML = linhas.map(r => `
+                <tr>
+                    <td>${r.data}</td>
+                    <td>${r.hora}</td>
+                    <td>${r.id}</td>
+                    <td>${r.cortesia ? '<span class="selo info">Cortesia</span>' : esc(r.tipo)}</td>
+                    <td>${brl(r.valor_total)}</td>
+                    <td>${brl(r.valor_desconto)}</td>
+                    <td>${brl(r.valor_liquido)}</td>
+                    <td>${esc(r.atendente ?? '-')}</td>
+                    <td>${esc(r.motivo ?? '-')}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="9">Nenhuma venda com desconto no período.</td></tr>';
+
+            document.getElementById('tfoot-relatorio-descontos').innerHTML = linhas.length ? `
+                <tr style="font-weight:700;">
+                    <td colspan="4">Total (${totais.vendas} venda(s))</td>
+                    <td>${brl(totais.valor_total)}</td>
+                    <td>${brl(totais.valor_desconto)}</td>
+                    <td>${brl(totais.valor_liquido)}</td>
+                    <td colspan="2"></td>
+                </tr>` : '';
+        }
+
         async function carregarRelatorioAtendentes() {
             const params = new URLSearchParams();
             const inicio = document.getElementById('atr-inicio').value;
@@ -2790,6 +2900,19 @@
             document.getElementById('tbody-relatorio-vendedores').innerHTML = lista.map(r => `
                 <tr><td>${esc(r.nome)}</td><td>${esc(r.chave_pix || '-')}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
             `).join('') || '<tr><td colspan="5">Nenhum vendedor cadastrado.</td></tr>';
+        }
+
+        async function carregarRelatorioIndicacoes() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('ind-rel-inicio').value;
+            const fim = document.getElementById('ind-rel-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            const resp = await fetch(`${base}/indicacoes-relatorio?${params}`);
+            const lista = await resp.json();
+            document.getElementById('tbody-indicacoes').innerHTML = lista.map(r => `
+                <tr><td>${esc(r.nome)}</td><td>${r.pedidos}</td><td>${r.visitantes}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+            `).join('') || '<tr><td colspan="4">Nenhuma indicação registrada ainda.</td></tr>';
         }
 
         let descontosPdvCache = [];
@@ -3130,13 +3253,44 @@
             const lista = await resp.json();
             document.getElementById('tbody-relatorio-plano-contas').innerHTML = lista.map(r => `
                 <tr>
-                    <td>${r.codigo ? r.codigo + ' - ' : ''}${r.nome}</td>
+                    <td>${r.codigo ? r.codigo + ' - ' : ''}${r.nome}${r.informativa ? ' <span class="selo info">informativa</span>' : ''}</td>
                     <td>${r.tipo}</td>
                     <td>R$ ${Number(r.total).toFixed(2)}</td>
                     <td>R$ ${Number(r.total_pago).toFixed(2)}</td>
                     <td>R$ ${Number(r.total_em_aberto).toFixed(2)}</td>
                 </tr>
             `).join('') || '<tr><td colspan="5">Nenhuma categoria cadastrada.</td></tr>';
+        }
+
+        async function carregarResultadoPeriodo() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('res-inicio').value;
+            const fim = document.getElementById('res-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const msg = document.getElementById('msg-resultado');
+            const resp = await fetch(`${base}/resultado-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o resultado.'; return; }
+            msg.textContent = '';
+
+            const r = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            const linha = (nome, valor, estilo = '') => `<tr style="${estilo}"><td>${nome}</td><td style="text-align:right">${brl(valor)}</td></tr>`;
+            const negrito = 'font-weight:700;';
+            const memo = 'color:var(--cor-texto-suave); font-size:12px;';
+
+            document.getElementById('tbody-resultado').innerHTML =
+                linha('002.001 - Receita de produtos (venda − custo − desconto)', r.receita_produtos) +
+                linha('002.002 - Receita de serviços (venda − custo − desconto)', r.receita_servicos) +
+                linha('Total de receitas', r.total_receitas, negrito) +
+                r.despesas.map(d => linha(`(−) ${esc(d.codigo ?? '')} - ${esc(d.nome)}`, d.total)).join('') +
+                linha('Total de outras despesas', r.total_despesas, negrito) +
+                linha('RESULTADO DO PERÍODO', r.resultado, negrito + ' border-top:2px solid #000;') +
+                '<tr><td colspan="2" style="padding-top:14px; font-size:11px; text-transform:uppercase; color:var(--cor-texto-suave);">Memo - não entram no resultado</td></tr>' +
+                linha('Faturamento bruto (antes do custo e do desconto)', r.memo.faturamento_bruto, memo) +
+                linha('Custo das vendas', r.memo.custo_total, memo) +
+                linha('001.015 - Descontos concedidos (informativa, já deduzida da receita)', r.memo.descontos_concedidos, memo);
         }
 
         // ---- Bancos ----
@@ -3876,7 +4030,7 @@
         // ---- Fiscal (emissão, relatório, cancelamento, inutilização) ----
         // Endpoints vivem sob /fiscal/{empresa}/... (GestaoFiscalController),
         // não sob /dashboard/{empresa}/... como o resto desta tela.
-        const fiscalBase = `/fiscal/${empresa}`;
+        const fiscalBase = `{{ url('/fiscal') }}/${empresa}`;
 
         async function carregarRelatorioFiscal() {
             const params = new URLSearchParams({
@@ -3886,23 +4040,42 @@
                 status: document.getElementById('f-status').value,
             });
             const resp = await fetch(`${fiscalBase}/relatorio?${params}`);
-            const docs = await resp.json();
+            const docs = await resp.json().catch(() => null);
             const tbody = document.getElementById('tbody-documentos-fiscais');
+            if (!resp.ok || !Array.isArray(docs)) {
+                const msg = (docs && (docs.message || docs.error)) || `Erro ${resp.status} ao carregar os documentos.`;
+                tbody.innerHTML = `<tr><td colspan="7" style="color:#b02525;">${msg}</td></tr>`;
+                return;
+            }
             if (!docs.length) { tbody.innerHTML = '<tr><td colspan="7">Nenhum documento encontrado.</td></tr>'; return; }
             tbody.innerHTML = docs.map(d => `
                 <tr>
                     <td>${d.numero}</td>
                     <td>${d.serie}</td>
                     <td>${d.modelo === 55 ? 'NFe' : 'NFC-e'}</td>
-                    <td><span class="status status-${d.status}">${d.status}</span></td>
+                    <td><span class="status status-${d.status}"${d.status === 'inutilizada' ? ' style="background:#e4e7eb;color:#52606d;"' : ''}>${d.status}</span>${d.motivo && d.status !== 'autorizada' ? `<div style="font-size:11px;color:${d.status === 'inutilizada' ? '#52606d' : '#b02525'};max-width:280px;margin-top:3px;">${d.motivo}</div>` : ''}</td>
                     <td>R$ ${Number(d.total).toFixed(2)}</td>
                     <td>${new Date(d.created_at).toLocaleString('pt-BR')}</td>
                     <td>
                         <button class="secundario" onclick="reimprimirFiscal(${d.id})">Reimprimir</button>
+                        ${d.status === 'autorizada' ? `<button class="secundario" onclick="enviarFiscal(${d.id})">Enviar</button>` : ''}
                         ${d.status === 'autorizada' ? `<button class="perigo" onclick="cancelarFiscal(${d.id})">Cancelar</button>` : ''}
                     </td>
                 </tr>
             `).join('');
+        }
+
+        async function enviarFiscal(documentoId) {
+            const canalResp = prompt('Enviar por:\n1 = WhatsApp\n2 = E-mail', '1');
+            if (canalResp === null) return;
+            const canal = canalResp.trim() === '2' ? 'email' : 'whatsapp';
+            const destino = prompt(canal === 'email' ? 'E-mail do destinatário:' : 'Celular do destinatário (com DDD):');
+            if (!destino) return;
+            const resp = await fetch(`${fiscalBase}/documentos/${documentoId}/enviar`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ canal, destino }),
+            });
+            const dados = await resp.json().catch(() => ({}));
+            alert(dados.message || (resp.ok ? 'Enviado.' : `Erro ${resp.status} ao enviar.`));
         }
 
         function reimprimirFiscal(documentoId) {

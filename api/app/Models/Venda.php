@@ -13,7 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'canal', 'tipo_doc', 'status_pagamento', 'valor_total', 'comissao', 'data_venda',
     'cupom_id', 'desconto_pdv_id', 'valor_desconto', 'check_in_em', 'check_in_usuario_id',
     'tipo_entrega', 'valor_frete', 'endereco_entrega', 'status_envio', 'codigo_rastreio',
-    'cancelada_em', 'cancelada_por_usuario_id', 'motivo_cancelamento',
+    'cancelada_em', 'cancelada_por_usuario_id', 'motivo_cancelamento', 'indicacao_id',
+    'cortesia', 'motivo_desconto',
 ])]
 class Venda extends Model
 {
@@ -24,6 +25,7 @@ class Venda extends Model
             'comissao' => 'decimal:2',
             'valor_desconto' => 'decimal:2',
             'valor_frete' => 'decimal:2',
+            'cortesia' => 'boolean',
             'endereco_entrega' => 'array',
             'data_venda' => 'datetime',
             'check_in_em' => 'datetime',
@@ -49,6 +51,11 @@ class Venda extends Model
     public function cliente(): BelongsTo
     {
         return $this->belongsTo(Cliente::class);
+    }
+
+    public function indicacao(): BelongsTo
+    {
+        return $this->belongsTo(Indicacao::class);
     }
 
     public function checkInUsuario(): BelongsTo

@@ -23,21 +23,22 @@
         .assinatura div { flex: 1; border-top: 1px solid #111; padding-top: 4px; text-align: center; font-size: 11px; color: #555; }
         .vazio { color: #555; padding: 10px 0; }
         /* Modo bobina (impressora térmica 80 mm / ~48 colunas) */
-        body.bobina { font-family: 'Courier New', monospace; font-size: 11px; width: 68mm; max-width: 68mm; margin: 0 auto; padding: 0 2mm; }
-        body.bobina h1 { font-size: 13px; text-align: center; }
-        body.bobina h2 { font-size: 11px; background: none; border-top: 1px dashed #000; border-bottom: 1px dashed #000; text-align: center; padding: 2px 0; margin: 8px 0 3px; }
-        body.bobina .sub { font-size: 10px; }
+        body.bobina { font-family: Arial, Helvetica, sans-serif; font-weight: 700; color: #000; font-size: 13px; line-height: 1.3; width: 76mm; max-width: 76mm; margin: 0 auto; padding: 0 2mm; -webkit-font-smoothing: none; }
+        body.bobina h1 { font-size: 15px; text-align: center; }
+        body.bobina h2 { font-size: 13px; background: none; border-top: 2px dashed #000; border-bottom: 2px dashed #000; text-align: center; padding: 3px 0; margin: 10px 0 4px; }
+        body.bobina .sub { font-size: 12px; color: #000; }
         body.bobina table, body.bobina tbody { display: block; width: 100%; }
         body.bobina thead, body.bobina .b-oculta { display: none; }
-        body.bobina tr { display: flex; flex-wrap: wrap; justify-content: space-between; border: 0; }
-        body.bobina th, body.bobina td { border: 0; padding: 1px 0; }
-        body.bobina td.b-obs { flex-basis: 100%; font-size: 10px; }
-        body.bobina tr.total td, body.bobina tr.resultado td { border-top: 1px dashed #000; }
-        body.bobina tr.resultado td { font-size: 12px; border-bottom: 1px dashed #000; }
+        body.bobina tr { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; border: 0; }
+        body.bobina th, body.bobina td { border: 0; padding: 2px 0; color: #000; font-size: 13px; }
+        body.bobina small { font-size: 11px; }
+        body.bobina td.b-obs { flex-basis: 100%; font-size: 12px; }
+        body.bobina tr.total td, body.bobina tr.resultado td { border-top: 2px dashed #000; }
+        body.bobina tr.resultado td { font-size: 15px; border-bottom: 2px dashed #000; }
         body.bobina .assinatura { display: block; margin-top: 30px; }
-        body.bobina .assinatura div { margin-bottom: 26px; }
+        body.bobina .assinatura div { margin-bottom: 26px; border-top: 2px solid #000; color: #000; font-size: 12px; }
         body.bobina .neg { color: #000; }
-        @media print { .acoes { display: none; } body { margin: 10mm; max-width: none; } }
+        @media print { .acoes, .filtro-dia { display: none; } body { margin: 10mm; max-width: none; } }
     </style>
 </head>
 <body>
@@ -47,21 +48,40 @@
     <h1>Extrato do caixa — {{ $empresaNome }}</h1>
     <p class="sub">Gerado em {{ $geradoEm->format('d/m/Y H:i') }}</p>
 
+    <form class="acoes filtro-dia" method="get" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+        <label for="data-extrato"><strong>Dia:</strong></label>
+        <input type="date" id="data-extrato" name="data" value="{{ $data }}" max="{{ $geradoEm->format('Y-m-d') }}" style="padding:6px;">
+        <button type="submit">Ver este dia</button>
+        @if ($data)
+            <a href="?" style="font-size:12px;">Voltar ao último turno</a>
+        @endif
+    </form>
+    @if ($data)
+        <p class="sub" style="margin:0 0 8px;">Extrato do dia {{ \Illuminate\Support\Carbon::parse($data)->format('d/m/Y') }}.
+            @if ($turnosDoDia->count() > 1)
+                Houve {{ $turnosDoDia->count() }} turnos de caixa neste dia:
+                @foreach ($turnosDoDia as $t)
+                    <a href="?data={{ $data }}&abertura={{ $t->id }}" @if ($t->id === $aberturaSelecionada) style="font-weight:700;" @endif>turno das {{ $t->data_hora->copy()->timezone('America/Sao_Paulo')->format('H:i') }}</a>@if (! $loop->last) · @endif
+                @endforeach
+            @endif
+        </p>
+    @endif
+
     <div class="acoes">
         <button type="button" onclick="window.print()">Imprimir / Salvar como PDF</button>
         <button type="button" onclick="imprimirBobina()">Imprimir 80 colunas (bobina)</button>
     </div>
 
     @if ($resumo === null)
-        <p class="vazio">Nenhum caixa foi aberto ainda.</p>
+        <p class="vazio">{{ $data ? 'Nenhum caixa foi aberto nesta data.' : 'Nenhum caixa foi aberto ainda.' }}</p>
     @else
         @php
             $a = $resumo['abertura'];
             $f = $resumo['fechamento'];
         @endphp
         <p class="sub">
-            Turno: aberto em <strong>{{ $a->data_hora->format('d/m/Y H:i') }}</strong>@if($a->usuario) por {{ $a->usuario->name }}@endif —
-            @if ($f) fechado em <strong>{{ $f->data_hora->format('d/m/Y H:i') }}</strong>@if($f->usuario) por {{ $f->usuario->name }}@endif
+            Turno: aberto em <strong>{{ $a->data_hora->copy()->timezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</strong>@if($a->usuario) por {{ $a->usuario->name }}@endif —
+            @if ($f) fechado em <strong>{{ $f->data_hora->copy()->timezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</strong>@if($f->usuario) por {{ $f->usuario->name }}@endif
             @else <strong>caixa ainda aberto</strong> (posição até agora)
             @endif
         </p>
@@ -89,7 +109,7 @@
             <tbody>
                 @forelse ($resumo['movimentos'] as $m)
                     <tr>
-                        <td class="b-oculta">{{ $m->data_hora->format('d/m H:i') }}</td>
+                        <td class="b-oculta">{{ $m->data_hora->copy()->timezone('America/Sao_Paulo')->format('d/m H:i') }}</td>
                         <td>{{ $m->tipo === 'sangria' ? 'Sangria (saída)' : 'Suprimento (entrada)' }}</td>
                         <td class="b-oculta">{{ $m->usuario?->name ?? '—' }}</td>
                         <td class="b-obs">{{ $m->observacao ?? '—' }}</td>

@@ -51,6 +51,9 @@ Route::middleware('throttle:5,1')->group(function () {
 | O tenant vem sempre do usuário autenticado (ver SetTenantContext) - o
 | {empresa} na URL é só cosmético/legível, não decide o contexto.
 */
+Route::get('/documento-fiscal/{documentoId}/publico', [GestaoFiscalController::class, 'visualizarPublico'])
+    ->middleware('signed:relative')->name('documento-fiscal.publico');
+
 Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('fiscal/{empresa}')->group(function () {
     Route::get('/painel', function (string $empresa) {
         return view('fiscal.painel', ['empresaSlug' => $empresa]);
@@ -59,6 +62,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('fiscal/{empres
     Route::get('/relatorio', [GestaoFiscalController::class, 'relatorio']);
     Route::get('/vendas-nao-fiscais', [GestaoFiscalController::class, 'vendasNaoFiscais']);
     Route::get('/nfces-disponiveis-para-nfe', [GestaoFiscalController::class, 'nfcesDisponiveisParaNfe']);
+    Route::post('/documentos/{documentoId}/enviar', [GestaoFiscalController::class, 'enviar']);
     Route::post('/documentos/{documentoId}/cancelar', [GestaoFiscalController::class, 'cancelar']);
     Route::post('/inutilizacoes', [GestaoFiscalController::class, 'inutilizar']);
     Route::post('/vendas/{vendaId}/importar', [GestaoFiscalController::class, 'importarVendaNaoFiscal']);
@@ -90,11 +94,14 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/vendedores', [PdvController::class, 'vendedores']);
     Route::post('/vendedores', [PdvController::class, 'criarVendedor']);
     Route::get('/atendentes', [PdvController::class, 'atendentes']);
+    Route::get('/indicacoes', [PdvController::class, 'indicacoes']);
     Route::get('/formas-pagamento', [PdvController::class, 'formasPagamento']);
     Route::get('/descontos', [PdvController::class, 'descontos']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
     Route::get('/vendas-do-dia', [PdvController::class, 'vendasDoDia']);
     Route::post('/vendas/{vendaId}/cancelar', [PdvController::class, 'cancelarVenda']);
+    Route::post('/documentos/{documentoId}/enviar', [GestaoFiscalController::class, 'enviar']);
+    Route::get('/documentos/{documentoId}/cupom', [GestaoFiscalController::class, 'reimprimir']);
 
     Route::get('/caixa-status', [PdvController::class, 'caixaStatus']);
     Route::post('/caixa-abrir', [PdvController::class, 'caixaAbrir']);
@@ -108,6 +115,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/verificar', [PdvController::class, 'verificarTicket'])->middleware('conta_ativa');
     Route::get('/verificar/{vendaId}', [PdvController::class, 'buscarTicket']);
     Route::post('/verificar/{vendaId}/check-in', [PdvController::class, 'confirmarCheckIn']);
+    Route::post('/verificar/{vendaId}/indicacao', [PdvController::class, 'atualizarIndicacao']);
 });
 
 /*
@@ -146,11 +154,13 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::post('/vendedores', [DashboardController::class, 'criarVendedor']);
     Route::put('/vendedores/{vendedorId}', [DashboardController::class, 'atualizarVendedor']);
     Route::get('/vendedores-relatorio', [DashboardController::class, 'relatorioVendedores']);
+    Route::get('/indicacoes-relatorio', [DashboardController::class, 'relatorioIndicacoes']);
 
     Route::get('/atendentes', [DashboardController::class, 'atendentes']);
     Route::post('/atendentes', [DashboardController::class, 'criarAtendente']);
     Route::put('/atendentes/{atendenteId}', [DashboardController::class, 'atualizarAtendente']);
     Route::get('/atendentes-relatorio', [DashboardController::class, 'relatorioAtendentes']);
+    Route::get('/descontos-relatorio', [DashboardController::class, 'relatorioDescontos']);
 
     Route::get('/fornecedores', [DashboardController::class, 'fornecedores']);
     Route::post('/fornecedores', [DashboardController::class, 'criarFornecedor']);
@@ -181,6 +191,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::post('/plano-contas', [DashboardController::class, 'criarPlanoContas']);
     Route::put('/plano-contas/{planoContaId}', [DashboardController::class, 'atualizarPlanoContas']);
     Route::get('/plano-contas-relatorio', [DashboardController::class, 'relatorioPlanoContas']);
+    Route::get('/resultado-relatorio', [DashboardController::class, 'relatorioResultado']);
 
     Route::get('/bancos', [DashboardController::class, 'bancos']);
     Route::post('/bancos', [DashboardController::class, 'criarBanco']);

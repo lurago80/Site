@@ -648,6 +648,7 @@ class PdvTest extends TestCase
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // 100, sem desconto
             'desconto_pdv_id' => $desconto->id,
+            'motivo_desconto' => 'Motivo de teste',
         ]);
 
         // 10% de 36 = 3,60 -> 136 - 3,60 = 132,40 (visita intacta)
@@ -670,6 +671,7 @@ class PdvTest extends TestCase
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 3, // 300; 50% só de 2 tickets = 100
             'desconto_pdv_id' => $desconto->id,
+            'motivo_desconto' => 'Motivo de teste',
         ]);
 
         $response->assertCreated();
@@ -689,6 +691,7 @@ class PdvTest extends TestCase
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1,
             'desconto_pdv_id' => $desconto->id,
+            'motivo_desconto' => 'Motivo de teste',
         ]);
 
         $response->assertCreated()->assertJsonPath('valor_total', '40.00');
@@ -711,6 +714,7 @@ class PdvTest extends TestCase
             'agenda_quantidade' => 1,
             'cupom_codigo' => 'DESC10',
             'desconto_pdv_id' => $desconto->id,
+            'motivo_desconto' => 'Motivo de teste',
         ]);
 
         $response->assertStatus(422);
@@ -735,6 +739,7 @@ class PdvTest extends TestCase
             'agenda_quantidade' => 1, // 100 -> cupom 10
             'cupom_codigo' => 'DESC10',
             'desconto_pdv_id' => $desconto->id,
+            'motivo_desconto' => 'Motivo de teste',
         ]);
 
         $response->assertCreated();
@@ -755,6 +760,7 @@ class PdvTest extends TestCase
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // só visita
             'desconto_pdv_id' => $soProdutos->id,
+            'motivo_desconto' => 'Motivo de teste',
         ])->assertStatus(422);
 
         $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
@@ -763,6 +769,7 @@ class PdvTest extends TestCase
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // só produto
             'desconto_pdv_id' => $soVisitas->id,
+            'motivo_desconto' => 'Motivo de teste',
         ])->assertStatus(422);
 
         $this->assertSame(10, $this->produto->fresh()->estoque_atual); // nada foi baixado
@@ -782,6 +789,7 @@ class PdvTest extends TestCase
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
             'desconto_pdv_id' => $inativo->id,
+            'motivo_desconto' => 'Motivo de teste',
         ])->assertStatus(422);
     }
 
@@ -1000,6 +1008,97 @@ class PdvTest extends TestCase
             ->assertOk()
             ->assertSee('Valor contado no fechamento')
             ->assertSee('R$ -2,00');
+    }
+
+    public function test_cortesia_zera_a_venda_exige_motivo_e_aparece_no_relatorio_de_descontos(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $venda = [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ];
+
+        // sem motivo -> recusa
+        $this->postJson("$base/vendas", $venda + ['cortesia' => true])
+            ->assertStatus(422)->assertJsonPath('message', 'Informe o motivo do desconto.');
+
+        // cortesia com nota fiscal -> recusa
+        $this->postJson("$base/vendas", ['tipo_doc' => 'fiscal', 'cortesia' => true, 'motivo_desconto' => 'Parceria'] + $venda)
+            ->assertStatus(422);
+
+        $resposta = $this->postJson("$base/vendas", $venda + ['cortesia' => true, 'motivo_desconto' => 'Parceria com a agência'])
+            ->assertCreated();
+        $resposta->assertJsonPath('valor_total', '0.00');
+        $resposta->assertJsonPath('valor_desconto', '36.00');
+        $resposta->assertJsonPath('cortesia', true);
+
+        // venda comum sem desconto não entra no relatório
+        $this->postJson("$base/vendas", $venda)->assertCreated();
+
+        $admin = User::create([
+            'name' => 'Admin Teste', 'email' => 'admin@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $relatorio = $this->actingAs($admin)->getJson("/dashboard/{$this->empresa->slug}/descontos-relatorio")->assertOk();
+        $relatorio->assertJsonCount(1, 'linhas');
+        $relatorio->assertJsonPath('linhas.0.id', $resposta->json('id'));
+        $relatorio->assertJsonPath('linhas.0.tipo', 'Cortesia');
+        $relatorio->assertJsonPath('linhas.0.valor_total', 36);
+        $relatorio->assertJsonPath('linhas.0.valor_desconto', 36);
+        $relatorio->assertJsonPath('linhas.0.valor_liquido', 0);
+        $relatorio->assertJsonPath('linhas.0.atendente', 'Atendente Padrão');
+        $relatorio->assertJsonPath('linhas.0.motivo', 'Parceria com a agência');
+        $relatorio->assertJsonPath('totais.valor_desconto', 36);
+    }
+
+    public function test_venda_lanca_receitas_e_descontos_no_plano_de_contas(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $this->produto->update(['preco_custo' => 7.00]);
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $this->produto->id, 'data_hora' => now()->addDays(2),
+            'vagas_total' => 10, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 50.00, 'custo_visita' => 10.00,
+        ]);
+        $descontoVisitas = DescontoPdv::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => '50% Visitas', 'percentual' => 50, 'aplica_em' => 'visitas', 'ativo' => true,
+        ]);
+
+        // 2 x R$ 18 (custo 7) + 2 visitas de R$ 50 (custo 10), 50% de desconto nas visitas (R$ 50)
+        $venda = $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+            'agenda_visitacao_id' => $agenda->id, 'agenda_quantidade' => 2,
+            'desconto_pdv_id' => $descontoVisitas->id, 'motivo_desconto' => 'Teste',
+        ])->assertCreated();
+
+        $lancado = fn (string $codigo) => (float) \App\Models\LancamentoPlanoConta::query()
+            ->whereHas('planoContas', fn ($q) => $q->where('codigo', $codigo))
+            ->where('venda_id', $venda->json('id'))->sum('valor');
+
+        $this->assertSame(22.0, $lancado('002.001'));   // 36 - 14
+        $this->assertSame(30.0, $lancado('002.002'));   // 100 - 20 - 50
+        $this->assertSame(50.0, $lancado('001.015'));   // desconto concedido
+
+        // Resultado do período: receitas já líquidas; bruto, custo e desconto só como memo.
+        $admin = User::create([
+            'name' => 'Admin DRE', 'email' => 'admin-dre@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin)->getJson("/dashboard/{$this->empresa->slug}/resultado-relatorio")
+            ->assertOk()
+            ->assertJsonPath('receita_produtos', 22)
+            ->assertJsonPath('receita_servicos', 30)
+            ->assertJsonPath('total_receitas', 52)
+            ->assertJsonPath('resultado', 52)
+            ->assertJsonPath('memo.faturamento_bruto', 136)
+            ->assertJsonPath('memo.custo_total', 34)
+            ->assertJsonPath('memo.descontos_concedidos', 50);
+
+        // Cancelar a venda apaga os lançamentos.
+        \App\Models\Venda::find($venda->json('id'))->update(['status_pagamento' => 'cancelado', 'cancelada_em' => now()]);
+        $this->assertSame(0, \App\Models\LancamentoPlanoConta::where('venda_id', $venda->json('id'))->count());
     }
 
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_da_loja_com_visita_futura(): void

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['empresa_id', 'produto_id', 'vendedor_id', 'atendente_id', 'data_hora', 'vagas_total', 'vagas_reservadas', 'status', 'valor_visita'])]
+#[Fillable(['empresa_id', 'produto_id', 'vendedor_id', 'atendente_id', 'data_hora', 'vagas_total', 'vagas_reservadas', 'status', 'valor_visita', 'custo_visita'])]
 class AgendaVisitacao extends Model
 {
     protected $table = 'agenda_visitacoes';
@@ -17,6 +17,7 @@ class AgendaVisitacao extends Model
         return [
             'data_hora' => 'datetime',
             'valor_visita' => 'decimal:2',
+            'custo_visita' => 'decimal:2',
         ];
     }
 

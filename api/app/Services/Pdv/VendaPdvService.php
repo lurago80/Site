@@ -16,6 +16,7 @@ use App\Models\Vendedor;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Fiscal\EmissaoFiscalService;
 use App\Services\Vendas\KitService;
+use App\Services\Vendas\LancamentoVendaService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -32,6 +33,7 @@ class VendaPdvService
         private readonly EmissaoFiscalService $emissaoFiscalService,
         private readonly CaixaService $caixaService,
         private readonly KitService $kitService,
+        private readonly LancamentoVendaService $lancamentoVendaService,
     ) {}
 
     public function finalizar(Empresa $empresa, array $dados, int $usuarioId): Venda
@@ -124,6 +126,12 @@ class VendaPdvService
                 $descontoPdvId = $descontoPdv->id;
             }
 
+            // Cortesia: desconta 100% da venda (produtos e visitas).
+            $cortesia = (bool) ($dados['cortesia'] ?? false);
+            if ($cortesia) {
+                $valorDesconto = $valorTotal;
+            }
+
             $valorDesconto = min($valorDesconto, $valorTotal);
 
             $venda->update([
@@ -132,7 +140,12 @@ class VendaPdvService
                 'cupom_id' => $cupomId,
                 'desconto_pdv_id' => $descontoPdvId,
                 'valor_desconto' => $valorDesconto ?: null,
+                'cortesia' => $cortesia,
+                'motivo_desconto' => ($cortesia || $descontoPdvId) ? ($dados['motivo_desconto'] ?? null) : null,
             ]);
+
+            // Plano de contas: receita de produtos/serviços e descontos concedidos.
+            $this->lancamentoVendaService->registrar($venda);
 
             $formaPagamento = ! empty($dados['forma_pagamento_id'])
                 ? FormaPagamento::find($dados['forma_pagamento_id'])

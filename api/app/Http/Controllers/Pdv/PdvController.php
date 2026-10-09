@@ -53,10 +53,14 @@ class PdvController extends Controller
      */
     public function visitasPagas(Request $request, string $empresa)
     {
+        // Só as visitas de hoje (dia em Brasília; data_hora é guardada em UTC).
+        $inicioHoje = now('America/Sao_Paulo')->startOfDay()->utc();
+        $fimHoje = now('America/Sao_Paulo')->endOfDay()->utc();
+
         $itens = ItemVenda::query()
             ->whereNotNull('agenda_visitacao_id')
-            ->whereHas('agendaVisitacao', fn ($q) => $q->where('data_hora', '>=', now()->startOfDay()))
-            ->whereHas('venda', fn ($q) => $q->where('canal', 'site')->where('status_pagamento', 'pago'))
+            ->whereHas('agendaVisitacao', fn ($q) => $q->whereBetween('data_hora', [$inicioHoje, $fimHoje]))
+            ->whereHas('venda', fn ($q) => $q->whereIn('canal', ['site', 'pdv'])->where('status_pagamento', 'pago'))
             ->with(['agendaVisitacao', 'venda.cliente', 'venda.formaPagamento'])
             ->get();
 
@@ -88,7 +92,7 @@ class PdvController extends Controller
                 ?? $request->attributes->get('empresaAtual')?->razao_social
                 ?? $empresa,
             'horarios' => $horarios,
-            'geradoEm' => now(),
+            'geradoEm' => now('America/Sao_Paulo'),
         ]);
     }
 
@@ -101,7 +105,7 @@ class PdvController extends Controller
 
     public function buscarTicket(Request $request, string $empresa, int $vendaId)
     {
-        $venda = Venda::with(['itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'checkInUsuario', 'vendedor', 'atendente'])
+        $venda = Venda::with(['itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'checkInUsuario', 'vendedor', 'atendente', 'indicacao'])
             ->find($vendaId);
 
         abort_if($venda === null, 404, 'Pedido não encontrado nesta empresa.');
@@ -114,6 +118,7 @@ class PdvController extends Controller
         $dados = $request->validate([
             'vendedor_id' => ['nullable', 'integer'],
             'atendente_id' => ['required', 'integer'],
+            'indicacao' => ['nullable', 'string', 'max:120'],
         ]);
 
         $venda = Venda::find($vendaId);
@@ -128,11 +133,64 @@ class PdvController extends Controller
         $venda->update([
             'vendedor_id' => $dados['vendedor_id'] ?? $venda->vendedor_id,
             'atendente_id' => $dados['atendente_id'],
+            'indicacao_id' => $this->resolverIndicacao($request->attributes->get('empresaAtual')->id, $dados['indicacao'] ?? null) ?? $venda->indicacao_id,
             'check_in_em' => now(),
             'check_in_usuario_id' => $request->user()->id,
         ]);
 
-        return response()->json($venda->fresh(['checkInUsuario', 'vendedor', 'atendente']));
+        return response()->json($venda->fresh(['checkInUsuario', 'vendedor', 'atendente', 'indicacao']));
+    }
+
+    /** Informa/corrige a indicação de um pedido pago (inclusive depois da entrada confirmada). */
+    public function atualizarIndicacao(Request $request, string $empresa, int $vendaId)
+    {
+        $dados = $request->validate([
+            'indicacao' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $venda = Venda::find($vendaId);
+        abort_if($venda === null, 404, 'Pedido não encontrado nesta empresa.');
+        abort_if($venda->status_pagamento !== 'pago', 422, 'Só é possível informar a indicação de um pedido pago.');
+
+        // Texto vazio remove a indicação do pedido.
+        $venda->update([
+            'indicacao_id' => $this->resolverIndicacao($request->attributes->get('empresaAtual')->id, $dados['indicacao'] ?? null),
+        ]);
+
+        return response()->json($venda->fresh(['itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'checkInUsuario', 'vendedor', 'atendente', 'indicacao']));
+    }
+
+    /** Indicações já cadastradas (para a busca/sugestão no check-in). */
+    public function indicacoes(Request $request, string $empresa)
+    {
+        return response()->json(
+            \App\Models\Indicacao::query()
+                ->when($request->query('busca'), fn ($q, $t) => $q->where('nome', 'ilike', '%'.$this->normalizarIndicacao($t).'%'))
+                ->orderBy('nome')
+                ->limit(500)
+                ->get(['id', 'nome'])
+        );
+    }
+
+    /** Padrão do cadastro: MAIÚSCULAS, sem acentos e sem espaços repetidos (facilita a busca). */
+    private function normalizarIndicacao(?string $nome): string
+    {
+        return mb_strtoupper(trim(preg_replace('/\s+/', ' ', \Illuminate\Support\Str::ascii((string) $nome))));
+    }
+
+    /** Reaproveita a indicação já cadastrada (sem diferenciar maiúsculas) ou cadastra uma nova. */
+    private function resolverIndicacao(int $empresaId, ?string $nome): ?int
+    {
+        $nome = $this->normalizarIndicacao($nome);
+        if ($nome === '') {
+            return null;
+        }
+
+        $existente = \App\Models\Indicacao::where('empresa_id', $empresaId)
+            ->whereRaw('lower(nome) = ?', [mb_strtolower($nome)])
+            ->first();
+
+        return ($existente ?? \App\Models\Indicacao::create(['empresa_id' => $empresaId, 'nome' => $nome]))->id;
     }
 
     public function produtos(Request $request, string $empresa)
@@ -247,7 +305,23 @@ class PdvController extends Controller
             'agenda_quantidade' => ['nullable', 'required_with:agenda_visitacao_id', 'integer', 'min:1'],
             'cupom_codigo' => ['nullable', 'string', 'max:40'],
             'desconto_pdv_id' => ['nullable', 'integer'],
+            'cortesia' => ['nullable', 'boolean'],
+            'motivo_desconto' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // Cortesia = desconto de 100%: não combina com outro desconto, cupom nem nota fiscal
+        // (NFC-e não aceita valor zero) e exige o motivo, como todo desconto manual do PDV.
+        $cortesia = (bool) ($dados['cortesia'] ?? false);
+        $dados['motivo_desconto'] = trim((string) ($dados['motivo_desconto'] ?? ''));
+
+        abort_if($cortesia && ! empty($dados['desconto_pdv_id']), 422, 'Cortesia não combina com outro desconto. Escolha um dos dois.');
+        abort_if($cortesia && ! empty($dados['cupom_codigo']), 422, 'Cortesia não combina com cupom. Escolha um dos dois.');
+        abort_if($cortesia && $dados['tipo_doc'] === 'fiscal', 422, 'Cortesia não pode ter nota fiscal (valor zero). Use o documento não fiscal.');
+        abort_if(
+            ($cortesia || ! empty($dados['desconto_pdv_id'])) && $dados['motivo_desconto'] === '',
+            422,
+            'Informe o motivo do desconto.'
+        );
 
         abort_if(
             empty($dados['itens']) && empty($dados['agenda_visitacao_id']),
@@ -420,11 +494,36 @@ class PdvController extends Controller
     public function caixaExtratoImpressao(Request $request, string $empresa)
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
+        $aberturaId = $request->integer('abertura') ?: null;
+        $data = $request->input('data');
+        $turnosDoDia = collect();
+
+        // Escolha de um único dia (dia de Brasília; data_hora é guardada em UTC): lista os turnos
+        // abertos nessa data e, sem `abertura` explícita, mostra o último deles.
+        if ($data && preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+            $inicio = \Illuminate\Support\Carbon::parse($data, 'America/Sao_Paulo')->startOfDay()->utc();
+            $fim = $inicio->copy()->addDay();
+            $turnosDoDia = \App\Models\Caixa::where('empresa_id', $empresaAtual->id)
+                ->where('tipo', 'abertura')
+                ->where('data_hora', '>=', $inicio)->where('data_hora', '<', $fim)
+                ->orderBy('id')->get(['id', 'data_hora']);
+
+            if ($turnosDoDia->isEmpty()) {
+                $aberturaId = -1; // nenhum turno nesse dia
+            } elseif (! $aberturaId || ! $turnosDoDia->contains('id', $aberturaId)) {
+                $aberturaId = $turnosDoDia->last()->id;
+            }
+        } else {
+            $data = null;
+        }
 
         return view('pdv.caixa-extrato', [
             'empresaNome' => $empresaAtual?->nome_fantasia ?? $empresaAtual?->razao_social ?? $empresa,
-            'resumo' => $this->caixaService->resumoTurno($empresaAtual->id, $request->integer('abertura') ?: null),
-            'geradoEm' => now(),
+            'resumo' => $aberturaId === -1 ? null : $this->caixaService->resumoTurno($empresaAtual->id, $aberturaId),
+            'geradoEm' => now('America/Sao_Paulo'),
+            'data' => $data,
+            'turnosDoDia' => $turnosDoDia,
+            'aberturaSelecionada' => $aberturaId,
         ]);
     }
 

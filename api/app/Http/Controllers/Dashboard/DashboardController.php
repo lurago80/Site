@@ -30,6 +30,7 @@ use App\Models\Produto;
 use App\Models\ProdutoVariacao;
 use App\Models\User;
 use App\Models\Venda;
+use App\Services\Vendas\LancamentoVendaService;
 use App\Models\Vendedor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -113,6 +114,7 @@ class DashboardController extends Controller
             'data_hora' => ['required', 'date'],
             'vagas_total' => ['required', 'integer', 'min:1'],
             'valor_visita' => ['required', 'numeric', 'min:0'],
+            'custo_visita' => ['nullable', 'numeric', 'min:0'],
             'vendedor_id' => ['nullable', 'integer', Rule::exists('vendedores', 'id')->where('empresa_id', $empresaAtual->id)],
             'atendente_id' => ['nullable', 'integer', Rule::exists('atendentes', 'id')->where('empresa_id', $empresaAtual->id)],
         ]);
@@ -134,6 +136,7 @@ class DashboardController extends Controller
             'data_hora' => ['sometimes', 'date'],
             'vagas_total' => ['sometimes', 'integer', 'min:1'],
             'valor_visita' => ['sometimes', 'numeric', 'min:0'],
+            'custo_visita' => ['nullable', 'numeric', 'min:0'],
             'status' => ['sometimes', 'in:aberta,lotada,cancelada'],
             'vendedor_id' => ['nullable', 'integer', Rule::exists('vendedores', 'id')->where('empresa_id', $empresaAtual->id)],
             'atendente_id' => ['nullable', 'integer', Rule::exists('atendentes', 'id')->where('empresa_id', $empresaAtual->id)],
@@ -851,6 +854,60 @@ class DashboardController extends Controller
      * opcional - com filtro por tipo de item (produto físico e/ou visita
      * agendada), já que uma venda pode misturar os dois.
      */
+    /**
+     * Vendas com desconto ou cortesia no período (data da venda, em Brasília):
+     * valor bruto, desconto, valor líquido, atendente e o motivo informado no PDV.
+     */
+    public function relatorioDescontos(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $fuso = 'America/Sao_Paulo';
+
+        $vendas = \App\Models\Venda::with(['atendente:id,nome', 'descontoPdv:id,descricao', 'cupom:id,codigo'])
+            ->where('status_pagamento', '!=', 'cancelado')
+            ->whereNull('cancelada_em')
+            ->where(fn ($q) => $q->where('valor_desconto', '>', 0)->orWhere('cortesia', true))
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
+            ->orderBy('data_venda')
+            ->orderBy('id')
+            ->get();
+
+        $linhas = $vendas->map(function (\App\Models\Venda $v) use ($fuso) {
+            $desconto = (float) $v->valor_desconto;
+            $liquido = (float) $v->valor_total;
+            $data = $v->data_venda->copy()->setTimezone($fuso);
+
+            return [
+                'id' => $v->id,
+                'data' => $data->format('d/m/Y'),
+                'hora' => $data->format('H:i'),
+                'canal' => $v->canal,
+                'tipo' => $v->cortesia ? 'Cortesia' : ($v->descontoPdv?->descricao ?? ($v->cupom ? 'Cupom '.$v->cupom->codigo : 'Desconto')),
+                'cortesia' => (bool) $v->cortesia,
+                'valor_total' => round($liquido + $desconto, 2),
+                'valor_desconto' => round($desconto, 2),
+                'valor_liquido' => round($liquido, 2),
+                'atendente' => $v->atendente?->nome,
+                'motivo' => $v->motivo_desconto,
+            ];
+        })->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'vendas' => $linhas->count(),
+                'valor_total' => round($linhas->sum('valor_total'), 2),
+                'valor_desconto' => round($linhas->sum('valor_desconto'), 2),
+                'valor_liquido' => round($linhas->sum('valor_liquido'), 2),
+            ],
+        ]);
+    }
+
     public function relatorioAtendentes(Request $request, string $empresa)
     {
         $dados = $request->validate([
@@ -889,6 +946,37 @@ class DashboardController extends Controller
         }
 
         return response()->json($relatorio->values());
+    }
+
+    /** Quantos pedidos/visitantes/valor vieram de cada indicação (informada pelo atendente no check-in). */
+    public function relatorioIndicacoes(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $linhas = \App\Models\Indicacao::where('empresa_id', $empresaAtual->id)->orderBy('nome')->get()
+            ->map(function ($indicacao) use ($dados) {
+                $vendas = Venda::where('indicacao_id', $indicacao->id)
+                    ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', $d))
+                    ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', $d.' 23:59:59'));
+
+                return [
+                    'id' => $indicacao->id,
+                    'nome' => $indicacao->nome,
+                    'pedidos' => (clone $vendas)->count(),
+                    'visitantes' => (int) ItemVenda::whereNotNull('agenda_visitacao_id')
+                        ->whereIn('venda_id', (clone $vendas)->select('id'))->sum('quantidade'),
+                    'valor_total' => round((float) (clone $vendas)->sum('valor_total'), 2),
+                ];
+            })
+            ->sortByDesc('pedidos')
+            ->values();
+
+        return response()->json($linhas);
     }
 
     /**
@@ -1166,25 +1254,95 @@ class DashboardController extends Controller
 
         $planos = PlanoContas::where('empresa_id', $empresaAtual->id)->orderBy('codigo')->get();
 
-        $relatorio = $planos->map(function (PlanoContas $plano) use ($periodo) {
+        $relatorio = $planos->map(function (PlanoContas $plano) use ($periodo, $dados) {
             $query = $plano->tipo === 'despesa'
                 ? ContaPagar::where('plano_conta_id', $plano->id)
                 : ContaReceber::where('plano_conta_id', $plano->id);
 
             $query = $periodo($query);
 
+            // Lançamentos automáticos das vendas (002.001, 002.002 e 001.015): já realizados.
+            $lancadoVendas = \App\Models\LancamentoPlanoConta::where('plano_conta_id', $plano->id)
+                ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data', '>=', $d))
+                ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data', '<=', $d))
+                ->sum('valor');
+
             return [
                 'id' => $plano->id,
                 'codigo' => $plano->codigo,
                 'nome' => $plano->nome,
                 'tipo' => $plano->tipo,
-                'total' => (clone $query)->sum('valor'),
-                'total_pago' => (clone $query)->where('status', 'pago')->sum('valor'),
+                'total' => (clone $query)->sum('valor') + $lancadoVendas,
+                'total_pago' => (clone $query)->where('status', 'pago')->sum('valor') + $lancadoVendas,
                 'total_em_aberto' => (clone $query)->where('status', 'em_aberto')->sum('valor'),
+                // 001.015 já está deduzida da receita: serve só para consulta e não entra em resultado.
+                'informativa' => $plano->codigo === LancamentoVendaService::CONTA_DESCONTOS['codigo'],
             ];
         });
 
         return response()->json($relatorio);
+    }
+
+    /**
+     * Resultado do período (DRE simples). As receitas 002.001/002.002 já saem das vendas líquidas
+     * de custo e de desconto; os descontos (001.015) e o faturamento bruto aparecem só como memo.
+     */
+    public function relatorioResultado(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $lancamentos = \App\Models\LancamentoPlanoConta::query()
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data', '>=', $d))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data', '<=', $d));
+
+        $porOrigem = (clone $lancamentos)->selectRaw('origem, sum(valor) as total')->groupBy('origem')->pluck('total', 'origem');
+        $receitaProdutos = round((float) ($porOrigem['receita_produtos'] ?? 0), 2);
+        $receitaServicos = round((float) ($porOrigem['receita_servicos'] ?? 0), 2);
+        $descontos = round((float) ($porOrigem['desconto'] ?? 0), 2);
+
+        // Memo: faturamento bruto e custo das vendas que geraram lançamentos no período.
+        $itens = \App\Models\ItemVenda::whereIn('venda_id', (clone $lancamentos)->select('venda_id'));
+        $faturamentoBruto = round((float) (clone $itens)->sum('valor_total'), 2);
+        $custoTotal = round((float) (clone $itens)->sum('custo_total'), 2);
+
+        // Outras despesas: contas a pagar do período, exceto 001.015 (já deduzida da receita).
+        $despesas = PlanoContas::where('empresa_id', $empresaAtual->id)
+            ->where('tipo', 'despesa')
+            ->where('codigo', '!=', LancamentoVendaService::CONTA_DESCONTOS['codigo'])
+            ->orderBy('codigo')
+            ->get()
+            ->map(fn (PlanoContas $p) => [
+                'codigo' => $p->codigo,
+                'nome' => $p->nome,
+                'total' => round((float) ContaPagar::where('plano_conta_id', $p->id)
+                    ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('vencimento', '>=', $d))
+                    ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('vencimento', '<=', $d))
+                    ->sum('valor'), 2),
+            ])
+            ->filter(fn (array $linha) => $linha['total'] != 0)
+            ->values();
+
+        $totalReceitas = round($receitaProdutos + $receitaServicos, 2);
+        $totalDespesas = round((float) $despesas->sum('total'), 2);
+
+        return response()->json([
+            'receita_produtos' => $receitaProdutos,
+            'receita_servicos' => $receitaServicos,
+            'total_receitas' => $totalReceitas,
+            'despesas' => $despesas,
+            'total_despesas' => $totalDespesas,
+            'resultado' => round($totalReceitas - $totalDespesas, 2),
+            'memo' => [
+                'faturamento_bruto' => $faturamentoBruto,
+                'custo_total' => $custoTotal,
+                'descontos_concedidos' => $descontos,
+            ],
+        ]);
     }
 
     // ---- Bancos ----

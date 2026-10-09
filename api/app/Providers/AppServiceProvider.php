@@ -22,6 +22,7 @@ use App\Models\PlanoContas;
 use App\Models\User;
 use App\Models\Venda;
 use App\Observers\AuditLogObserver;
+use App\Observers\VendaLancamentoObserver;
 use App\Services\Fiscal\FiscalGatewayInterface;
 use App\Services\Fiscal\NfePhpFiscalGateway;
 use App\Services\Fiscal\SimuladoFiscalGateway;
@@ -73,6 +74,8 @@ class AppServiceProvider extends ServiceProvider
         foreach (self::MODELS_AUDITADOS as $model) {
             $model::observe(AuditLogObserver::class);
         }
+
+        Venda::observe(VendaLancamentoObserver::class);
 
         // Só força a URL raiz quando a app roda montada num subpath (ver
         // ROUTE_PREFIX em config/app.php) - sem isso os links/assets
