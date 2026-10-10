@@ -1313,11 +1313,18 @@
                     <td>R$ ${Number(v.valor_total).toFixed(2)}</td>
                     <td>${escapeHtml(v.forma_pagamento || '-')}</td>
                     <td>${escapeHtml(rotuloNota(v.documento))}</td>
-                    <td class="sem-risco">${v.cancelada
-                        ? `<span class="tag">Cancelada</span><span class="motivo">${escapeHtml(v.cancelada_por || '')} · ${escapeHtml(v.motivo_cancelamento || '')}</span>`
-                        : `<button class="secundario" onclick="cancelarVendaPdv(${v.id})">Cancelar</button>`}</td>
+                    <td class="sem-risco">
+                        ${v.documento ? `<button class="secundario" onclick="reimprimirDocumentoPdv(${v.documento.id})">Reimprimir</button>` : ''}
+                        ${v.cancelada
+                            ? `<span class="tag">Cancelada</span><span class="motivo">${escapeHtml(v.cancelada_por || '')} · ${escapeHtml(v.motivo_cancelamento || '')}</span>`
+                            : `<button class="secundario" onclick="cancelarVendaPdv(${v.id})">Cancelar</button>`}
+                    </td>
                 </tr>
             `).join('');
+        }
+
+        function reimprimirDocumentoPdv(documentoId) {
+            window.open(`${base}/documentos/${documentoId}/cupom?imprimir=1`, 'reimpressao', 'width=380,height=760');
         }
 
         async function cancelarVendaPdv(id) {
