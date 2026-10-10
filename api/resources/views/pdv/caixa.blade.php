@@ -908,12 +908,13 @@
             alert(dados.message || (resp.ok ? 'Enviado.' : `Erro ${resp.status} ao enviar.`));
         }
 
-        function imprimirCupom(venda) {
+        function imprimirCupom(venda, forcarImpressao) {
             const empresa = venda.empresa || {};
             const doc = venda.documento_fiscal;
+            const autoImprimir = pdvImpressaoDireta || !!forcarImpressao;
             // NFC-e emitida: usa o DANFE NFC-e completo gerado pelo servidor (QR Code, pagamento, protocolo...)
             if (doc && doc.id && Number(doc.modelo) === 65 && doc.chave_acesso) {
-                window.open(`${base}/documentos/${doc.id}/cupom${pdvImpressaoDireta ? '?imprimir=1' : ''}`, 'cupom', 'width=380,height=760');
+                window.open(`${base}/documentos/${doc.id}/cupom${autoImprimir ? '?imprimir=1' : ''}`, 'cupom', 'width=380,height=760');
                 return;
             }
             const dataVenda = new Date(venda.data_venda || Date.now());
@@ -975,7 +976,7 @@
                         html, body { width: 80mm; }
                     }
                 </style>
-                </head><body${pdvImpressaoDireta ? ' onload="window.print()"' : ''}>
+                </head><body${autoImprimir ? ' onload="window.print()"' : ''}>
                     <div class="centro"><strong>${empresa.razao_social || 'Empresa'}</strong></div>
                     ${empresa.cnpj ? `<div class="centro">CNPJ: ${empresa.cnpj}</div>` : ''}
                     ${enderecoEmpresa ? `<div class="centro">${enderecoEmpresa}</div>` : ''}
@@ -994,7 +995,7 @@
                     ${blocoFiscal}
                     <div class="sep"></div>
                     <div class="centro" style="font-size:10px;">Obrigado pela preferência!</div>
-                    ${pdvImpressaoDireta ? '' : '<button class="btn-imprimir" onclick="window.print()">Imprimir cupom</button>'}
+                    ${autoImprimir ? '' : '<button class="btn-imprimir" onclick="window.print()">Imprimir cupom</button>'}
                     ${doc && doc.id ? `<button class="btn-imprimir" onclick="window.opener && window.opener.enviarDocumentoFiscal(${doc.id}, ${JSON.stringify((venda.cliente && venda.cliente.telefone) || '').replace(/"/g, '&quot;')}, ${JSON.stringify((venda.cliente && venda.cliente.email) || '').replace(/"/g, '&quot;')})">Enviar por WhatsApp / e-mail</button>` : ''}
                 </body></html>
             `);
@@ -1314,7 +1315,7 @@
                     <td>${escapeHtml(v.forma_pagamento || '-')}</td>
                     <td>${escapeHtml(rotuloNota(v.documento))}</td>
                     <td class="sem-risco">
-                        ${v.documento ? `<button class="secundario" onclick="reimprimirDocumentoPdv(${v.documento.id})">Reimprimir</button>` : ''}
+                        <button class="secundario" onclick="reimprimirVendaPdv(${v.id})">Reimprimir</button>
                         ${v.cancelada
                             ? `<span class="tag">Cancelada</span><span class="motivo">${escapeHtml(v.cancelada_por || '')} · ${escapeHtml(v.motivo_cancelamento || '')}</span>`
                             : `<button class="secundario" onclick="cancelarVendaPdv(${v.id})">Cancelar</button>`}
@@ -1323,8 +1324,11 @@
             `).join('');
         }
 
-        function reimprimirDocumentoPdv(documentoId) {
-            window.open(`${base}/documentos/${documentoId}/cupom?imprimir=1`, 'reimpressao', 'width=380,height=760');
+        async function reimprimirVendaPdv(vendaId) {
+            const resp = await fetch(`${base}/vendas/${vendaId}`, { headers: { 'Accept': 'application/json' } });
+            if (!resp.ok) { alert('Não foi possível carregar a venda para reimpressão.'); return; }
+            const venda = await resp.json();
+            imprimirCupom(venda, true);
         }
 
         async function cancelarVendaPdv(id) {

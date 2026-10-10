@@ -99,6 +99,7 @@ Route::middleware(['auth', 'tenant'])->prefix('pdv/{empresa}')->group(function (
     Route::get('/descontos', [PdvController::class, 'descontos']);
     Route::post('/vendas', [PdvController::class, 'finalizar']);
     Route::get('/vendas-do-dia', [PdvController::class, 'vendasDoDia']);
+    Route::get('/vendas/{vendaId}', [PdvController::class, 'mostrarVenda']);
     Route::post('/vendas/{vendaId}/cancelar', [PdvController::class, 'cancelarVenda']);
     Route::post('/documentos/{documentoId}/enviar', [GestaoFiscalController::class, 'enviar']);
     Route::get('/documentos/{documentoId}/cupom', [GestaoFiscalController::class, 'reimprimir']);

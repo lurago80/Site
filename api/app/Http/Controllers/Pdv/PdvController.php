@@ -360,6 +360,23 @@ class PdvController extends Controller
         return response()->json($venda, 201);
     }
 
+    /** Venda do PDV (hoje) com os dados completos para reimprimir o cupom. */
+    public function mostrarVenda(Request $request, string $empresa, int $vendaId)
+    {
+        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem reimprimir vendas.');
+
+        $venda = Venda::query()
+            ->where('empresa_id', $request->attributes->get('empresaAtual')->id)
+            ->where('canal', 'pdv')
+            ->with([
+                'itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'vendedor',
+                'atendente', 'formaPagamento', 'descontoPdv', 'empresa', 'documentoFiscal',
+            ])
+            ->findOrFail($vendaId);
+
+        return response()->json($venda);
+    }
+
     // ---- Cancelamento de venda (somente administrador) ----
 
     /** Vendas do PDV de hoje (a mais recente primeiro), com o que é preciso para decidir o cancelamento. */
