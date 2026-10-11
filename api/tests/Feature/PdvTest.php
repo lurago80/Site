@@ -1101,13 +1101,98 @@ class PdvTest extends TestCase
         $this->assertSame(0, \App\Models\LancamentoPlanoConta::where('venda_id', $venda->json('id'))->count());
     }
 
-    public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_da_loja_com_visita_futura(): void
+    public function test_consumo_interno_e_cortesia_viram_despesa_e_ficam_fora_dos_totais_de_vendas(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $this->produto->update(['preco_custo' => 7.00]);
+        $consumo = FormaPagamento::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => 'CONSUMO INTERNO', 'tipo' => 'outro', 'codigo_tpag' => '99', 'ativo' => true,
+        ]);
+        $venda = fn (array $extra = []) => $this->postJson("$base/vendas", array_merge([
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ], $extra))->assertCreated()->json('id');
+
+        $normal = $venda();                                                            // 2 x 18 = 36
+        $interno = $venda(['forma_pagamento_id' => $consumo->id]);                      // consumo interno
+        $cortesia = $venda(['cortesia' => true, 'motivo_desconto' => 'Parceria']);      // cortesia
+
+        $lancado = fn (int $vendaId, string $codigo) => (float) \App\Models\LancamentoPlanoConta::query()
+            ->whereHas('planoContas', fn ($q) => $q->where('codigo', $codigo))
+            ->where('venda_id', $vendaId)->sum('valor');
+
+        $this->assertSame(22.0, $lancado($normal, '002.001'));
+        foreach ([$interno, $cortesia] as $id) {
+            $this->assertSame(14.0, $lancado($id, '001.016'));  // custo 2 x 7
+            $this->assertSame(0.0, $lancado($id, '002.001'));   // nenhuma receita
+            $this->assertSame(0.0, $lancado($id, '001.015'));   // nem desconto concedido
+        }
+
+        $admin = User::create([
+            'name' => 'Admin CI', 'email' => 'admin-ci@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin);
+
+        // Relatório de vendas: as 3 aparecem, mas só a normal soma no total.
+        $vendas = $this->getJson("/dashboard/{$this->empresa->slug}/vendas-relatorio")->assertOk();
+        $vendas->assertJsonCount(3, 'linhas');
+        $vendas->assertJsonPath('totais.vendas', 1);
+        $vendas->assertJsonPath('totais.valor_total', 36);
+        $vendas->assertJsonPath('fora_do_total.vendas', 2);
+        $vendas->assertJsonPath('fora_do_total.valor_total', 72);
+        $tipos = collect($vendas->json('linhas'))->pluck('tipo_venda', 'id');
+        $this->assertSame('Consumo interno', $tipos[$interno]);
+        $this->assertSame('Cortesia', $tipos[$cortesia]);
+        $this->assertNull($tipos[$normal]);
+
+        // Itens vendidos e lucratividade ignoram consumo interno e cortesia.
+        $this->getJson("/dashboard/{$this->empresa->slug}/itens-vendidos-relatorio")->assertOk()
+            ->assertJsonPath('totais.itens', 1)
+            ->assertJsonPath('totais.quantidade', 2);
+
+        // Resultado: receita 22 - consumo interno/cortesias 28 = -6
+        $this->getJson("/dashboard/{$this->empresa->slug}/resultado-relatorio")->assertOk()
+            ->assertJsonPath('total_receitas', 22)
+            ->assertJsonPath('total_despesas', 28)
+            ->assertJsonPath('resultado', -6)
+            ->assertJsonPath('memo.faturamento_bruto', 36);
+    }
+
+    public function test_comando_lanca_no_plano_de_contas_as_vendas_antigas(): void
+    {
+        $this->produto->update(['preco_custo' => 7.00]);
+        // Venda antiga: paga, com item, sem nenhum lançamento (criada antes do recurso existir).
+        $venda = \App\Models\Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 36.00,
+        ]);
+        \App\Models\ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda->id, 'produto_id' => $this->produto->id,
+            'quantidade' => 2, 'valor_unitario' => 18.00, 'valor_total' => 36.00,
+        ]);
+
+        $this->artisan('app:lancar-vendas-plano-contas', ['--simular' => true])->assertSuccessful();
+        $this->assertSame(0, \App\Models\LancamentoPlanoConta::where('venda_id', $venda->id)->count());
+
+        $this->artisan('app:lancar-vendas-plano-contas')->assertSuccessful();
+        $lancamento = \App\Models\LancamentoPlanoConta::where('venda_id', $venda->id)->first();
+        $this->assertSame('receita_produtos', $lancamento->origem);
+        $this->assertSame('22.00', (string) $lancamento->valor);
+
+        // Rodar de novo não duplica.
+        $this->artisan('app:lancar-vendas-plano-contas')->assertSuccessful();
+        $this->assertSame(1, \App\Models\LancamentoPlanoConta::where('venda_id', $venda->id)->count());
+    }
+
+    public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([
             'empresa_id' => $this->empresa->id, 'nome' => 'Visita guiada', 'tipo' => 'agendamento', 'preco_venda' => 50.00,
         ]);
         $agenda = AgendaVisitacao::create([
-            'empresa_id' => $this->empresa->id, 'produto_id' => $visita->id, 'data_hora' => now()->addDays(2),
+            'empresa_id' => $this->empresa->id, 'produto_id' => $visita->id, 'data_hora' => now(),
             'vagas_total' => 10, 'vagas_reservadas' => 3, 'status' => 'aberta', 'valor_visita' => 50.00,
         ]);
 
@@ -1133,8 +1218,8 @@ class PdvTest extends TestCase
             ->assertOk()
             ->assertSee('Cliente Pago Site')
             ->assertSee('R$ 100,00')
-            ->assertDontSee('Cliente Pendente')
-            ->assertDontSee('Cliente Balcao');
+            ->assertSee('Cliente Balcao')
+            ->assertDontSee('Cliente Pendente');
 
         $this->assertNotNull($paga->id);
     }

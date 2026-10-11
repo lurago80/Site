@@ -196,6 +196,7 @@ class CaixaService
             ->map(fn ($grupo, $descricao) => [
                 'descricao' => $descricao,
                 'dinheiro' => $grupo->first()->formaPagamento?->tipo === 'dinheiro',
+                'informativa' => $grupo->first()->ehConsumoInterno(),
                 'quantidade' => $grupo->count(),
                 'valor' => round($grupo->sum(fn (Venda $v) => (float) $v->valor_total), 2),
             ])
@@ -213,8 +214,8 @@ class CaixaService
             'fim' => $fim,
             'movimentos' => $movimentos,
             'por_especie' => $porEspecie,
-            'total_vendas' => round((float) $porEspecie->sum('valor'), 2),
-            'qtd_vendas' => $vendas->count(),
+            'total_vendas' => round((float) $porEspecie->where('informativa', false)->sum('valor'), 2),
+            'qtd_vendas' => (int) $porEspecie->where('informativa', false)->sum('quantidade'),
             'vendas_dinheiro' => $vendasDinheiro,
             'suprimentos' => $suprimentos,
             'sangrias' => $sangrias,

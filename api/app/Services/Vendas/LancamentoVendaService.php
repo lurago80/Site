@@ -8,7 +8,6 @@ use App\Models\PlanoContas;
 use App\Models\Produto;
 use App\Models\Venda;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 /**
  * Lança cada venda paga no plano de contas:
@@ -16,9 +15,9 @@ use Illuminate\Support\Str;
  *  - visitas   -> 002.002 (receita de serviços): venda - custo - desconto das visitas
  *  - desconto  -> 001.015 (descontos concedidos): valor total do desconto
  *
- * Venda paga com a forma de pagamento "CONSUMO INTERNO" não é uma venda de
- * verdade (o produto foi usado pela própria empresa): não gera receita nem
- * desconto, só a despesa do custo dos itens em 001.016.
+ * Consumo interno (forma de pagamento "CONSUMO INTERNO") e cortesia não são vendas
+ * de verdade (o produto/visita saiu sem cobrança): não geram receita nem desconto,
+ * só a despesa do custo dos itens em 001.016.
  *
  * Idempotente: refazer o lançamento de uma venda substitui os anteriores.
  * Cancelar a venda apaga os lançamentos (ver estornar()).
@@ -52,11 +51,11 @@ class LancamentoVendaService
 
         $data = $venda->data_venda->copy()->setTimezone('America/Sao_Paulo')->toDateString();
 
-        if ($this->ehConsumoInterno($venda)) {
+        if ($venda->semReceita()) {
             $custoTotal = round((float) $venda->itens->sum('custo_total'), 2);
 
             if ($custoTotal > 0) {
-                $this->lancar($venda, self::CONTA_CONSUMO_INTERNO, 'consumo_interno', $custoTotal, $data, 'Consumo interno');
+                $this->lancar($venda, self::CONTA_CONSUMO_INTERNO, 'consumo_interno', $custoTotal, $data, $venda->tipoSemReceita());
             }
 
             return;
@@ -80,11 +79,6 @@ class LancamentoVendaService
         if ($desconto > 0) {
             $this->lancar($venda, self::CONTA_DESCONTOS, 'desconto', $desconto, $data, $venda->cortesia ? 'Cortesia' : 'Desconto concedido');
         }
-    }
-
-    private function ehConsumoInterno(Venda $venda): bool
-    {
-        return Str::upper(trim((string) $venda->formaPagamento?->descricao)) === 'CONSUMO INTERNO';
     }
 
     public function estornar(Venda $venda): void

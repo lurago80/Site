@@ -38,6 +38,24 @@ class Venda extends Model
         return $this->belongsTo(User::class, 'cancelada_por_usuario_id');
     }
 
+    /** Venda paga com a forma de pagamento "CONSUMO INTERNO": a empresa usou o produto, não vendeu. */
+    public function ehConsumoInterno(): bool
+    {
+        return mb_strtoupper(trim((string) $this->formaPagamento?->descricao)) === 'CONSUMO INTERNO';
+    }
+
+    /** Consumo interno ou cortesia: aparece nos relatórios, mas não é receita nem entra nos totais de vendas. */
+    public function semReceita(): bool
+    {
+        return $this->cortesia || $this->ehConsumoInterno();
+    }
+
+    /** 'Cortesia', 'Consumo interno' ou null para venda normal. */
+    public function tipoSemReceita(): ?string
+    {
+        return $this->cortesia ? 'Cortesia' : ($this->ehConsumoInterno() ? 'Consumo interno' : null);
+    }
+
     public function descontoPdv(): BelongsTo
     {
         return $this->belongsTo(DescontoPdv::class);
@@ -81,6 +99,11 @@ class Venda extends Model
     public function formaPagamento(): BelongsTo
     {
         return $this->belongsTo(FormaPagamento::class);
+    }
+
+    public function lancamentosPlanoContas(): HasMany
+    {
+        return $this->hasMany(LancamentoPlanoConta::class);
     }
 
     public function itens(): HasMany

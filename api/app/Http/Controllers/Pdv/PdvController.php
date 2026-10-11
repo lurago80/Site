@@ -40,7 +40,7 @@ class PdvController extends Controller
 
         return view('pdv.caixa', [
             'empresaSlug' => $empresa,
-            'podeCancelarVenda' => $request->user()->perfil === 'admin',
+            'podeCancelarVenda' => $this->podeCancelarVendas($request),
             'pdvImpressaoDireta' => $empresaAtual?->pdv_impressao_direta ?? false,
             'logoEmpresaUrl' => $empresaAtual?->logo_url,
         ]);
@@ -363,7 +363,7 @@ class PdvController extends Controller
     /** Venda do PDV (hoje) com os dados completos para reimprimir o cupom. */
     public function mostrarVenda(Request $request, string $empresa, int $vendaId)
     {
-        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem reimprimir vendas.');
+        abort_unless($this->podeCancelarVendas($request), 403, 'Seu usuário não tem permissão para reimprimir vendas.');
 
         $venda = Venda::query()
             ->where('empresa_id', $request->attributes->get('empresaAtual')->id)
@@ -377,17 +377,29 @@ class PdvController extends Controller
         return response()->json($venda);
     }
 
-    // ---- Cancelamento de venda (somente administrador) ----
+    // ---- Cancelamento de venda (administrador; perfil Caixa só se o parâmetro da empresa liberar) ----
+
+    /** Administrador sempre; Caixa quando o administrador ligou "pdv_caixa_pode_cancelar" nos parâmetros. */
+    private function podeCancelarVendas(Request $request): bool
+    {
+        $perfil = $request->user()->perfil;
+
+        if ($perfil === 'admin') {
+            return true;
+        }
+
+        return $perfil === 'caixa' && (bool) $request->attributes->get('empresaAtual')?->pdv_caixa_pode_cancelar;
+    }
 
     /** Vendas do PDV de hoje (a mais recente primeiro), com o que é preciso para decidir o cancelamento. */
     public function vendasDoDia(Request $request, string $empresa)
     {
-        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem cancelar vendas.');
+        abort_unless($this->podeCancelarVendas($request), 403, 'Seu usuário não tem permissão para cancelar vendas.');
 
         $vendas = Venda::query()
             ->where('empresa_id', $request->attributes->get('empresaAtual')->id)
             ->where('canal', 'pdv')
-            ->where('data_venda', '>=', now()->startOfDay())
+            ->where('data_venda', '>=', now('America/Sao_Paulo')->startOfDay()->utc())
             ->with(['formaPagamento:id,descricao,tipo', 'documentoFiscal', 'canceladaPor:id,name', 'itens.produto:id,nome', 'itens.agendaVisitacao:id,data_hora'])
             ->orderByDesc('id')
             ->limit(200)
@@ -413,7 +425,7 @@ class PdvController extends Controller
 
     public function cancelarVenda(Request $request, string $empresa, int $vendaId)
     {
-        abort_unless($request->user()->perfil === 'admin', 403, 'Apenas administradores podem cancelar vendas.');
+        abort_unless($this->podeCancelarVendas($request), 403, 'Seu usuário não tem permissão para cancelar vendas.');
 
         $dados = $request->validate([
             'motivo' => ['required', 'string', 'max:255'],

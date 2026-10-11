@@ -241,4 +241,37 @@ class CancelamentoVendaPdvTest extends TestCase
         $this->assertSame('Admin', $cancelada['cancelada_por']);
         $this->assertSame('Cliente desistiu da compra', $cancelada['motivo_cancelamento']);
     }
+
+    public function test_parametro_libera_cancelamento_para_o_perfil_caixa(): void
+    {
+        $id = $this->vender($this->cartao);
+
+        // Parâmetro desligado: caixa não cancela. Ligado: cancela e o botão aparece.
+        $this->empresa->update(['pdv_caixa_pode_cancelar' => true]);
+        $this->actingAs($this->caixa->fresh());
+        $this->get("{$this->base}/caixa")->assertOk()->assertSee('Vendas do dia / Cancelar');
+        $this->getJson("{$this->base}/vendas-do-dia")->assertOk();
+        $this->cancelar($id, 'Cliente desistiu da compra')->assertOk()->assertJsonPath('cancelada_por.name', 'Operador');
+
+        $this->empresa->update(['pdv_caixa_pode_cancelar' => false]);
+        $this->actingAs($this->caixa->fresh()); // relação da empresa em cache no usuário do teste
+        $this->get("{$this->base}/caixa")->assertOk()->assertDontSee('Vendas do dia / Cancelar');
+        $this->cancelar($id)->assertForbidden();
+    }
+
+    public function test_relatorio_de_cancelamentos_mostra_quem_quando_e_o_motivo(): void
+    {
+        $cancelada = $this->vender($this->cartao, 2);
+        $this->vender($this->cartao, 1); // não cancelada: fora do relatório
+        $this->cancelar($cancelada, 'Cliente desistiu da compra')->assertOk();
+
+        $relatorio = $this->getJson("/dashboard/{$this->empresa->slug}/cancelamentos-relatorio")->assertOk();
+        $relatorio->assertJsonCount(1, 'linhas');
+        $relatorio->assertJsonPath('linhas.0.id', $cancelada);
+        $relatorio->assertJsonPath('linhas.0.cancelado_por', 'Admin');
+        $relatorio->assertJsonPath('linhas.0.motivo', 'Cliente desistiu da compra');
+        $relatorio->assertJsonPath('linhas.0.valor_total', 36);
+        $this->assertMatchesRegularExpression('/^\d{2}\/\d{2}\/\d{4}$/', $relatorio->json('linhas.0.data_cancelamento'));
+        $this->assertMatchesRegularExpression('/^\d{2}:\d{2}$/', $relatorio->json('linhas.0.hora_cancelamento'));
+    }
 }

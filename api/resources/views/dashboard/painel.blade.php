@@ -21,7 +21,7 @@
         @keyframes aba-fade { from { opacity: 0; } to { opacity: 1; } }
         .conteudo { flex: 1; padding: 28px; max-width: 1400px; }
         .secao { display: none; }
-        @media print { .sidebar, #secao-relatorio-descontos .linha-form { display: none !important; } .conteudo { max-width: none; padding: 0; } }
+        @media print { .sidebar, #secao-relatorio-descontos .linha-form, #secao-relatorio-cancelamentos .linha-form { display: none !important; } .conteudo { max-width: none; padding: 0; } }
         .rodape-in9 { margin-top: 40px; padding: 14px 0 4px; border-top: 1px solid var(--cor-borda); text-align: center; font-size: 12px; color: var(--cor-texto-suave); }
         .secao.ativa { display: block; }
         .secao > h1 { margin-bottom: 18px; }
@@ -79,6 +79,7 @@
             <button onclick="mostrarSecao('cupons', this)">Cupons de Desconto</button>
             <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
             <button onclick="mostrarSecao('relatorio-descontos', this)">Relatório de Descontos</button>
+            <button onclick="mostrarSecao('relatorio-cancelamentos', this)">Relatório de Cancelamentos</button>
 
             <div class="grupo-label">Relatórios</div>
             <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
@@ -925,6 +926,27 @@
                 </div>
             </section>
 
+            <section id="secao-relatorio-cancelamentos" class="secao">
+                <h1>Relatório de Cancelamentos</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Vendas canceladas no período, com quem cancelou, data/hora do cancelamento e o motivo informado.
+                </p>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="rc-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rc-fim"></div>
+                        <div><button class="acao" onclick="carregarRelatorioCancelamentos()">Consultar</button></div>
+                        <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Cancelado em</th><th>Hora</th><th>Venda nº</th><th>Venda feita em</th><th>Valor</th><th>Pagamento</th><th>Nota</th><th>Cancelado por</th><th>Motivo</th></tr></thead>
+                        <tbody id="tbody-relatorio-cancelamentos"></tbody>
+                        <tfoot id="tfoot-relatorio-cancelamentos"></tfoot>
+                    </table>
+                    <p class="msg" id="msg-relatorio-cancelamentos"></p>
+                </div>
+            </section>
+
             <section id="secao-caixa-consulta" class="secao">
                 <h1>Caixa (consulta)</h1>
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
@@ -1179,6 +1201,18 @@
                     </label>
                     <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
                         Se desativado, o cupom abre em uma janela de pré-visualização e o operador escolhe quando imprimir.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h2>PDV — Cancelamento de vendas</h2>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400;">
+                        <input type="checkbox" id="pm-caixa-cancela" style="width:auto;">
+                        Permitir que o perfil Caixa use "Vendas do dia / Cancelar" no PDV
+                    </label>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        Desativado: só o administrador cancela e reimprime vendas. Ativado: o operador de caixa também pode.
+                        Todo cancelamento registra quem cancelou, quando e o motivo (veja o Relatório de Cancelamentos).
                     </p>
                 </div>
 
@@ -1678,6 +1712,7 @@
             cupons: () => { carregarCupons(); carregarCuponsLote(1); },
             'descontos-pdv': carregarDescontosPdv,
             'relatorio-descontos': carregarRelatorioDescontos,
+            'relatorio-cancelamentos': carregarRelatorioCancelamentos,
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
@@ -2894,6 +2929,39 @@
             carregarAtendentes();
         }
 
+        async function carregarRelatorioCancelamentos() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('rc-inicio').value;
+            const fim = document.getElementById('rc-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const msg = document.getElementById('msg-relatorio-cancelamentos');
+            const resp = await fetch(`${base}/cancelamentos-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const { linhas, totais } = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            document.getElementById('tbody-relatorio-cancelamentos').innerHTML = linhas.map(r => `
+                <tr>
+                    <td>${r.data_cancelamento}</td>
+                    <td>${r.hora_cancelamento}</td>
+                    <td>${r.id}</td>
+                    <td>${r.data_venda}</td>
+                    <td>${brl(r.valor_total)}</td>
+                    <td>${esc(r.forma_pagamento ?? '-')}</td>
+                    <td>${esc(r.nota_fiscal ?? '-')}</td>
+                    <td>${esc(r.cancelado_por ?? '-')}</td>
+                    <td>${esc(r.motivo ?? '-')}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="9">Nenhuma venda cancelada no período.</td></tr>';
+
+            document.getElementById('tfoot-relatorio-cancelamentos').innerHTML = linhas.length
+                ? `<tr style="font-weight:700;"><td colspan="4">Total (${totais.vendas} cancelamento(s))</td><td>${brl(totais.valor_total)}</td><td colspan="4"></td></tr>`
+                : '';
+        }
+
         async function carregarRelatorioDescontos() {
             const params = new URLSearchParams();
             const inicio = document.getElementById('rd-inicio').value;
@@ -3378,15 +3446,16 @@
                 msg.textContent = '';
 
                 document.getElementById('tbody-rv-vendas').innerHTML = vendas.linhas.map(v => `
-                    <tr>
-                        <td>${v.id}</td><td>${v.data} ${v.hora}</td><td>${esc(v.canal)}</td>
+                    <tr${v.sem_receita ? ' style="color:var(--cor-texto-suave); font-style:italic;"' : ''}>
+                        <td>${v.id}${v.sem_receita ? ` <span class="selo info">${esc(v.tipo_venda)}</span>` : ''}</td><td>${v.data} ${v.hora}</td><td>${esc(v.canal)}</td>
                         <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
                         <td>${esc(v.forma_pagamento ?? '-')}</td><td>${v.itens}</td>
                         <td>${brl(v.valor_desconto)}</td><td>${brl(v.valor_total)}</td>
                     </tr>
                 `).join('') || '<tr><td colspan="9">Nenhuma venda no período.</td></tr>';
                 document.getElementById('totais-rv-vendas').textContent =
-                    `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns) - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}`;
+                    `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns) - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}` +
+                    (vendas.fora_do_total.vendas ? ` | Fora do total (consumo interno / cortesia): ${vendas.fora_do_total.vendas} venda(s), ${brl(vendas.fora_do_total.valor_total)}` : '');
 
                 document.getElementById('tbody-rv-itens').innerHTML = itens.linhas.map(i => `
                     <tr>
@@ -4144,12 +4213,14 @@
             const dados = await resp.json();
             document.getElementById('pm-estoque-negativo').checked = !!dados.estoque_permite_negativo;
             document.getElementById('pm-impressao-direta').checked = !!dados.pdv_impressao_direta;
+            document.getElementById('pm-caixa-cancela').checked = !!dados.pdv_caixa_pode_cancelar;
         }
 
         async function salvarConfigOperacional() {
             const dados = {
                 estoque_permite_negativo: document.getElementById('pm-estoque-negativo').checked,
                 pdv_impressao_direta: document.getElementById('pm-impressao-direta').checked,
+                pdv_caixa_pode_cancelar: document.getElementById('pm-caixa-cancela').checked,
             };
             const resp = await fetch(`${base}/config-operacional`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();

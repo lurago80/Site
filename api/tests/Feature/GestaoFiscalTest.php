@@ -222,7 +222,8 @@ class GestaoFiscalTest extends TestCase
         $response = $this->get("/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/reimprimir");
 
         $response->assertOk();
-        $response->assertSee($documento->chave_acesso);
+        // O DANFE mostra a chave de acesso em grupos de 4 dígitos.
+        $response->assertSee(trim(chunk_split(preg_replace('/\D/', '', $documento->chave_acesso), 4, ' ')));
     }
 
     public function test_painel_carrega(): void

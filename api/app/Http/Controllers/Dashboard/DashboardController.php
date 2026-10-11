@@ -909,6 +909,46 @@ class DashboardController extends Controller
         ]);
     }
 
+    /** Vendas canceladas no período (data do cancelamento, em Brasília): quem cancelou, quando e o motivo. */
+    public function relatorioCancelamentos(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $fuso = 'America/Sao_Paulo';
+
+        $vendas = Venda::with(['canceladaPor:id,name', 'formaPagamento:id,descricao', 'documentoFiscal'])
+            ->whereNotNull('cancelada_em')
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('cancelada_em', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('cancelada_em', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
+            ->orderBy('cancelada_em')
+            ->get();
+
+        $linhas = $vendas->map(function (Venda $v) use ($fuso) {
+            $cancelamento = $v->cancelada_em->copy()->setTimezone($fuso);
+
+            return [
+                'id' => $v->id,
+                'data_cancelamento' => $cancelamento->format('d/m/Y'),
+                'hora_cancelamento' => $cancelamento->format('H:i'),
+                'data_venda' => $v->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+                'canal' => $v->canal,
+                'valor_total' => round((float) $v->valor_total + (float) $v->valor_desconto, 2),
+                'forma_pagamento' => $v->formaPagamento?->descricao,
+                'nota_fiscal' => $v->documentoFiscal ? ('NFC-e '.$v->documentoFiscal->numero) : null,
+                'cancelado_por' => $v->canceladaPor?->name,
+                'motivo' => $v->motivo_cancelamento,
+            ];
+        })->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => ['vendas' => $linhas->count(), 'valor_total' => round($linhas->sum('valor_total'), 2)],
+        ]);
+    }
+
     public function relatorioAtendentes(Request $request, string $empresa)
     {
         $dados = $request->validate([
@@ -1305,9 +1345,10 @@ class DashboardController extends Controller
         $receitaProdutos = round((float) ($porOrigem['receita_produtos'] ?? 0), 2);
         $receitaServicos = round((float) ($porOrigem['receita_servicos'] ?? 0), 2);
         $descontos = round((float) ($porOrigem['desconto'] ?? 0), 2);
+        $consumoInterno = round((float) ($porOrigem['consumo_interno'] ?? 0), 2);
 
-        // Memo: faturamento bruto e custo das vendas que geraram lançamentos no período.
-        $itens = \App\Models\ItemVenda::whereIn('venda_id', (clone $lancamentos)->select('venda_id'));
+        // Memo: faturamento bruto e custo só das vendas com receita (consumo interno/cortesia ficam de fora).
+        $itens = \App\Models\ItemVenda::whereIn('venda_id', (clone $lancamentos)->whereIn('origem', ['receita_produtos', 'receita_servicos'])->select('venda_id'));
         $faturamentoBruto = round((float) (clone $itens)->sum('valor_total'), 2);
         $custoTotal = round((float) (clone $itens)->sum('custo_total'), 2);
 
@@ -1318,7 +1359,7 @@ class DashboardController extends Controller
 
         $despesas = PlanoContas::where('empresa_id', $empresaAtual->id)
             ->where('tipo', 'despesa')
-            ->where('codigo', '!=', LancamentoVendaService::CONTA_DESCONTOS['codigo'])
+            ->whereNotIn('codigo', [LancamentoVendaService::CONTA_DESCONTOS['codigo'], LancamentoVendaService::CONTA_CONSUMO_INTERNO['codigo']])
             ->orderBy('codigo')
             ->get()
             ->map(fn (PlanoContas $p) => [
@@ -1331,6 +1372,15 @@ class DashboardController extends Controller
             ])
             ->filter(fn (array $linha) => $linha['total'] != 0)
             ->values();
+
+        // 001.016 vem dos lançamentos de consumo interno e cortesia (custo dos itens), não de contas a pagar.
+        if ($consumoInterno != 0) {
+            $despesas = $despesas->push([
+                'codigo' => LancamentoVendaService::CONTA_CONSUMO_INTERNO['codigo'],
+                'nome' => 'CONSUMO INTERNO / CORTESIAS',
+                'total' => $consumoInterno,
+            ])->sortBy('codigo')->values();
+        }
 
         $totalReceitas = round($receitaProdutos + $receitaServicos, 2);
         $totalDespesas = round((float) $despesas->sum('total'), 2);
@@ -1357,12 +1407,16 @@ class DashboardController extends Controller
      * Usada pelos relatórios de vendas, itens vendidos, produtos mais
      * vendidos, curva ABC e lucratividade.
      */
-    private function vendasNoPeriodo(array $dados)
+    private function vendasNoPeriodo(array $dados, bool $incluirSemReceita = false)
     {
         $fuso = 'America/Sao_Paulo';
 
         return Venda::where('status_pagamento', '!=', 'cancelado')
             ->whereNull('cancelada_em')
+            // Consumo interno e cortesia não são vendas: só o relatório de vendas as lista (fora dos totais).
+            ->when(! $incluirSemReceita, fn ($q) => $q
+                ->where('cortesia', false)
+                ->whereDoesntHave('formaPagamento', fn ($f) => $f->whereRaw("upper(trim(descricao)) = 'CONSUMO INTERNO'")))
             ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
             ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()));
     }
@@ -1377,7 +1431,7 @@ class DashboardController extends Controller
 
         $fuso = 'America/Sao_Paulo';
 
-        $vendas = $this->vendasNoPeriodo($dados)
+        $vendas = $this->vendasNoPeriodo($dados, incluirSemReceita: true)
             ->with(['atendente:id,nome', 'vendedor:id,nome', 'formaPagamento:id,descricao'])
             ->withCount('itens')
             ->orderBy('data_venda')
@@ -1398,18 +1452,29 @@ class DashboardController extends Controller
                 'vendedor' => $v->vendedor?->nome,
                 'forma_pagamento' => $v->formaPagamento?->descricao,
                 'itens' => $v->itens_count,
-                'valor_desconto' => round((float) $v->valor_desconto, 2),
-                'valor_total' => round((float) $v->valor_total, 2),
+                // Consumo interno / cortesia: aparece com o valor cheio, mas fica fora dos totais.
+                'tipo_venda' => $v->tipoSemReceita(),
+                'sem_receita' => $v->semReceita(),
+                'valor_desconto' => $v->cortesia ? 0.0 : round((float) $v->valor_desconto, 2),
+                'valor_total' => round((float) $v->valor_total + ($v->cortesia ? (float) $v->valor_desconto : 0), 2),
             ];
         })->values();
+
+        $normais = $linhas->where('sem_receita', false);
+        $semReceita = $linhas->where('sem_receita', true);
 
         return response()->json([
             'linhas' => $linhas,
             'totais' => [
-                'vendas' => $linhas->count(),
-                'itens' => (int) $linhas->sum('itens'),
-                'valor_desconto' => round((float) $linhas->sum('valor_desconto'), 2),
-                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+                'vendas' => $normais->count(),
+                'itens' => (int) $normais->sum('itens'),
+                'valor_desconto' => round((float) $normais->sum('valor_desconto'), 2),
+                'valor_total' => round((float) $normais->sum('valor_total'), 2),
+            ],
+            // Informativo: não está somado em "totais".
+            'fora_do_total' => [
+                'vendas' => $semReceita->count(),
+                'valor_total' => round((float) $semReceita->sum('valor_total'), 2),
             ],
         ]);
     }
@@ -2279,7 +2344,7 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta']));
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar']));
     }
 
     public function atualizarConfigOperacional(Request $request, string $empresa)
@@ -2289,6 +2354,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'estoque_permite_negativo' => ['required', 'boolean'],
             'pdv_impressao_direta' => ['required', 'boolean'],
+            'pdv_caixa_pode_cancelar' => ['required', 'boolean'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');

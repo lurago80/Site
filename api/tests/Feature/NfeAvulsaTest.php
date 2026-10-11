@@ -295,7 +295,7 @@ class NfeAvulsaTest extends TestCase
         $id = $this->postJson($this->url(), $this->payload(['informacoes_adicionais' => 'Pedido de compra 123']))->json('id');
 
         $this->get("/fiscal/{$this->empresa->slug}/documentos/{$id}/reimprimir")
-            ->assertOk()->assertSee('Cliente PJ')->assertSee('Pedido de compra 123')->assertSee('HOMOLOGAÇÃO');
+            ->assertOk()->assertSee('Cliente PJ')->assertSee('Pedido de compra 123')->assertSee('SEM VALOR FISCAL');
     }
 
     /**

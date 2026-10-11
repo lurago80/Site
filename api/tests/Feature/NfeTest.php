@@ -199,7 +199,7 @@ class NfeTest extends TestCase
         $response = $this->get("/fiscal/{$this->empresa->slug}/documentos/{$documento->id}/reimprimir");
 
         $response->assertOk();
-        $response->assertSee('NFe nº');
+        $response->assertSee('DANFE NFe');
     }
 
     public function test_relatorio_filtra_por_modelo(): void

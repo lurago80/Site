@@ -92,7 +92,7 @@
             <tbody>
                 @forelse ($resumo['por_especie'] as $e)
                     <tr>
-                        <td>{{ $e['descricao'] }}@if($e['dinheiro']) <small>(entra na gaveta)</small>@endif</td>
+                        <td>{{ $e['descricao'] }}@if($e['dinheiro']) <small>(entra na gaveta)</small>@endif @if($e['informativa']) <small>(consumo interno - fora do total)</small>@endif</td>
                         <td class="num">{{ $e['quantidade'] }}</td>
                         <td class="num">{{ $brl($e['valor']) }}</td>
                     </tr>
