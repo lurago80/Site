@@ -11,6 +11,7 @@ use App\Models\ItemVenda;
 use App\Models\Produto;
 use App\Models\Vendedor;
 use App\Models\Venda;
+use App\Services\Alertas\AlertaService;
 use App\Services\Pdv\CaixaService;
 use App\Services\Pdv\CancelamentoVendaPdvService;
 use App\Services\Pdv\VendaPdvService;
@@ -32,6 +33,7 @@ class PdvController extends Controller
         private readonly QuantidadeMinimaVendaService $quantidadeMinimaVendaService,
         private readonly CancelamentoVendaPdvService $cancelamentoVendaPdvService,
         private readonly KitService $kitService,
+        private readonly AlertaService $alertaService,
     ) {}
 
     public function caixa(Request $request, string $empresa)
@@ -441,6 +443,8 @@ class PdvController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        $this->alertaService->vendaCancelada($venda, $request->user()->name, $dados['motivo']);
+
         return response()->json($venda);
     }
 
@@ -518,6 +522,10 @@ class PdvController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        if ($resumo !== null) {
+            $this->alertaService->diferencaDeCaixa($empresaAtual, (float) $dados['valor'] - $resumo['saldo_esperado'], $request->user()->name);
+        }
+
         return response()->json($caixa, 201);
     }
 
@@ -546,6 +554,10 @@ class PdvController extends Controller
             );
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        if ($tipo === 'sangria') {
+            $this->alertaService->sangria($empresaAtual, (float) $dados['valor'], $request->user()->name, $dados['observacao'] ?? null);
         }
 
         return response()->json($caixa, 201);

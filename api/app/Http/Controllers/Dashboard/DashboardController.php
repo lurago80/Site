@@ -2357,7 +2357,7 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio']));
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria']));
     }
 
     public function atualizarConfigOperacional(Request $request, string $empresa)
@@ -2370,12 +2370,15 @@ class DashboardController extends Controller
             'pdv_caixa_pode_cancelar' => ['required', 'boolean'],
             'custo_visita_padrao' => ['sometimes', 'numeric', 'min:0'],
             'operacao_inicio' => ['sometimes', 'nullable', 'date'],
+            'alerta_desconto_percentual' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'alerta_diferenca_caixa' => ['sometimes', 'numeric', 'min:0'],
+            'alerta_sangria' => ['sometimes', 'numeric', 'min:0'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
         $empresaAtual->update($dados);
 
-        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio']));
+        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria']));
     }
 
     // ---- Configuração de gateway de pagamento ----
@@ -2551,6 +2554,43 @@ class DashboardController extends Controller
         $operacao = request()->attributes->get('empresaAtual')?->operacao_inicio?->toDateString();
 
         return $operacao !== null && ($dataInicio === null || $dataInicio < $operacao) ? $operacao : $dataInicio;
+    }
+
+    // ---- Alertas ao administrador/gerente ----
+
+    /** Alertas recentes (mais novos primeiro) e quantos ainda não foram lidos. Só administrador e gerente. */
+    public function alertas(Request $request, string $empresa)
+    {
+        $this->exigirGerente($request);
+
+        $naoLidas = \App\Models\Alerta::whereNull('lida_em')->count();
+
+        $lista = \App\Models\Alerta::with('usuario:id,name')
+            ->when($request->boolean('so_nao_lidas'), fn ($q) => $q->whereNull('lida_em'))
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get()
+            ->map(fn ($a) => [
+                'id' => $a->id,
+                'tipo' => $a->tipo,
+                'mensagem' => $a->mensagem,
+                'valor' => $a->valor,
+                'venda_id' => $a->venda_id,
+                'usuario' => $a->usuario?->name,
+                'quando' => $a->created_at->copy()->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i'),
+                'lida' => $a->lida_em !== null,
+            ]);
+
+        return response()->json(['nao_lidas' => $naoLidas, 'alertas' => $lista]);
+    }
+
+    public function marcarAlertasLidas(Request $request, string $empresa)
+    {
+        $this->exigirGerente($request);
+
+        $marcadas = \App\Models\Alerta::whereNull('lida_em')->update(['lida_em' => now()]);
+
+        return response()->json(['marcadas' => $marcadas]);
     }
 
     /** Rotinas do dia a dia: administrador ou gerente. */

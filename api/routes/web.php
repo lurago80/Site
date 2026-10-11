@@ -164,6 +164,8 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::get('/atendentes-relatorio', [DashboardController::class, 'relatorioAtendentes']);
     Route::get('/descontos-relatorio', [DashboardController::class, 'relatorioDescontos']);
     Route::get('/cancelamentos-relatorio', [DashboardController::class, 'relatorioCancelamentos']);
+    Route::get('/alertas', [DashboardController::class, 'alertas']);
+    Route::post('/alertas/marcar-lidas', [DashboardController::class, 'marcarAlertasLidas']);
 
     Route::get('/fornecedores', [DashboardController::class, 'fornecedores']);
     Route::post('/fornecedores', [DashboardController::class, 'criarFornecedor']);

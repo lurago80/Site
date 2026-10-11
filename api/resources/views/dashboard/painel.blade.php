@@ -80,6 +80,7 @@
             <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
             <button onclick="mostrarSecao('relatorio-descontos', this)">Relatório de Descontos</button>
             <button onclick="mostrarSecao('relatorio-cancelamentos', this)">Relatório de Cancelamentos</button>
+            <button onclick="mostrarSecao('alertas', this)">Alertas <span id="badge-alertas" class="selo info" style="display:none;"></span></button>
 
             <div class="grupo-label">Relatórios</div>
             <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
@@ -927,6 +928,25 @@
                 </div>
             </section>
 
+            <section id="secao-alertas" class="secao">
+                <h1>Alertas</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Avisos de operações fora do normal: cortesias, descontos altos, cancelamentos, diferenças no fechamento do caixa e sangrias grandes.
+                    Os limites ficam em Configurações → parâmetros.
+                </p>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label><input type="checkbox" id="al-so-nao-lidas" checked style="width:auto;" onchange="carregarAlertas()"> Só não lidos</label></div>
+                        <div><button class="secundario" onclick="marcarAlertasLidas()">Marcar todos como lidos</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Quando</th><th>Tipo</th><th>Alerta</th><th>Valor</th><th>Venda</th></tr></thead>
+                        <tbody id="tbody-alertas"></tbody>
+                    </table>
+                    <p class="msg" id="msg-alertas"></p>
+                </div>
+            </section>
+
             <section id="secao-relatorio-cancelamentos" class="secao">
                 <h1>Relatório de Cancelamentos</h1>
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
@@ -1228,6 +1248,18 @@
                     <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
                         Usado quando um horário da agenda é criado sem custo. Entra no cálculo da receita de serviços (valor − custo − desconto).
                         Mudar aqui não altera horários já cadastrados.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h2>Alertas ao administrador — limites</h2>
+                    <div class="linha-form">
+                        <div><label>Desconto a partir de (%)</label><input type="number" step="1" min="0" max="100" id="pm-alerta-desconto" style="width:130px"></div>
+                        <div><label>Diferença de caixa a partir de (R$)</label><input type="number" step="0.01" min="0" id="pm-alerta-diferenca" style="width:150px"></div>
+                        <div><label>Sangria a partir de (R$)</label><input type="number" step="0.01" min="0" id="pm-alerta-sangria" style="width:140px"></div>
+                    </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        Cortesia e cancelamento de venda sempre geram alerta. Os alertas aparecem no menu Alertas, só para administrador e gerente.
                     </p>
                 </div>
 
@@ -1740,6 +1772,7 @@
             'descontos-pdv': carregarDescontosPdv,
             'relatorio-descontos': carregarRelatorioDescontos,
             'relatorio-cancelamentos': carregarRelatorioCancelamentos,
+            alertas: carregarAlertas,
             grupos: carregarGrupos,
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
             'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
@@ -3012,6 +3045,50 @@
 
             baixarCsv(`relatorio-${chave}-${periodo}.csv`, linhas);
         }
+
+        // ---- Alertas ----
+        const ROTULO_ALERTA = { cortesia: 'Cortesia', desconto: 'Desconto alto', cancelamento: 'Cancelamento', diferenca_caixa: 'Diferença de caixa', sangria: 'Sangria' };
+
+        function atualizarBadgeAlertas(naoLidas) {
+            const badge = document.getElementById('badge-alertas');
+            if (!badge) return;
+            badge.textContent = naoLidas;
+            badge.style.display = naoLidas > 0 ? 'inline-block' : 'none';
+        }
+
+        async function carregarAlertas() {
+            const so = document.getElementById('al-so-nao-lidas')?.checked ? '1' : '';
+            const resp = await fetch(`${base}/alertas?so_nao_lidas=${so}`);
+            if (!resp.ok) return;
+            const dados = await resp.json();
+            atualizarBadgeAlertas(dados.nao_lidas);
+            const tbody = document.getElementById('tbody-alertas');
+            if (!tbody) return;
+            tbody.innerHTML = dados.alertas.map(a => `
+                <tr${a.lida ? ' style="color:var(--cor-texto-suave);"' : ''}>
+                    <td>${a.quando}</td>
+                    <td><span class="selo info">${esc(ROTULO_ALERTA[a.tipo] ?? a.tipo)}</span></td>
+                    <td>${esc(a.mensagem)}</td>
+                    <td>${a.valor != null ? 'R$ ' + Number(a.valor).toFixed(2).replace('.', ',') : '-'}</td>
+                    <td>${a.venda_id ?? '-'}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum alerta.</td></tr>';
+        }
+
+        async function marcarAlertasLidas() {
+            await fetch(`${base}/alertas/marcar-lidas`, { method: 'POST', headers: headersJson });
+            carregarAlertas();
+        }
+
+        // Contador de não lidos no menu (administrador e gerente); atualiza a cada minuto.
+        async function atualizarContadorAlertas() {
+            try {
+                const resp = await fetch(`${base}/alertas?so_nao_lidas=1`);
+                if (resp.ok) atualizarBadgeAlertas((await resp.json()).nao_lidas);
+            } catch (e) { /* sem rede: mantém o contador anterior */ }
+        }
+        atualizarContadorAlertas();
+        setInterval(atualizarContadorAlertas, 60000);
 
         async function carregarRelatorioCancelamentos() {
             const params = new URLSearchParams();
@@ -4304,6 +4381,9 @@
             document.getElementById('pm-caixa-cancela').checked = !!dados.pdv_caixa_pode_cancelar;
             document.getElementById('pm-custo-visita').value = dados.custo_visita_padrao ?? 0;
             document.getElementById('pm-operacao-inicio').value = dados.operacao_inicio ?? '';
+            document.getElementById('pm-alerta-desconto').value = dados.alerta_desconto_percentual ?? 30;
+            document.getElementById('pm-alerta-diferenca').value = dados.alerta_diferenca_caixa ?? 5;
+            document.getElementById('pm-alerta-sangria').value = dados.alerta_sangria ?? 200;
         }
 
         async function salvarConfigOperacional() {
@@ -4313,6 +4393,9 @@
                 pdv_caixa_pode_cancelar: document.getElementById('pm-caixa-cancela').checked,
                 custo_visita_padrao: Number(document.getElementById('pm-custo-visita').value || 0),
                 operacao_inicio: document.getElementById('pm-operacao-inicio').value || null,
+                alerta_desconto_percentual: Number(document.getElementById('pm-alerta-desconto').value || 0),
+                alerta_diferenca_caixa: Number(document.getElementById('pm-alerta-diferenca').value || 0),
+                alerta_sangria: Number(document.getElementById('pm-alerta-sangria').value || 0),
             };
             const resp = await fetch(`${base}/config-operacional`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();

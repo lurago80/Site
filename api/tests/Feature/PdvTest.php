@@ -1280,6 +1280,56 @@ class PdvTest extends TestCase
             ->assertOk()->assertJsonPath('totais.itens', 1);
     }
 
+    public function test_alertas_avisam_cortesia_desconto_alto_cancelamento_diferenca_e_sangria(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $dash = "/dashboard/{$this->empresa->slug}";
+        $venda = fn (array $extra = []) => $this->postJson("$base/vendas", array_merge([
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ], $extra))->assertCreated()->json('id');
+
+        $desconto50 = DescontoPdv::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => '50% Produtos', 'percentual' => 50, 'aplica_em' => 'produtos', 'ativo' => true,
+        ]);
+        $desconto10 = DescontoPdv::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => '10% Produtos', 'percentual' => 10, 'aplica_em' => 'produtos', 'ativo' => true,
+        ]);
+
+        $venda();                                                                         // normal: sem alerta
+        $venda(['desconto_pdv_id' => $desconto10->id, 'motivo_desconto' => 'Cliente fiel']); // 10% < 30%: sem alerta
+        $alto = $venda(['desconto_pdv_id' => $desconto50->id, 'motivo_desconto' => 'Parceria']); // 50% >= 30%
+        $cortesia = $venda(['cortesia' => true, 'motivo_desconto' => 'Brinde']);
+
+        $this->postJson("$base/caixa-abrir", ['valor' => 500])->assertCreated();
+        $this->postJson("$base/caixa-sangria", ['valor' => 50])->assertCreated();   // < 200: sem alerta
+        $this->postJson("$base/caixa-sangria", ['valor' => 250])->assertCreated();  // >= 200: alerta
+        $esperado = $this->getJson("$base/caixa-resumo")->assertOk()->json('saldo_esperado');
+        $this->postJson("$base/caixa-fechar", ['valor' => $esperado - 2, 'observacao' => 'troco'])->assertCreated(); // falta de R$ 2 < 5: sem alerta
+
+        $admin = User::create([
+            'name' => 'Admin Alertas', 'email' => 'admin-alertas@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin);
+        \App\Models\Venda::find($alto)->update(['status_pagamento' => 'pago']); // garante venda paga para o cancelamento
+        $this->postJson("$base/vendas/{$alto}/cancelar", ['motivo' => 'Cliente desistiu da compra'])->assertOk();
+
+        $resposta = $this->getJson("$dash/alertas")->assertOk();
+        $tipos = collect($resposta->json('alertas'))->pluck('tipo')->sort()->values()->all();
+        $this->assertSame(['cancelamento', 'cortesia', 'desconto', 'sangria'], $tipos);
+        $resposta->assertJsonPath('nao_lidas', 4);
+
+        // Marcar como lidas zera o contador; o perfil caixa não vê alertas.
+        $this->postJson("$dash/alertas/marcar-lidas")->assertOk()->assertJsonPath('marcadas', 4);
+        $this->getJson("$dash/alertas")->assertJsonPath('nao_lidas', 0);
+        $this->actingAs($this->usuario);
+        $this->getJson("$dash/alertas")->assertForbidden();
+
+        $this->assertNotNull($cortesia);
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([

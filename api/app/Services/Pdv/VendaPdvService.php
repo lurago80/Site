@@ -15,6 +15,7 @@ use App\Models\Venda;
 use App\Models\Vendedor;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Fiscal\EmissaoFiscalService;
+use App\Services\Alertas\AlertaService;
 use App\Services\Vendas\KitService;
 use App\Services\Vendas\LancamentoVendaService;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,7 @@ class VendaPdvService
         private readonly CaixaService $caixaService,
         private readonly KitService $kitService,
         private readonly LancamentoVendaService $lancamentoVendaService,
+        private readonly AlertaService $alertaService,
     ) {}
 
     public function finalizar(Empresa $empresa, array $dados, int $usuarioId): Venda
@@ -146,6 +148,9 @@ class VendaPdvService
 
             // Plano de contas: receita de produtos/serviços e descontos concedidos.
             $this->lancamentoVendaService->registrar($venda);
+
+            // Cortesia e desconto alto avisam o administrador.
+            $this->alertaService->vendaComDesconto($venda, $empresa, auth()->user()?->name);
 
             $formaPagamento = ! empty($dados['forma_pagamento_id'])
                 ? FormaPagamento::find($dados['forma_pagamento_id'])

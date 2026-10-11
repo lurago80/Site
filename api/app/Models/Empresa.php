@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'uf', 'municipio', 'codigo_ibge_municipio', 'cep', 'logradouro', 'numero', 'bairro', 'complemento',
     'asaas_customer_id', 'logo_url', 'cor_primaria',
     'estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio',
+    'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria',
     'frete_gratis_acima', 'permite_retirada', 'instrucoes_retirada',
 ])]
 class Empresa extends Model
@@ -25,6 +26,9 @@ class Empresa extends Model
             'pdv_caixa_pode_cancelar' => 'boolean',
             'custo_visita_padrao' => 'decimal:2',
             'operacao_inicio' => 'date:Y-m-d',
+            'alerta_desconto_percentual' => 'decimal:2',
+            'alerta_diferenca_caixa' => 'decimal:2',
+            'alerta_sangria' => 'decimal:2',
             'permite_retirada' => 'boolean',
             'frete_gratis_acima' => 'decimal:2',
         ];
