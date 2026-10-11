@@ -274,4 +274,31 @@ class CancelamentoVendaPdvTest extends TestCase
         $this->assertMatchesRegularExpression('/^\d{2}\/\d{2}\/\d{4}$/', $relatorio->json('linhas.0.data_cancelamento'));
         $this->assertMatchesRegularExpression('/^\d{2}:\d{2}$/', $relatorio->json('linhas.0.hora_cancelamento'));
     }
+
+    public function test_gerente_cancela_vendas_sempre_e_so_faz_as_rotinas_do_dia_a_dia(): void
+    {
+        $gerente = User::create([
+            'name' => 'Gerente', 'email' => 'gerente@cancela.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'gerente',
+        ]);
+        $this->actingAs($gerente);
+
+        // PDV: botão e cancelamento liberados, sem depender do parâmetro do Caixa.
+        $this->get("{$this->base}/caixa")->assertOk()->assertSee('Vendas do dia / Cancelar');
+        $id = $this->vender($this->cartao);
+        $this->cancelar($id, 'Cliente desistiu da compra')->assertOk()->assertJsonPath('cancelada_por.name', 'Gerente');
+
+        // Painel: acessa relatórios e rotinas do dia a dia...
+        $dash = "/dashboard/{$this->empresa->slug}";
+        $this->getJson("$dash/cancelamentos-relatorio")->assertOk()->assertJsonPath('linhas.0.cancelado_por', 'Gerente');
+        $this->postJson("$dash/atendentes", ['nome' => 'Novo atendente'])->assertSuccessful();
+
+        // ...mas não gerencia usuários nem parâmetros da empresa.
+        $this->postJson("$dash/usuarios", [
+            'name' => 'Outro', 'email' => 'outro@cancela.com', 'password' => 'senha-teste-123', 'perfil' => 'admin',
+        ])->assertForbidden();
+        $this->putJson("$dash/config-operacional", [
+            'estoque_permite_negativo' => true, 'pdv_impressao_direta' => false, 'pdv_caixa_pode_cancelar' => true,
+        ])->assertForbidden();
+    }
 }

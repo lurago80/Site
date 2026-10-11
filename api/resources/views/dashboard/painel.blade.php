@@ -1239,6 +1239,7 @@
                             <select id="us-perfil">
                                 <option value="atendente">Atendente</option>
                                 <option value="caixa">Caixa</option>
+                                <option value="gerente">Gerente</option>
                                 <option value="admin">Admin</option>
                             </select>
                         </div>

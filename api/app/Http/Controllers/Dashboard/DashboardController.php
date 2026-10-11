@@ -772,7 +772,7 @@ class DashboardController extends Controller
 
     public function atualizarVendedor(Request $request, string $empresa, int $vendedorId)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
         $vendedor = Vendedor::where('empresa_id', $empresaAtual->id)->findOrFail($vendedorId);
@@ -815,7 +815,7 @@ class DashboardController extends Controller
 
     public function criarAtendente(Request $request, string $empresa)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
@@ -834,7 +834,7 @@ class DashboardController extends Controller
 
     public function atualizarAtendente(Request $request, string $empresa, int $atendenteId)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $dados = $request->validate([
             'nome' => ['sometimes', 'string', 'max:255'],
@@ -1775,7 +1775,7 @@ class DashboardController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'perfil' => ['required', 'in:admin,caixa,atendente'],
+            'perfil' => ['required', 'in:admin,gerente,caixa,atendente'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -1800,7 +1800,7 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'ativo' => ['sometimes', 'boolean'],
-            'perfil' => ['sometimes', 'in:admin,caixa,atendente'],
+            'perfil' => ['sometimes', 'in:admin,gerente,caixa,atendente'],
         ]);
 
         $usuario->update($dados);
@@ -1975,7 +1975,7 @@ class DashboardController extends Controller
 
     public function criarFormaPagamento(Request $request, string $empresa)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $dados = $request->validate([
             'descricao' => ['required', 'string', 'max:255'],
@@ -1992,7 +1992,7 @@ class DashboardController extends Controller
 
     public function atualizarFormaPagamento(Request $request, string $empresa, int $formaId)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $forma = FormaPagamento::findOrFail($formaId);
 
@@ -2067,7 +2067,7 @@ class DashboardController extends Controller
 
     public function criarCupom(Request $request, string $empresa)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $dados = $request->validate([
             'codigo' => ['required', 'string', 'max:40'],
@@ -2093,7 +2093,7 @@ class DashboardController extends Controller
 
     public function atualizarCupom(Request $request, string $empresa, int $cupomId)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $cupom = Cupom::findOrFail($cupomId);
 
@@ -2133,7 +2133,7 @@ class DashboardController extends Controller
 
     public function criarDescontoPdv(Request $request, string $empresa)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $dados = $request->validate([
             'descricao' => ['required', 'string', 'max:255'],
@@ -2150,7 +2150,7 @@ class DashboardController extends Controller
 
     public function atualizarDescontoPdv(Request $request, string $empresa, int $descontoId)
     {
-        $this->exigirAdmin($request);
+        $this->exigirGerente($request);
 
         $desconto = DescontoPdv::findOrFail($descontoId);
 
@@ -2525,6 +2525,12 @@ class DashboardController extends Controller
         }
 
         return response()->json($resposta->json(), $resposta->status());
+    }
+
+    /** Rotinas do dia a dia: administrador ou gerente. */
+    private function exigirGerente(Request $request): void
+    {
+        abort_unless(in_array($request->user()->perfil, ['admin', 'gerente'], true), 403, 'Apenas administradores e gerentes podem fazer esta alteração.');
     }
 
     private function exigirAdmin(Request $request): void

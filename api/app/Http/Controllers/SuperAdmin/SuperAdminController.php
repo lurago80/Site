@@ -103,7 +103,7 @@ class SuperAdminController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'perfil' => ['required', 'in:admin,caixa,atendente'],
+            'perfil' => ['required', 'in:admin,gerente,caixa,atendente'],
         ]);
 
         $usuario = User::create([

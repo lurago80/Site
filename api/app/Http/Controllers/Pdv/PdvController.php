@@ -379,12 +379,12 @@ class PdvController extends Controller
 
     // ---- Cancelamento de venda (administrador; perfil Caixa só se o parâmetro da empresa liberar) ----
 
-    /** Administrador sempre; Caixa quando o administrador ligou "pdv_caixa_pode_cancelar" nos parâmetros. */
+    /** Administrador e gerente sempre; Caixa quando o administrador ligou "pdv_caixa_pode_cancelar" nos parâmetros. */
     private function podeCancelarVendas(Request $request): bool
     {
         $perfil = $request->user()->perfil;
 
-        if ($perfil === 'admin') {
+        if (in_array($perfil, ['admin', 'gerente'], true)) {
             return true;
         }
 
