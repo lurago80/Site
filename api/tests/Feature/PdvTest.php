@@ -1330,6 +1330,58 @@ class PdvTest extends TestCase
         $this->assertNotNull($cortesia);
     }
 
+    public function test_relatorios_podem_ser_separados_por_pdv_e_loja_online(): void
+    {
+        $this->produto->update(['preco_custo' => 7.00]);
+
+        // Venda do balcão (PDV) e venda da loja online, as duas pagas e lançadas no plano de contas.
+        $pdv = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ])->assertCreated()->json('id');
+
+        $loja = \App\Models\Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'site', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 36.00,
+        ]);
+        \App\Models\ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $loja->id, 'produto_id' => $this->produto->id,
+            'quantidade' => 2, 'valor_unitario' => 18.00, 'valor_total' => 36.00,
+        ]);
+        app(\App\Services\Vendas\LancamentoVendaService::class)->registrar($loja);
+
+        $admin = User::create([
+            'name' => 'Admin Canal', 'email' => 'admin-canal@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin);
+        $dash = "/dashboard/{$this->empresa->slug}";
+
+        // Sem filtro: as duas, com a separação por canal nos totais.
+        $todos = $this->getJson("$dash/vendas-relatorio")->assertOk();
+        $todos->assertJsonPath('totais.vendas', 2);
+        $todos->assertJsonPath('por_canal.pdv.vendas', 1);
+        $todos->assertJsonPath('por_canal.pdv.valor_total', 18);
+        $todos->assertJsonPath('por_canal.site.vendas', 1);
+        $todos->assertJsonPath('por_canal.site.valor_total', 36);
+
+        // Filtro por canal: vendas, itens vendidos e resultado.
+        $this->getJson("$dash/vendas-relatorio?canal=pdv")->assertOk()
+            ->assertJsonPath('totais.vendas', 1)->assertJsonPath('linhas.0.id', $pdv);
+        $this->getJson("$dash/vendas-relatorio?canal=site")->assertOk()
+            ->assertJsonPath('totais.vendas', 1)->assertJsonPath('linhas.0.id', $loja->id);
+        $this->getJson("$dash/itens-vendidos-relatorio?canal=site")->assertOk()->assertJsonPath('totais.quantidade', 2);
+
+        // receita: PDV 18 - 7 = 11; loja 36 - 14 = 22
+        $resultado = $this->getJson("$dash/resultado-relatorio")->assertOk();
+        $resultado->assertJsonPath('total_receitas', 33);
+        $resultado->assertJsonPath('por_canal.pdv', 11);
+        $resultado->assertJsonPath('por_canal.site', 22);
+        $this->getJson("$dash/resultado-relatorio?canal=site")->assertOk()
+            ->assertJsonPath('total_receitas', 22)->assertJsonPath('por_canal.pdv', 0);
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([

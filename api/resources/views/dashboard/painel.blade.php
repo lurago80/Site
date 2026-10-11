@@ -735,6 +735,7 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="ver-inicio"></div>
                         <div><label>Até</label><input type="date" id="ver-fim"></div>
+                        <div><label>Canal</label><select id="ver-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><label>Tipo</label>
                             <select id="ver-tipo">
                                 <option value="todos">Todos (produtos + visitações)</option>
@@ -796,6 +797,7 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="atr-inicio"></div>
                         <div><label>Até</label><input type="date" id="atr-fim"></div>
+                        <div><label>Canal</label><select id="atr-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><label>Tipo</label>
                             <select id="atr-tipo">
                                 <option value="todos">Todos (produtos + visitações)</option>
@@ -915,6 +917,7 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="rd-inicio"></div>
                         <div><label>Até</label><input type="date" id="rd-fim"></div>
+                        <div><label>Canal</label><select id="rd-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><button class="acao" onclick="carregarRelatorioDescontos()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
                         <div><button class="secundario" onclick="exportarRelatorio('descontos')">Exportar CSV</button></div>
@@ -956,6 +959,7 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="rc-inicio"></div>
                         <div><label>Até</label><input type="date" id="rc-fim"></div>
+                        <div><label>Canal</label><select id="rc-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><button class="acao" onclick="carregarRelatorioCancelamentos()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
                         <div><button class="secundario" onclick="exportarRelatorio('cancelamentos')">Exportar CSV</button></div>
@@ -1085,6 +1089,7 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="res-inicio"></div>
                         <div><label>Até</label><input type="date" id="res-fim"></div>
+                        <div><label>Canal</label><select id="res-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><button class="acao" onclick="carregarResultadoPeriodo()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
                         <div><button class="secundario" onclick="exportarRelatorio('resultado')">Exportar CSV</button></div>
@@ -1103,6 +1108,7 @@
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="rv-inicio"></div>
                         <div><label>Até</label><input type="date" id="rv-fim"></div>
+                        <div><label>Canal</label><select id="rv-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><button class="acao" onclick="carregarRelatoriosVendas()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
                         <div><button class="secundario" onclick="exportarRelatorio('vendas')">Exportar CSV</button></div>
@@ -3012,6 +3018,9 @@
             const d = ultimosRelatorios[chave];
             if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
             const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
+            const idCanal = { descontos: 'rd-canal', cancelamentos: 'rc-canal', resultado: 'res-canal', vendas: 'rv-canal' }[chave];
+            const canalSel = document.getElementById(idCanal)?.value || 'todos';
+            const sufixoCanal = canalSel === 'todos' ? '' : `_${canalSel === 'pdv' ? 'so-pdv' : 'so-loja-online'}`;
             let linhas;
 
             if (chave === 'descontos') {
@@ -3043,7 +3052,7 @@
                         ['Fora do total (consumo interno / cortesia)', '', '', '', '', '', '', '', '', csvNum(v.fora_do_total.valor_total), v.fora_do_total.vendas + ' venda(s)']]);
             }
 
-            baixarCsv(`relatorio-${chave}-${periodo}.csv`, linhas);
+            baixarCsv(`relatorio-${chave}-${periodo}${sufixoCanal}.csv`, linhas);
         }
 
         // ---- Alertas ----
@@ -3096,6 +3105,7 @@
             const fim = document.getElementById('rc-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('rc-canal').value);
 
             const msg = document.getElementById('msg-relatorio-cancelamentos');
             const resp = await fetch(`${base}/cancelamentos-relatorio?${params}`);
@@ -3130,6 +3140,7 @@
             const fim = document.getElementById('rd-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('rd-canal').value);
 
             const msg = document.getElementById('msg-relatorio-descontos');
             const resp = await fetch(`${base}/descontos-relatorio?${params}`);
@@ -3169,6 +3180,7 @@
             const fim = document.getElementById('atr-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('atr-canal').value);
             params.set('tipo', document.getElementById('atr-tipo').value);
 
             const resp = await fetch(`${base}/atendentes-relatorio?${params}`);
@@ -3184,6 +3196,7 @@
             const fim = document.getElementById('ver-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('ver-canal').value);
             params.set('tipo', document.getElementById('ver-tipo').value);
 
             const resp = await fetch(`${base}/vendedores-relatorio?${params}`);
@@ -3559,6 +3572,7 @@
             const fim = document.getElementById('res-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('res-canal').value);
 
             const msg = document.getElementById('msg-resultado');
             const resp = await fetch(`${base}/resultado-relatorio?${params}`);
@@ -3582,7 +3596,9 @@
                 '<tr><td colspan="2" style="padding-top:14px; font-size:11px; text-transform:uppercase; color:var(--cor-texto-suave);">Memo - não entram no resultado</td></tr>' +
                 linha('Faturamento bruto (antes do custo e do desconto)', r.memo.faturamento_bruto, memo) +
                 linha('Custo das vendas', r.memo.custo_total, memo) +
-                linha('001.015 - Descontos concedidos (informativa, já deduzida da receita)', r.memo.descontos_concedidos, memo);
+                linha('001.015 - Descontos concedidos (informativa, já deduzida da receita)', r.memo.descontos_concedidos, memo) +
+                linha('Receitas do PDV (dentro do total de receitas)', r.por_canal.pdv, memo) +
+                linha('Receitas da loja online (dentro do total de receitas)', r.por_canal.site, memo);
         }
 
         // ---- Relatórios de vendas ----
@@ -3593,6 +3609,7 @@
             const fim = document.getElementById('rv-fim').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('rv-canal').value);
 
             const msg = document.getElementById('msg-relatorios-vendas');
             msg.className = 'msg'; msg.textContent = 'Carregando...';
@@ -3621,6 +3638,8 @@
                 document.getElementById('totais-rv-vendas').textContent =
                     `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns) - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}` +
                     (vendas.fora_do_total.vendas ? ` | Fora do total (consumo interno / cortesia): ${vendas.fora_do_total.vendas} venda(s), ${brl(vendas.fora_do_total.valor_total)}` : '');
+                document.getElementById('totais-rv-vendas').textContent +=
+                    ` | PDV: ${vendas.por_canal.pdv.vendas} venda(s), ${brl(vendas.por_canal.pdv.valor_total)} | Loja online: ${vendas.por_canal.site.vendas} venda(s), ${brl(vendas.por_canal.site.valor_total)}`;
 
                 document.getElementById('tbody-rv-itens').innerHTML = itens.linhas.map(i => `
                     <tr>

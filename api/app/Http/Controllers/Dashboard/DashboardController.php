@@ -871,6 +871,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
@@ -880,6 +881,7 @@ class DashboardController extends Controller
             ->where('status_pagamento', '!=', 'cancelado')
             ->whereNull('cancelada_em')
             ->where(fn ($q) => $q->where('valor_desconto', '>', 0)->orWhere('cortesia', true))
+            ->when($this->canalFiltro($dados), fn ($q, $c) => $q->where('canal', $c))
             ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
             ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
             ->orderBy('data_venda')
@@ -923,6 +925,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
@@ -930,6 +933,7 @@ class DashboardController extends Controller
 
         $vendas = Venda::with(['canceladaPor:id,name', 'formaPagamento:id,descricao', 'documentoFiscal'])
             ->whereNotNull('cancelada_em')
+            ->when($this->canalFiltro($dados), fn ($q, $c) => $q->where('canal', $c))
             ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('cancelada_em', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
             ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('cancelada_em', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
             ->orderBy('cancelada_em')
@@ -963,6 +967,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
             'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
@@ -983,6 +988,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
             'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
@@ -1006,6 +1012,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
@@ -1048,6 +1055,7 @@ class DashboardController extends Controller
             ->map(function ($pessoa) use ($colunaPessoa, $dados, $tipo) {
                 $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoa, $dados) {
                     $q->where($colunaPessoa, $pessoa->id)
+                        ->when($this->canalFiltro($dados), fn ($qq, $c) => $qq->where('canal', $c))
                         ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', $d))
                         ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', $d));
                 })
@@ -1297,6 +1305,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -1345,11 +1354,15 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
+        $canal = $this->canalFiltro($dados);
+
         $lancamentos = \App\Models\LancamentoPlanoConta::query()
+            ->when($canal, fn ($q, $c) => $q->whereHas('venda', fn ($v) => $v->where('canal', $c)))
             ->when($this->inicioEfetivo($dados['data_inicio'] ?? null), fn ($q, $d) => $q->where('data', '>=', $d))
             ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data', '<=', $d));
 
@@ -1397,7 +1410,16 @@ class DashboardController extends Controller
         $totalReceitas = round($receitaProdutos + $receitaServicos, 2);
         $totalDespesas = round((float) $despesas->sum('total'), 2);
 
+        // Receitas separadas por canal (balcão x loja online), dentro do filtro escolhido.
+        $porCanal = (clone $lancamentos)
+            ->join('vendas', 'vendas.id', '=', 'lancamentos_plano_contas.venda_id')
+            ->whereIn('lancamentos_plano_contas.origem', ['receita_produtos', 'receita_servicos'])
+            ->selectRaw('vendas.canal as canal, sum(lancamentos_plano_contas.valor) as total')
+            ->groupBy('vendas.canal')
+            ->pluck('total', 'canal');
+
         return response()->json([
+            'por_canal' => ['pdv' => round((float) ($porCanal['pdv'] ?? 0), 2), 'site' => round((float) ($porCanal['site'] ?? 0), 2)],
             'receita_produtos' => $receitaProdutos,
             'receita_servicos' => $receitaServicos,
             'total_receitas' => $totalReceitas,
@@ -1431,7 +1453,8 @@ class DashboardController extends Controller
                 ->where('cortesia', false)
                 ->whereDoesntHave('formaPagamento', fn ($f) => $f->whereRaw("upper(trim(descricao)) = 'CONSUMO INTERNO'")))
             ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
-            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()));
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
+            ->when($this->canalFiltro($dados), fn ($q, $c) => $q->where('canal', $c));
     }
 
     /** Vendas do período: uma linha por venda, com canal, atendente, vendedor e forma de pagamento. */
@@ -1440,6 +1463,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $fuso = 'America/Sao_Paulo';
@@ -1484,6 +1508,11 @@ class DashboardController extends Controller
                 'valor_desconto' => round((float) $normais->sum('valor_desconto'), 2),
                 'valor_total' => round((float) $normais->sum('valor_total'), 2),
             ],
+            // Separação por canal (só vendas com receita): balcão x loja online.
+            'por_canal' => collect(['pdv', 'site'])->mapWithKeys(fn ($c) => [$c => [
+                'vendas' => $normais->where('canal', $c)->count(),
+                'valor_total' => round((float) $normais->where('canal', $c)->sum('valor_total'), 2),
+            ]]),
             // Informativo: não está somado em "totais".
             'fora_do_total' => [
                 'vendas' => $semReceita->count(),
@@ -1498,6 +1527,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $fuso = 'America/Sao_Paulo';
@@ -1555,6 +1585,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $linhas = $this->itensAgrupadosPorProduto($dados)->sortByDesc('quantidade')->values();
@@ -1579,6 +1610,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $produtos = $this->itensAgrupadosPorProduto($dados)->sortByDesc('valor_total')->values();
@@ -1614,6 +1646,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $linhas = $this->itensAgrupadosPorProduto($dados)
@@ -1723,6 +1756,7 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
         ]);
 
         $banco = Banco::findOrFail($bancoId);
@@ -2591,6 +2625,12 @@ class DashboardController extends Controller
         $marcadas = \App\Models\Alerta::whereNull('lida_em')->update(['lida_em' => now()]);
 
         return response()->json(['marcadas' => $marcadas]);
+    }
+
+    /** Filtro de canal dos relatórios: 'pdv' (balcão), 'site' (loja online) ou null (os dois). */
+    private function canalFiltro(array $dados): ?string
+    {
+        return in_array($dados['canal'] ?? null, ['pdv', 'site'], true) ? $dados['canal'] : null;
     }
 
     /** Rotinas do dia a dia: administrador ou gerente. */
