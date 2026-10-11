@@ -872,6 +872,7 @@ class DashboardController extends Controller
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
         ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         $fuso = 'America/Sao_Paulo';
 
@@ -923,6 +924,7 @@ class DashboardController extends Controller
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
         ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         $fuso = 'America/Sao_Paulo';
 
@@ -963,6 +965,7 @@ class DashboardController extends Controller
             'data_fim' => ['nullable', 'date'],
             'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
         ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
@@ -982,6 +985,7 @@ class DashboardController extends Controller
             'data_fim' => ['nullable', 'date'],
             'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
         ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
@@ -1003,6 +1007,7 @@ class DashboardController extends Controller
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
         ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
@@ -1311,7 +1316,7 @@ class DashboardController extends Controller
 
             // Lançamentos automáticos das vendas (002.001, 002.002 e 001.015): já realizados.
             $lancadoVendas = \App\Models\LancamentoPlanoConta::where('plano_conta_id', $plano->id)
-                ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data', '>=', $d))
+                ->when($this->inicioEfetivo($dados['data_inicio'] ?? null), fn ($q, $d) => $q->where('data', '>=', $d))
                 ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data', '<=', $d))
                 ->sum('valor');
 
@@ -1345,7 +1350,7 @@ class DashboardController extends Controller
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         $lancamentos = \App\Models\LancamentoPlanoConta::query()
-            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data', '>=', $d))
+            ->when($this->inicioEfetivo($dados['data_inicio'] ?? null), fn ($q, $d) => $q->where('data', '>=', $d))
             ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data', '<=', $d));
 
         $porOrigem = (clone $lancamentos)->selectRaw('origem, sum(valor) as total')->groupBy('origem')->pluck('total', 'origem');
@@ -1417,6 +1422,7 @@ class DashboardController extends Controller
     private function vendasNoPeriodo(array $dados, bool $incluirSemReceita = false)
     {
         $fuso = 'America/Sao_Paulo';
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         return Venda::where('status_pagamento', '!=', 'cancelado')
             ->whereNull('cancelada_em')
@@ -2351,7 +2357,7 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao']));
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio']));
     }
 
     public function atualizarConfigOperacional(Request $request, string $empresa)
@@ -2363,12 +2369,13 @@ class DashboardController extends Controller
             'pdv_impressao_direta' => ['required', 'boolean'],
             'pdv_caixa_pode_cancelar' => ['required', 'boolean'],
             'custo_visita_padrao' => ['sometimes', 'numeric', 'min:0'],
+            'operacao_inicio' => ['sometimes', 'nullable', 'date'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
         $empresaAtual->update($dados);
 
-        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao']));
+        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio']));
     }
 
     // ---- Configuração de gateway de pagamento ----
@@ -2533,6 +2540,17 @@ class DashboardController extends Controller
         }
 
         return response()->json($resposta->json(), $resposta->status());
+    }
+
+    /**
+     * Relatórios de vendas ignoram o que veio antes do "início da operação" (parâmetro da empresa):
+     * vendas de teste ficam no banco, mas fora dos números. Devolve a data inicial efetiva (Y-m-d).
+     */
+    private function inicioEfetivo(?string $dataInicio): ?string
+    {
+        $operacao = request()->attributes->get('empresaAtual')?->operacao_inicio?->toDateString();
+
+        return $operacao !== null && ($dataInicio === null || $dataInicio < $operacao) ? $operacao : $dataInicio;
     }
 
     /** Rotinas do dia a dia: administrador ou gerente. */

@@ -1232,6 +1232,17 @@
                 </div>
 
                 <div class="card">
+                    <h2>Início da operação</h2>
+                    <div class="linha-form">
+                        <div><label>Data de início</label><input type="date" id="pm-operacao-inicio" style="width:160px"></div>
+                    </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        Os relatórios de vendas, descontos, cancelamentos, resultado e por vendedor/atendente ignoram o que veio antes desta data
+                        (vendas de teste ficam guardadas, mas fora dos números). Deixe em branco para considerar tudo.
+                    </p>
+                </div>
+
+                <div class="card">
                     <div class="linha-form">
                         <div><button class="acao" onclick="salvarConfigOperacional()">Salvar parâmetros</button></div>
                     </div>
@@ -4292,6 +4303,7 @@
             document.getElementById('pm-impressao-direta').checked = !!dados.pdv_impressao_direta;
             document.getElementById('pm-caixa-cancela').checked = !!dados.pdv_caixa_pode_cancelar;
             document.getElementById('pm-custo-visita').value = dados.custo_visita_padrao ?? 0;
+            document.getElementById('pm-operacao-inicio').value = dados.operacao_inicio ?? '';
         }
 
         async function salvarConfigOperacional() {
@@ -4300,6 +4312,7 @@
                 pdv_impressao_direta: document.getElementById('pm-impressao-direta').checked,
                 pdv_caixa_pode_cancelar: document.getElementById('pm-caixa-cancela').checked,
                 custo_visita_padrao: Number(document.getElementById('pm-custo-visita').value || 0),
+                operacao_inicio: document.getElementById('pm-operacao-inicio').value || null,
             };
             const resp = await fetch(`${base}/config-operacional`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();

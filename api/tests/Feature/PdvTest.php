@@ -1246,6 +1246,40 @@ class PdvTest extends TestCase
         $this->assertSame('20.00', (string) AgendaVisitacao::find($comCusto->json('id'))->custo_visita);
     }
 
+    public function test_relatorios_ignoram_vendas_anteriores_ao_inicio_da_operacao(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $venda = fn () => $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ])->assertCreated()->json('id');
+
+        $antiga = $venda();
+        $recente = $venda();
+        \App\Models\Venda::whereKey($antiga)->update(['data_venda' => '2026-10-02 15:00:00']);
+
+        $admin = User::create([
+            'name' => 'Admin Inicio', 'email' => 'admin-inicio@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin);
+        $url = "/dashboard/{$this->empresa->slug}/vendas-relatorio";
+
+        // Sem início da operação: as duas vendas aparecem.
+        $this->getJson($url)->assertOk()->assertJsonPath('totais.vendas', 2);
+
+        // Com início em 09/10: só a recente, mesmo pedindo um período maior.
+        $this->empresa->update(['operacao_inicio' => '2026-10-09']);
+        \App\Models\Venda::whereKey($recente)->update(['data_venda' => '2026-10-10 15:00:00']);
+        $this->actingAs(User::find($admin->id));
+        $resposta = $this->getJson($url.'?data_inicio=2026-09-01')->assertOk();
+        $resposta->assertJsonPath('totais.vendas', 1);
+        $resposta->assertJsonPath('linhas.0.id', $recente);
+        $this->getJson("/dashboard/{$this->empresa->slug}/itens-vendidos-relatorio?data_inicio=2026-09-01")
+            ->assertOk()->assertJsonPath('totais.itens', 1);
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([
