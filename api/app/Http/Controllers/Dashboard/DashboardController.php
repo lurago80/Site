@@ -120,6 +120,9 @@ class DashboardController extends Controller
             'atendente_id' => ['nullable', 'integer', Rule::exists('atendentes', 'id')->where('empresa_id', $empresaAtual->id)],
         ]);
 
+        // Sem custo informado, usa o custo padrão por visitante da empresa (parâmetros).
+        $dados['custo_visita'] = $dados['custo_visita'] ?? (float) $empresaAtual->custo_visita_padrao;
+
         $agenda = AgendaVisitacao::create($dados + [
             'empresa_id' => $empresaAtual->id,
             'vagas_reservadas' => 0,
@@ -142,6 +145,10 @@ class DashboardController extends Controller
             'vendedor_id' => ['nullable', 'integer', Rule::exists('vendedores', 'id')->where('empresa_id', $empresaAtual->id)],
             'atendente_id' => ['nullable', 'integer', Rule::exists('atendentes', 'id')->where('empresa_id', $empresaAtual->id)],
         ]);
+
+        if (array_key_exists('custo_visita', $dados) && $dados['custo_visita'] === null) {
+            unset($dados['custo_visita']);
+        }
 
         $agenda = AgendaVisitacao::where('empresa_id', $empresaAtual->id)->findOrFail($agendaId);
         $agenda->update($dados);
@@ -2344,7 +2351,7 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar']));
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao']));
     }
 
     public function atualizarConfigOperacional(Request $request, string $empresa)
@@ -2355,12 +2362,13 @@ class DashboardController extends Controller
             'estoque_permite_negativo' => ['required', 'boolean'],
             'pdv_impressao_direta' => ['required', 'boolean'],
             'pdv_caixa_pode_cancelar' => ['required', 'boolean'],
+            'custo_visita_padrao' => ['sometimes', 'numeric', 'min:0'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
         $empresaAtual->update($dados);
 
-        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta']));
+        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao']));
     }
 
     // ---- Configuração de gateway de pagamento ----

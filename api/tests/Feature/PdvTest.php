@@ -1217,6 +1217,35 @@ class PdvTest extends TestCase
         $this->getJson("$base/caixa-status")->assertJsonPath('status', 'fechado');
     }
 
+    public function test_agenda_sem_custo_usa_o_custo_padrao_da_empresa(): void
+    {
+        $admin = User::create([
+            'name' => 'Admin Agenda', 'email' => 'admin-agenda@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin);
+        $dash = "/dashboard/{$this->empresa->slug}";
+
+        $this->putJson("$dash/config-operacional", [
+            'estoque_permite_negativo' => false, 'pdv_impressao_direta' => false,
+            'pdv_caixa_pode_cancelar' => false, 'custo_visita_padrao' => 35,
+        ])->assertOk()->assertJsonPath('custo_visita_padrao', '35.00');
+
+        $horario = ['data_hora' => now()->addDays(3)->toIso8601String(), 'vagas_total' => 10, 'valor_visita' => 79.90];
+
+        // Sem custo -> usa o padrão; com custo informado -> respeita o informado (inclusive zero).
+        $semCusto = $this->postJson("$dash/visitas", $horario)->assertCreated();
+        $this->assertSame('35.00', (string) AgendaVisitacao::find($semCusto->json('id'))->custo_visita);
+        $comCusto = $this->postJson("$dash/visitas", $horario + ['custo_visita' => 20])->assertCreated();
+        $this->assertSame('20.00', (string) AgendaVisitacao::find($comCusto->json('id'))->custo_visita);
+        $zero = $this->postJson("$dash/visitas", $horario + ['custo_visita' => 0])->assertCreated();
+        $this->assertSame('0.00', (string) AgendaVisitacao::find($zero->json('id'))->custo_visita);
+
+        // Editar com custo em branco não apaga o custo já gravado.
+        $this->putJson("$dash/visitas/{$comCusto->json('id')}", ['valor_visita' => 89.90, 'custo_visita' => null])->assertOk();
+        $this->assertSame('20.00', (string) AgendaVisitacao::find($comCusto->json('id'))->custo_visita);
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([

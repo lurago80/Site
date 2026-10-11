@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'razao_social', 'nome_fantasia', 'cnpj', 'slug', 'segmento', 'modulo_agendamento_ativo', 'plano_id', 'status',
     'uf', 'municipio', 'codigo_ibge_municipio', 'cep', 'logradouro', 'numero', 'bairro', 'complemento',
     'asaas_customer_id', 'logo_url', 'cor_primaria',
-    'estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar',
+    'estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao',
     'frete_gratis_acima', 'permite_retirada', 'instrucoes_retirada',
 ])]
 class Empresa extends Model
@@ -23,6 +23,7 @@ class Empresa extends Model
             'estoque_permite_negativo' => 'boolean',
             'pdv_impressao_direta' => 'boolean',
             'pdv_caixa_pode_cancelar' => 'boolean',
+            'custo_visita_padrao' => 'decimal:2',
             'permite_retirada' => 'boolean',
             'frete_gratis_acima' => 'decimal:2',
         ];

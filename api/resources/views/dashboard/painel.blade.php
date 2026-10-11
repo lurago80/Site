@@ -133,7 +133,7 @@
                         <div><label>Data/hora</label><input type="datetime-local" id="ag-data"></div>
                         <div><label>Vagas totais</label><input type="number" id="ag-vagas" style="width:100px"></div>
                         <div><label>Valor por visitante (R$)</label><input type="number" step="0.01" id="ag-valor" style="width:120px"></div>
-                        <div><label>Custo por visitante (R$)</label><input type="number" step="0.01" min="0" id="ag-custo" style="width:120px"></div>
+                        <div><label>Custo por visitante (R$)</label><input type="number" step="0.01" min="0" id="ag-custo" style="width:120px" placeholder="padrão"></div>
                         <div><label>Vendedor</label><select id="ag-vendedor" style="min-width:160px"><option value="">Nenhum</option></select></div>
                         <div><label>Atendente</label><select id="ag-atendente" style="min-width:160px"><option value="">Nenhum</option></select></div>
                         <div><button class="acao" id="ag-botao" onclick="salvarAgenda()">Adicionar horário</button></div>
@@ -1221,6 +1221,17 @@
                 </div>
 
                 <div class="card">
+                    <h2>Agenda de visitas — custo padrão</h2>
+                    <div class="linha-form">
+                        <div><label>Custo por visitante (R$)</label><input type="number" step="0.01" min="0" id="pm-custo-visita" style="width:140px"></div>
+                    </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        Usado quando um horário da agenda é criado sem custo. Entra no cálculo da receita de serviços (valor − custo − desconto).
+                        Mudar aqui não altera horários já cadastrados.
+                    </p>
+                </div>
+
+                <div class="card">
                     <div class="linha-form">
                         <div><button class="acao" onclick="salvarConfigOperacional()">Salvar parâmetros</button></div>
                     </div>
@@ -1847,7 +1858,7 @@
                 data_hora: new Date(document.getElementById('ag-data').value).toISOString(),
                 vagas_total: Number(document.getElementById('ag-vagas').value),
                 valor_visita: Number(document.getElementById('ag-valor').value),
-                custo_visita: Number(document.getElementById('ag-custo').value || 0),
+                custo_visita: document.getElementById('ag-custo').value === '' ? null : Number(document.getElementById('ag-custo').value),
                 vendedor_id: document.getElementById('ag-vendedor').value || null,
                 atendente_id: document.getElementById('ag-atendente').value || null,
             };
@@ -4280,6 +4291,7 @@
             document.getElementById('pm-estoque-negativo').checked = !!dados.estoque_permite_negativo;
             document.getElementById('pm-impressao-direta').checked = !!dados.pdv_impressao_direta;
             document.getElementById('pm-caixa-cancela').checked = !!dados.pdv_caixa_pode_cancelar;
+            document.getElementById('pm-custo-visita').value = dados.custo_visita_padrao ?? 0;
         }
 
         async function salvarConfigOperacional() {
@@ -4287,6 +4299,7 @@
                 estoque_permite_negativo: document.getElementById('pm-estoque-negativo').checked,
                 pdv_impressao_direta: document.getElementById('pm-impressao-direta').checked,
                 pdv_caixa_pode_cancelar: document.getElementById('pm-caixa-cancela').checked,
+                custo_visita_padrao: Number(document.getElementById('pm-custo-visita').value || 0),
             };
             const resp = await fetch(`${base}/config-operacional`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
