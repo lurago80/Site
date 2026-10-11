@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Sobe arquivos do desenvolvimento (C:\VS_Code\Site\api) para a produção, com conferência.
 
