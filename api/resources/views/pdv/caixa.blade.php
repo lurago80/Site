@@ -375,6 +375,30 @@
         <span><kbd>Esc</kbd> Fechar janela</span>
     </div>
 
+    <div class="modal-overlay" id="modal-fechamento-overlay">
+        <div class="modal-verificar">
+            <button type="button" class="modal-fechar" onclick="fecharModalFechamento()">&times;</button>
+            <h2>Fechar caixa</h2>
+            <p class="modal-sub" id="fechamento-sub">Conte o dinheiro da gaveta e informe o valor.</p>
+
+            <div id="fechamento-resumo"></div>
+
+            <div class="campo" style="margin-top:14px;">
+                <label for="fechamento-contado">Valor contado na gaveta (R$)</label>
+                <input type="number" step="0.01" min="0" id="fechamento-contado" placeholder="0,00" oninput="atualizarDiferencaFechamento()">
+            </div>
+            <p id="fechamento-diferenca" style="margin:10px 0 0; font-weight:700; min-height:20px;"></p>
+
+            <div class="campo" id="fechamento-motivo-wrap" style="display:none; margin-top:10px;">
+                <label for="fechamento-motivo">Motivo da diferença <span style="color:#ff8080;">*</span></label>
+                <input type="text" id="fechamento-motivo" maxlength="255" placeholder="Ex.: troco dado a mais, sangria sem registro...">
+            </div>
+
+            <p class="msg" id="fechamento-msg"></p>
+            <button class="primario" style="width:100%; margin-top:8px;" onclick="confirmarFechamento()">Confirmar fechamento</button>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="modal-verificar-overlay">
         <div class="modal-verificar">
             <button type="button" class="modal-fechar" onclick="fecharModalVerificar()">&times;</button>
@@ -1040,7 +1064,78 @@
         }
 
         function caixaAbrir() { caixaAcao('caixa-abrir'); }
-        function caixaFechar() { caixaAcao('caixa-fechar'); }
+        // Fechamento com conferência: mostra o esperado, pede o valor contado e exige o motivo se houver diferença.
+        let saldoEsperadoFechamento = 0;
+        const brlF = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+        async function caixaFechar() {
+            const msg = document.getElementById('msg-caixa');
+            const resp = await fetch(`${base}/caixa-resumo`, { headers: { 'Accept': 'application/json' } });
+            const r = await resp.json().catch(() => ({}));
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = r.message || 'Não foi possível carregar o resumo do caixa.'; return; }
+
+            saldoEsperadoFechamento = Number(r.saldo_esperado);
+            const linha = (n, v, forte) => `<div class="linha-item-v" style="${forte ? 'font-weight:700; border-top:1px solid var(--border);' : ''}"><span>${n}</span><span>${brlF(v)}</span></div>`;
+            document.getElementById('fechamento-resumo').innerHTML =
+                linha('Abertura (troco inicial)', r.abertura) +
+                linha('+ Vendas em dinheiro', r.vendas_dinheiro) +
+                linha('+ Suprimentos', r.suprimentos) +
+                linha('− Sangrias', r.sangrias) +
+                linha('= Esperado na gaveta', r.saldo_esperado, true) +
+                `<p style="font-size:11.5px; color:var(--text-dim); margin:8px 0 0;">Vendas totais do turno: ${brlF(r.total_vendas)} (inclui cartão e PIX, que não entram na gaveta).</p>`;
+
+            document.getElementById('fechamento-contado').value = '';
+            document.getElementById('fechamento-motivo').value = '';
+            document.getElementById('fechamento-motivo-wrap').style.display = 'none';
+            document.getElementById('fechamento-diferenca').textContent = '';
+            document.getElementById('fechamento-msg').textContent = '';
+            document.getElementById('modal-fechamento-overlay').classList.add('aberto');
+            document.getElementById('fechamento-contado').focus();
+        }
+
+        function fecharModalFechamento() {
+            document.getElementById('modal-fechamento-overlay').classList.remove('aberto');
+        }
+
+        function atualizarDiferencaFechamento() {
+            const campo = document.getElementById('fechamento-contado').value;
+            const el = document.getElementById('fechamento-diferenca');
+            const wrap = document.getElementById('fechamento-motivo-wrap');
+            if (campo === '') { el.textContent = ''; wrap.style.display = 'none'; return; }
+
+            const diferenca = Math.round((Number(campo) - saldoEsperadoFechamento) * 100) / 100;
+            if (diferenca === 0) {
+                el.style.color = 'var(--ok)'; el.textContent = 'Confere: sem diferença.'; wrap.style.display = 'none';
+            } else {
+                el.style.color = 'var(--danger)';
+                el.textContent = `${diferenca > 0 ? 'Sobra' : 'Falta'} de ${brlF(Math.abs(diferenca))} em relação ao esperado.`;
+                wrap.style.display = '';
+            }
+        }
+
+        async function confirmarFechamento() {
+            const msgModal = document.getElementById('fechamento-msg');
+            const contado = document.getElementById('fechamento-contado').value;
+            const motivo = document.getElementById('fechamento-motivo').value.trim();
+
+            if (contado === '') { msgModal.className = 'msg erro'; msgModal.textContent = 'Informe o valor contado na gaveta.'; return; }
+            const diferenca = Math.round((Number(contado) - saldoEsperadoFechamento) * 100) / 100;
+            if (diferenca !== 0 && !motivo) { msgModal.className = 'msg erro'; msgModal.textContent = 'Informe o motivo da diferença.'; return; }
+
+            const obs = [document.getElementById('caixa-obs').value.trim(), diferenca !== 0 ? `Diferença ${diferenca > 0 ? '+' : ''}${diferenca.toFixed(2)}: ${motivo}` : ''].filter(Boolean).join(' | ') || null;
+            const resp = await fetch(`${base}/caixa-fechar`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ valor: Number(contado), observacao: obs }),
+            });
+            const resposta = await resp.json().catch(() => ({}));
+            if (!resp.ok) { msgModal.className = 'msg erro'; msgModal.textContent = resposta.message || 'Não foi possível fechar o caixa.'; return; }
+
+            fecharModalFechamento();
+            const msg = document.getElementById('msg-caixa');
+            msg.className = 'msg ok';
+            msg.textContent = diferenca === 0 ? 'Caixa fechado: valor conferido.' : `Caixa fechado com ${diferenca > 0 ? 'sobra' : 'falta'} de ${brlF(Math.abs(diferenca))}.`;
+            document.getElementById('caixa-obs').value = '';
+            caixaAtualizarStatus();
+        }
         function caixaSuprimento() { caixaAcao('caixa-suprimento'); }
         function caixaSangria() { caixaAcao('caixa-sangria'); }
 

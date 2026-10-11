@@ -471,6 +471,27 @@ class PdvController extends Controller
         return response()->json($caixa, 201);
     }
 
+    /** Conferência do fechamento: o que a gaveta deve ter agora (abertura + dinheiro + suprimentos - sangrias). */
+    public function caixaResumo(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        abort_if($this->caixaService->statusAtual($empresaAtual->id)['status'] !== 'aberto', 422, 'Não há caixa aberto.');
+
+        $resumo = $this->caixaService->resumoTurno($empresaAtual->id);
+
+        return response()->json([
+            'aberto_em' => $resumo['abertura']->data_hora,
+            'abertura' => (float) $resumo['abertura']->valor,
+            'vendas_dinheiro' => $resumo['vendas_dinheiro'],
+            'suprimentos' => $resumo['suprimentos'],
+            'sangrias' => $resumo['sangrias'],
+            'saldo_esperado' => $resumo['saldo_esperado'],
+            'total_vendas' => $resumo['total_vendas'],
+            'por_especie' => $resumo['por_especie'],
+        ]);
+    }
+
     public function caixaFechar(Request $request, string $empresa)
     {
         $dados = $request->validate([
@@ -479,6 +500,17 @@ class PdvController extends Controller
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
+
+        // Diferença entre o dinheiro contado e o esperado exige o motivo (fica gravado no fechamento).
+        $resumo = $this->caixaService->statusAtual($empresaAtual->id)['status'] === 'aberto'
+            ? $this->caixaService->resumoTurno($empresaAtual->id)
+            : null;
+
+        if ($resumo !== null && abs((float) $dados['valor'] - $resumo['saldo_esperado']) > 0.009 && trim((string) ($dados['observacao'] ?? '')) === '') {
+            return response()->json([
+                'message' => 'O valor contado difere do esperado (R$ '.number_format($resumo['saldo_esperado'], 2, ',', '.').'). Informe o motivo da diferença.',
+            ], 422);
+        }
 
         try {
             $caixa = $this->caixaService->fechar($empresaAtual, $request->user()->id, $dados['valor'], $dados['observacao'] ?? null);

@@ -1002,7 +1002,7 @@ class PdvTest extends TestCase
             ->assertSee('Pagamento fornecedor')
             ->assertSee('R$ 106,00');
 
-        $this->postJson("$base/caixa-fechar", ['valor' => 104])->assertCreated();
+        $this->postJson("$base/caixa-fechar", ['valor' => 104, 'observacao' => 'Troco dado a mais'])->assertCreated();
 
         $this->get("$base/caixa-extrato-impressao")
             ->assertOk()
@@ -1184,6 +1184,37 @@ class PdvTest extends TestCase
         // Rodar de novo não duplica.
         $this->artisan('app:lancar-vendas-plano-contas')->assertSuccessful();
         $this->assertSame(1, \App\Models\LancamentoPlanoConta::where('venda_id', $venda->id)->count());
+    }
+
+    public function test_fechamento_do_caixa_mostra_o_esperado_e_exige_motivo_quando_ha_diferenca(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+
+        // Sem caixa aberto não há o que conferir.
+        $this->getJson("$base/caixa-resumo")->assertStatus(422);
+
+        $this->postJson("$base/caixa-abrir", ['valor' => 100])->assertCreated();
+        $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ])->assertCreated();
+        $this->postJson("$base/caixa-sangria", ['valor' => 30])->assertCreated();
+
+        // esperado: 100 + 36 (dinheiro) - 30 = 106
+        $this->getJson("$base/caixa-resumo")->assertOk()
+            ->assertJsonPath('abertura', 100)
+            ->assertJsonPath('vendas_dinheiro', 36)
+            ->assertJsonPath('sangrias', 30)
+            ->assertJsonPath('saldo_esperado', 106);
+
+        // Diferença sem motivo -> recusa e o caixa continua aberto.
+        $this->postJson("$base/caixa-fechar", ['valor' => 100])->assertStatus(422);
+        $this->getJson("$base/caixa-status")->assertJsonPath('status', 'aberto');
+
+        // Valor certo fecha sem precisar de motivo.
+        $this->postJson("$base/caixa-fechar", ['valor' => 106])->assertCreated();
+        $this->getJson("$base/caixa-status")->assertJsonPath('status', 'fechado');
     }
 
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
