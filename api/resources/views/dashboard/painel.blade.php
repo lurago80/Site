@@ -916,6 +916,7 @@
                         <div><label>Até</label><input type="date" id="rd-fim"></div>
                         <div><button class="acao" onclick="carregarRelatorioDescontos()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorio('descontos')">Exportar CSV</button></div>
                     </div>
                     <table>
                         <thead><tr><th>Data</th><th>Hora</th><th>Venda nº</th><th>Tipo</th><th>Valor total</th><th>Desconto</th><th>Valor líquido</th><th>Atendente</th><th>Motivo</th></tr></thead>
@@ -937,6 +938,7 @@
                         <div><label>Até</label><input type="date" id="rc-fim"></div>
                         <div><button class="acao" onclick="carregarRelatorioCancelamentos()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorio('cancelamentos')">Exportar CSV</button></div>
                     </div>
                     <table>
                         <thead><tr><th>Cancelado em</th><th>Hora</th><th>Venda nº</th><th>Venda feita em</th><th>Valor</th><th>Pagamento</th><th>Nota</th><th>Cancelado por</th><th>Motivo</th></tr></thead>
@@ -1065,6 +1067,7 @@
                         <div><label>Até</label><input type="date" id="res-fim"></div>
                         <div><button class="acao" onclick="carregarResultadoPeriodo()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorio('resultado')">Exportar CSV</button></div>
                     </div>
                     <table>
                         <thead><tr><th>Linha</th><th style="text-align:right">Valor</th></tr></thead>
@@ -1082,6 +1085,7 @@
                         <div><label>Até</label><input type="date" id="rv-fim"></div>
                         <div><button class="acao" onclick="carregarRelatoriosVendas()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorio('vendas')">Exportar CSV</button></div>
                     </div>
                     <p class="msg" id="msg-relatorios-vendas"></p>
                 </div>
@@ -2929,6 +2933,63 @@
             carregarAtendentes();
         }
 
+        // ---- Exportação CSV (Excel pt-BR: separador ";", decimais com vírgula, UTF-8 com BOM) ----
+        const ultimosRelatorios = {};
+
+        const csvNum = v => Number(v ?? 0).toFixed(2).replace('.', ',');
+        // Texto livre: aspas duplas escapadas e prefixo ' contra fórmulas (=, +, -, @) abertas no Excel.
+        const csvTxt = v => {
+            let t = String(v ?? '');
+            if (/^[=+\-@]/.test(t)) t = "'" + t;
+            return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+        };
+
+        function baixarCsv(nome, linhas) {
+            const conteudo = '\uFEFF' + linhas.map(l => l.join(';')).join('\r\n');
+            const url = URL.createObjectURL(new Blob([conteudo], { type: 'text/csv;charset=utf-8' }));
+            const a = document.createElement('a');
+            a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        function exportarRelatorio(chave) {
+            const d = ultimosRelatorios[chave];
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
+            let linhas;
+
+            if (chave === 'descontos') {
+                linhas = [['Data', 'Hora', 'Venda', 'Tipo', 'Valor total', 'Desconto', 'Valor líquido', 'Atendente', 'Motivo']]
+                    .concat(d.linhas.map(r => [r.data, r.hora, r.id, csvTxt(r.tipo), csvNum(r.valor_total), csvNum(r.valor_desconto), csvNum(r.valor_liquido), csvTxt(r.atendente), csvTxt(r.motivo)]))
+                    .concat([['Total', '', d.totais.vendas + ' venda(s)', '', csvNum(d.totais.valor_total), csvNum(d.totais.valor_desconto), csvNum(d.totais.valor_liquido), '', '']]);
+            } else if (chave === 'cancelamentos') {
+                linhas = [['Data do cancelamento', 'Hora', 'Venda', 'Venda feita em', 'Valor', 'Pagamento', 'Nota fiscal', 'Cancelado por', 'Motivo']]
+                    .concat(d.linhas.map(r => [r.data_cancelamento, r.hora_cancelamento, r.id, r.data_venda, csvNum(r.valor_total), csvTxt(r.forma_pagamento), csvTxt(r.nota_fiscal), csvTxt(r.cancelado_por), csvTxt(r.motivo)]))
+                    .concat([['Total', '', d.totais.vendas + ' cancelamento(s)', '', csvNum(d.totais.valor_total), '', '', '', '']]);
+            } else if (chave === 'resultado') {
+                const r = d.r;
+                linhas = [['Linha', 'Valor'],
+                    ['002.001 - Receita de produtos', csvNum(r.receita_produtos)],
+                    ['002.002 - Receita de serviços', csvNum(r.receita_servicos)],
+                    ['Total de receitas', csvNum(r.total_receitas)]]
+                    .concat(r.despesas.map(x => [csvTxt('(-) ' + (x.codigo ?? '') + ' - ' + x.nome), csvNum(x.total)]))
+                    .concat([['Total de outras despesas', csvNum(r.total_despesas)],
+                        ['RESULTADO DO PERÍODO', csvNum(r.resultado)],
+                        ['Memo - faturamento bruto (não entra no resultado)', csvNum(r.memo.faturamento_bruto)],
+                        ['Memo - custo das vendas (não entra no resultado)', csvNum(r.memo.custo_total)],
+                        ['Memo - 001.015 descontos concedidos (informativa)', csvNum(r.memo.descontos_concedidos)]]);
+            } else if (chave === 'vendas') {
+                const v = d.vendas;
+                linhas = [['Venda', 'Data', 'Hora', 'Canal', 'Atendente', 'Vendedor', 'Forma de pagamento', 'Itens', 'Desconto', 'Total', 'Observação']]
+                    .concat(v.linhas.map(x => [x.id, x.data, x.hora, csvTxt(x.canal), csvTxt(x.atendente), csvTxt(x.vendedor), csvTxt(x.forma_pagamento), x.itens, csvNum(x.valor_desconto), csvNum(x.valor_total),
+                        x.sem_receita ? csvTxt(x.tipo_venda + ' (fora do total)') : '']))
+                    .concat([['Total', '', '', '', '', '', '', v.totais.itens, csvNum(v.totais.valor_desconto), csvNum(v.totais.valor_total), v.totais.vendas + ' venda(s)'],
+                        ['Fora do total (consumo interno / cortesia)', '', '', '', '', '', '', '', '', csvNum(v.fora_do_total.valor_total), v.fora_do_total.vendas + ' venda(s)']]);
+            }
+
+            baixarCsv(`relatorio-${chave}-${periodo}.csv`, linhas);
+        }
+
         async function carregarRelatorioCancelamentos() {
             const params = new URLSearchParams();
             const inicio = document.getElementById('rc-inicio').value;
@@ -2943,6 +3004,7 @@
 
             const { linhas, totais } = await resp.json();
             const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            ultimosRelatorios.cancelamentos = { linhas, totais, inicio, fim };
             document.getElementById('tbody-relatorio-cancelamentos').innerHTML = linhas.map(r => `
                 <tr>
                     <td>${r.data_cancelamento}</td>
@@ -2976,6 +3038,7 @@
 
             const { linhas, totais } = await resp.json();
             const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            ultimosRelatorios.descontos = { linhas, totais, inicio, fim };
             document.getElementById('tbody-relatorio-descontos').innerHTML = linhas.map(r => `
                 <tr>
                     <td>${r.data}</td>
@@ -3408,6 +3471,7 @@
             const negrito = 'font-weight:700;';
             const memo = 'color:var(--cor-texto-suave); font-size:12px;';
 
+            ultimosRelatorios.resultado = { r, inicio, fim };
             document.getElementById('tbody-resultado').innerHTML =
                 linha('002.001 - Receita de produtos (venda − custo − desconto)', r.receita_produtos) +
                 linha('002.002 - Receita de serviços (venda − custo − desconto)', r.receita_servicos) +
@@ -3445,6 +3509,7 @@
                 ]);
                 msg.textContent = '';
 
+                ultimosRelatorios.vendas = { vendas, inicio, fim };
                 document.getElementById('tbody-rv-vendas').innerHTML = vendas.linhas.map(v => `
                     <tr${v.sem_receita ? ' style="color:var(--cor-texto-suave); font-style:italic;"' : ''}>
                         <td>${v.id}${v.sem_receita ? ` <span class="selo info">${esc(v.tipo_venda)}</span>` : ''}</td><td>${v.data} ${v.hora}</td><td>${esc(v.canal)}</td>
