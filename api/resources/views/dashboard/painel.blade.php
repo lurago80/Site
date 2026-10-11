@@ -1263,9 +1263,10 @@
                         <div><label>Desconto a partir de (%)</label><input type="number" step="1" min="0" max="100" id="pm-alerta-desconto" style="width:130px"></div>
                         <div><label>Diferença de caixa a partir de (R$)</label><input type="number" step="0.01" min="0" id="pm-alerta-diferenca" style="width:150px"></div>
                         <div><label>Sangria a partir de (R$)</label><input type="number" step="0.01" min="0" id="pm-alerta-sangria" style="width:140px"></div>
+                        <div><label>WhatsApp do administrador (com DDD)</label><input type="text" id="pm-alerta-whatsapp" placeholder="ex.: 11999998888" style="width:190px"></div>
                     </div>
                     <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
-                        Cortesia e cancelamento de venda sempre geram alerta. Os alertas aparecem no menu Alertas, só para administrador e gerente.
+                        Cortesia e cancelamento de venda sempre geram alerta. Os alertas aparecem no menu Alertas, só para administrador e gerente. Informando o WhatsApp, cada alerta também chega no celular (usa a configuração de WhatsApp da empresa; em branco, só no painel).
                     </p>
                 </div>
 
@@ -4403,6 +4404,7 @@
             document.getElementById('pm-alerta-desconto').value = dados.alerta_desconto_percentual ?? 30;
             document.getElementById('pm-alerta-diferenca').value = dados.alerta_diferenca_caixa ?? 5;
             document.getElementById('pm-alerta-sangria').value = dados.alerta_sangria ?? 200;
+            document.getElementById('pm-alerta-whatsapp').value = dados.alerta_whatsapp ?? '';
         }
 
         async function salvarConfigOperacional() {
@@ -4415,6 +4417,7 @@
                 alerta_desconto_percentual: Number(document.getElementById('pm-alerta-desconto').value || 0),
                 alerta_diferenca_caixa: Number(document.getElementById('pm-alerta-diferenca').value || 0),
                 alerta_sangria: Number(document.getElementById('pm-alerta-sangria').value || 0),
+                alerta_whatsapp: document.getElementById('pm-alerta-whatsapp').value.trim() || null,
             };
             const resp = await fetch(`${base}/config-operacional`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();

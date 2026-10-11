@@ -2391,7 +2391,7 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria']));
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria', 'alerta_whatsapp']));
     }
 
     public function atualizarConfigOperacional(Request $request, string $empresa)
@@ -2407,12 +2407,18 @@ class DashboardController extends Controller
             'alerta_desconto_percentual' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'alerta_diferenca_caixa' => ['sometimes', 'numeric', 'min:0'],
             'alerta_sangria' => ['sometimes', 'numeric', 'min:0'],
+            'alerta_whatsapp' => ['sometimes', 'nullable', 'string', 'max:20'],
         ]);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
+        // WhatsApp dos alertas: guarda só os dígitos (vazio desliga o envio).
+        if (array_key_exists('alerta_whatsapp', $dados)) {
+            $dados['alerta_whatsapp'] = preg_replace('/\D/', '', (string) $dados['alerta_whatsapp']) ?: null;
+        }
+
         $empresaAtual->update($dados);
 
-        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria']));
+        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria', 'alerta_whatsapp']));
     }
 
     // ---- Configuração de gateway de pagamento ----

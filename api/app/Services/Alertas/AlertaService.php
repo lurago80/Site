@@ -2,6 +2,7 @@
 
 namespace App\Services\Alertas;
 
+use App\Jobs\EnviarAlertaWhatsappJob;
 use App\Models\Alerta;
 use App\Models\Empresa;
 use App\Models\Venda;
@@ -79,7 +80,7 @@ class AlertaService
     {
         try {
             // Savepoint: se o insert falhar, a transação da venda/caixa que chamou continua válida.
-            DB::transaction(fn () => Alerta::create([
+            $alerta = DB::transaction(fn () => Alerta::create([
                 'empresa_id' => $empresaId,
                 'tipo' => $tipo,
                 'mensagem' => mb_substr($mensagem, 0, 255),
@@ -87,6 +88,11 @@ class AlertaService
                 'venda_id' => $vendaId,
                 'usuario_id' => auth()->id(),
             ]));
+
+            // Se a empresa informou um WhatsApp para os alertas, avisa em segundo plano (depois do commit).
+            if (! empty(Empresa::whereKey($empresaId)->value('alerta_whatsapp'))) {
+                EnviarAlertaWhatsappJob::dispatch($alerta->id)->afterCommit();
+            }
         } catch (\Throwable $e) {
             report($e);
         }

@@ -79,9 +79,15 @@ class NotificacaoService
         return $this->enviar($agenda->empresa_id, $cliente, null, 'lembrete_visita', $mensagem, $telefone);
     }
 
+    /** Aviso ao administrador (alertas): vai para o WhatsApp configurado nos parâmetros, sem cliente. */
+    public function enviarParaAdministrador(int $empresaId, string $telefone, string $mensagem): Notificacao
+    {
+        return $this->enviar($empresaId, null, null, 'outro', $mensagem, $telefone);
+    }
+
     private function enviar(
         int $empresaId,
-        Cliente $cliente,
+        ?Cliente $cliente,
         ?Venda $venda,
         string $tipo,
         string $mensagem,
@@ -92,13 +98,13 @@ class NotificacaoService
             $gateway = $this->factory->paraEmpresa($config);
             $providerNome = ($config && $config->ativo) ? $config->provider : 'simulado';
 
-            $telefoneDestino = $telefone ?? $cliente->telefone;
+            $telefoneDestino = $telefone ?? $cliente?->telefone;
 
             $resultado = $gateway->enviarMensagem($config ?? new ConfigWhatsapp(), $telefoneDestino, $mensagem);
 
             return Notificacao::create([
                 'empresa_id' => $empresaId,
-                'cliente_id' => $cliente->id,
+                'cliente_id' => $cliente?->id,
                 'venda_id' => $venda?->id,
                 'canal' => 'whatsapp',
                 'tipo' => $tipo,

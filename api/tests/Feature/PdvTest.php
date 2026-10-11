@@ -1382,6 +1382,46 @@ class PdvTest extends TestCase
             ->assertJsonPath('total_receitas', 22)->assertJsonPath('por_canal.pdv', 0);
     }
 
+    public function test_alerta_vai_tambem_para_o_whatsapp_do_administrador_quando_informado(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $base = "/pdv/{$this->empresa->slug}";
+        $dash = "/dashboard/{$this->empresa->slug}";
+        $cortesia = fn () => $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+            'cortesia' => true, 'motivo_desconto' => 'Brinde',
+        ])->assertCreated();
+
+        // Sem WhatsApp cadastrado: o alerta fica só no painel.
+        $cortesia();
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\EnviarAlertaWhatsappJob::class);
+
+        // Com WhatsApp (guarda só os dígitos): o alerta também vai para o celular.
+        $admin = User::create([
+            'name' => 'Admin Zap', 'email' => 'admin-zap@pdv-teste.com', 'password' => bcrypt('senha-teste'),
+            'empresa_id' => $this->empresa->id, 'perfil' => 'admin',
+        ]);
+        $this->actingAs($admin);
+        $this->putJson("$dash/config-operacional", [
+            'estoque_permite_negativo' => false, 'pdv_impressao_direta' => false,
+            'pdv_caixa_pode_cancelar' => false, 'alerta_whatsapp' => '(11) 99999-8888',
+        ])->assertOk()->assertJsonPath('alerta_whatsapp', '11999998888');
+
+        $this->actingAs(User::find($this->usuario->id));
+        $cortesia();
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\EnviarAlertaWhatsappJob::class, 1);
+
+        // O job manda a mensagem (provedor simulado) e registra em notificacoes, sem cliente.
+        $alerta = \App\Models\Alerta::latest('id')->first();
+        (new \App\Jobs\EnviarAlertaWhatsappJob($alerta->id))->handle(app(\App\Services\Notificacao\NotificacaoService::class));
+        $envio = \App\Models\Notificacao::latest('id')->first();
+        $this->assertSame('11999998888', $envio->telefone);
+        $this->assertNull($envio->cliente_id);
+        $this->assertStringContainsString('Cortesia', $envio->mensagem);
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([
