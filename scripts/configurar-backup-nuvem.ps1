@@ -21,7 +21,8 @@
 param(
     [string] $Usuario = 'TERMINAL02\Lurago',
     [string[]] $Hosts = @('192.168.0.23', '100.73.48.102'),
-    [string] $PastaNuvem = 'BackupsProducao'
+    [string] $PastaNuvem = 'BackupsProducao',
+    [switch] $SoAtualizarToken   # troca so o token do Google (mantem senha de criptografia e o que ja esta no Drive)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,6 +44,32 @@ $obj = $entrada | ConvertFrom-Json
 # Formato novo: {"client_id":"","client_secret":"","token":"{...}"} - o token verdadeiro e o campo "token" (texto).
 $token = if ($obj.PSObject.Properties.Name -contains 'token') { [string]$obj.token } else { $entrada }
 if ($token -notmatch '"access_token"' -or $token -notmatch '"refresh_token"') { throw 'Token invalido: nao tem access_token/refresh_token. Rode o rclone authorize de novo.' }
+
+if ($SoAtualizarToken) {
+    $alvoT = $null
+    foreach ($h in $Hosts) { if ((Test-NetConnection $h -Port 5985 -WarningAction SilentlyContinue).TcpTestSucceeded) { $alvoT = $h; break } }
+    if (-not $alvoT) { throw "Producao nao responde em $($Hosts -join ', ')." }
+    $credT = Get-Credential -UserName $Usuario -Message "Senha do Windows da producao ($alvoT)"
+    $sessT = New-PSSession -ComputerName $alvoT -Credential $credT -Authentication Negotiate
+    try {
+        Invoke-Command -Session $sessT -ArgumentList $token {
+            param($novoToken)
+            $dir = 'C:\ProgramData\BackupNuvem'
+            $arq = "$dirclone.conf"
+            $linhas = [IO.File]::ReadAllLines($arq)
+            $trocou = $false
+            $novas = foreach ($l in $linhas) { if ($l -match '^token = ') { "token = $novoToken"; $trocou = $true } else { $l } }
+            if (-not $trocou) { throw 'Nao achei a linha token no rclone.conf.' }
+            [IO.File]::WriteAllLines($arq, $novas, (New-Object Text.UTF8Encoding($false)))
+            'Token trocado. Testando o acesso ao Drive...'
+            & "$dirclone.exe" size 'gdrive-crypt:copia' --config $arq
+            if ($LASTEXITCODE -ne 0) { throw 'O Drive recusou o token novo. Gere outro com rclone authorize.' }
+        }
+        Write-Host 'Pronto: token atualizado, senha de criptografia e backups do Drive mantidos.' -ForegroundColor Green
+    }
+    finally { Remove-PSSession $sessT }
+    return
+}
 
 # --- 2) Senha de criptografia (gerada aqui; mostrada uma vez no fim)
 function Nova-Senha([int]$tamanho) {
