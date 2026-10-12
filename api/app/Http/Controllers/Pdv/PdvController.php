@@ -291,7 +291,8 @@ class PdvController extends Controller
             'tipo_doc' => ['required', 'in:fiscal,nao_fiscal'],
             'vendedor_id' => ['nullable', 'integer'],
             'atendente_id' => ['required', 'integer'],
-            'forma_pagamento_id' => ['required', 'integer'],
+            // Cortesia não tem cobrança: não precisa de forma de pagamento.
+            'forma_pagamento_id' => [\Illuminate\Validation\Rule::requiredIf(fn () => ! $request->boolean('cortesia')), 'nullable', 'integer'],
             'cliente.nome' => ['nullable', 'string', 'max:255'],
             'cliente.cpf_cnpj' => ['nullable', 'string', 'max:18'],
             'cliente.telefone' => ['nullable', 'string', 'max:20'],

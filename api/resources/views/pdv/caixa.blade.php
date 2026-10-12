@@ -725,6 +725,11 @@
             const desconto = descontoSelecionado();
             const valorDesconto = desconto ? calcularDescontoPdv(desconto) : 0;
             document.getElementById('linha-desconto').style.display = valorDesconto > 0 ? '' : 'none';
+            const formaPgto = document.getElementById('forma-pagamento');
+            const ehCortesia = !!desconto?.cortesia;
+            if (ehCortesia) formaPgto.value = '';
+            formaPgto.disabled = ehCortesia;
+            formaPgto.title = ehCortesia ? 'Cortesia não tem cobrança: forma de pagamento dispensada.' : '';
             document.getElementById('linha-motivo-desconto').style.display = desconto ? '' : 'none';
             document.getElementById('linha-total-final').style.display = valorDesconto > 0 ? '' : 'none';
             if (valorDesconto > 0) {
@@ -805,7 +810,8 @@
                 return;
             }
 
-            if (!document.getElementById('forma-pagamento').value) {
+            // Cortesia não é cobrada: dispensa a forma de pagamento.
+            if (!document.getElementById('forma-pagamento').value && !descontoSelecionado()?.cortesia) {
                 msg.className = 'msg erro';
                 msg.textContent = 'Selecione a forma de pagamento antes de finalizar.';
                 return;
@@ -854,7 +860,7 @@
                 tipo_doc: document.getElementById('tipo-doc').value,
                 vendedor_id: document.getElementById('vendedor').value || null,
                 atendente_id: document.getElementById('atendente').value,
-                forma_pagamento_id: document.getElementById('forma-pagamento').value,
+                forma_pagamento_id: descontoSelecionado()?.cortesia ? null : document.getElementById('forma-pagamento').value,
                 cliente: {
                     nome: document.getElementById('cliente-nome').value || null,
                     cpf_cnpj: document.getElementById('cliente-cpf').value || null,

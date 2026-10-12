@@ -1422,6 +1422,33 @@ class PdvTest extends TestCase
         $this->assertStringContainsString('Cortesia', $envio->mensagem);
     }
 
+    public function test_cortesia_dispensa_a_forma_de_pagamento_mas_venda_comum_continua_exigindo(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $corpo = [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ];
+
+        // Venda comum sem forma de pagamento: recusada.
+        $this->postJson("$base/vendas", $corpo)->assertStatus(422)->assertJsonValidationErrors('forma_pagamento_id');
+
+        // Cortesia sem forma de pagamento: vale, fica R$ 0,00 e sem forma gravada (mesmo que venha uma).
+        $semForma = $this->postJson("$base/vendas", $corpo + ['cortesia' => true, 'motivo_desconto' => 'Brinde'])->assertCreated();
+        $semForma->assertJsonPath('valor_total', '0.00');
+        $this->assertNull(\App\Models\Venda::find($semForma->json('id'))->forma_pagamento_id);
+
+        $comForma = $this->postJson("$base/vendas", $corpo + [
+            'cortesia' => true, 'motivo_desconto' => 'Brinde', 'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+        ])->assertCreated();
+        $this->assertNull(\App\Models\Venda::find($comForma->json('id'))->forma_pagamento_id);
+
+        // Extrato do caixa mostra a cortesia como "Cortesia" (não como forma não informada).
+        $this->postJson("$base/caixa-abrir", ['valor' => 10])->assertCreated();
+        $this->postJson("$base/vendas", $corpo + ['cortesia' => true, 'motivo_desconto' => 'Brinde'])->assertCreated();
+        $this->get("$base/caixa-extrato-impressao")->assertOk()->assertSee('Cortesia')->assertDontSee('Não informada');
+    }
+
     public function test_lista_de_visitas_pagas_traz_so_pedidos_pagos_com_visita_hoje(): void
     {
         $visita = Produto::create([

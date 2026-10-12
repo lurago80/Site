@@ -41,6 +41,11 @@ class VendaPdvService
     public function finalizar(Empresa $empresa, array $dados, int $usuarioId): Venda
     {
         return DB::transaction(function () use ($empresa, $dados, $usuarioId) {
+            // Cortesia não é cobrada: a venda fica sem forma de pagamento.
+            if (! empty($dados['cortesia'])) {
+                $dados['forma_pagamento_id'] = null;
+            }
+
             $vendedor = ! empty($dados['vendedor_id'])
                 ? Vendedor::findOrFail($dados['vendedor_id'])
                 : null;

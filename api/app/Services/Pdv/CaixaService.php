@@ -192,7 +192,7 @@ class CaixaService
             ->get();
 
         $porEspecie = $vendas
-            ->groupBy(fn (Venda $v) => $v->formaPagamento?->descricao ?? 'Não informada')
+            ->groupBy(fn (Venda $v) => $v->formaPagamento?->descricao ?? ($v->cortesia ? 'Cortesia' : 'Não informada'))
             ->map(fn ($grupo, $descricao) => [
                 'descricao' => $descricao,
                 'dinheiro' => $grupo->first()->formaPagamento?->tipo === 'dinheiro',
