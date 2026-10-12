@@ -123,7 +123,9 @@ try {
         [IO.File]::WriteAllText("$dir\copiar-para-nuvem.ps1", $scriptCopia, (New-Object Text.UTF8Encoding($true)))
 
         # Pasta so de Administradores e SYSTEM (a configuracao guarda o acesso ao Drive)
-        & icacls $dir /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'BUILTIN\Administrators:(OI)(CI)F' | Out-Null
+        # SIDs (e nao nomes): o grupo se chama "Administradores" em Windows em portugues.
+        & icacls $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Nao consegui proteger a pasta $dir (icacls saiu com $LASTEXITCODE)." }
 
         $acao = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$dir\copiar-para-nuvem.ps1`""
         $gatilho = New-ScheduledTaskTrigger -Daily -At '05:00'
