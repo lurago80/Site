@@ -22,7 +22,7 @@
 param(
     [Parameter(Mandatory)] [string[]] $Arquivos,
     [switch] $Migrar,
-    [string] $Usuario = 'Lurago',
+    [string] $Usuario = 'TERMINAL02\Lurago',   # conta local da produção (nome do computador + usuário)
     [string] $Origem = 'C:\VS_Code\Site\api',
     [string] $Destino = 'C:\VS_Code\Site\api',
     [string] $PhpRemoto = 'C:\PHP84\php.exe',
