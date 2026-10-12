@@ -55,15 +55,20 @@ if ($SoAtualizarToken) {
         Invoke-Command -Session $sessT -ArgumentList $token {
             param($novoToken)
             $dir = 'C:\ProgramData\BackupNuvem'
-            $arq = "$dirclone.conf"
+            $arq = "$dir
+clone.conf"
             $linhas = [IO.File]::ReadAllLines($arq)
             $trocou = $false
             $novas = foreach ($l in $linhas) { if ($l -match '^token = ') { "token = $novoToken"; $trocou = $true } else { $l } }
             if (-not $trocou) { throw 'Nao achei a linha token no rclone.conf.' }
             [IO.File]::WriteAllLines($arq, $novas, (New-Object Text.UTF8Encoding($false)))
             'Token trocado. Testando o acesso ao Drive...'
-            & "$dirclone.exe" size 'gdrive-crypt:copia' --config $arq
+            & "$dir
+clone.exe" size 'gdrive-crypt:copia' --config $arq
             if ($LASTEXITCODE -ne 0) { throw 'O Drive recusou o token novo. Gere outro com rclone authorize.' }
+            # Retoma a copia que ficou pela metade (o rclone pula o que ja foi enviado).
+            Start-ScheduledTask -TaskName 'BackupNuvem'
+            'Copia retomada em segundo plano (tarefa BackupNuvem). Acompanhe em C:\ProgramData\BackupNuvem\copia-nuvem.log'
         }
         Write-Host 'Pronto: token atualizado, senha de criptografia e backups do Drive mantidos.' -ForegroundColor Green
     }
