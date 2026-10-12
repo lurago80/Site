@@ -32,9 +32,17 @@ if (-not $rcloneLocal) { throw 'rclone nao encontrado. Instale com: winget insta
 Write-Host "rclone local: $rcloneLocal" -ForegroundColor Cyan
 
 # --- 1) Token do Google Drive (gerado por: rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ")
-Write-Host "`nCole o token JSON gerado pelo comando 'rclone authorize' (uma linha comecando com { e terminando com }):"
-$token = (Read-Host 'Token').Trim()
-if ($token -notmatch '^\{.*"access_token".*\}$') { throw 'Token invalido: precisa ser o JSON inteiro, com "access_token".' }
+#     Aceita os dois formatos que o rclone entrega: JSON puro ({"access_token":...}) ou o texto codificado (eyJ...).
+Write-Host "`nCole o codigo gerado pelo comando 'rclone authorize' (o texto entre 'Paste the following...' e 'End paste'):"
+$entrada = (Read-Host 'Token').Trim()
+if (-not $entrada.StartsWith('{')) {
+    try { $entrada = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($entrada)) }
+    catch { throw 'Texto nao reconhecido: cole o codigo inteiro gerado pelo rclone authorize.' }
+}
+$obj = $entrada | ConvertFrom-Json
+# Formato novo: {"client_id":"","client_secret":"","token":"{...}"} - o token verdadeiro e o campo "token" (texto).
+$token = if ($obj.PSObject.Properties.Name -contains 'token') { [string]$obj.token } else { $entrada }
+if ($token -notmatch '"access_token"' -or $token -notmatch '"refresh_token"') { throw 'Token invalido: nao tem access_token/refresh_token. Rode o rclone authorize de novo.' }
 
 # --- 2) Senha de criptografia (gerada aqui; mostrada uma vez no fim)
 function Nova-Senha([int]$tamanho) {
