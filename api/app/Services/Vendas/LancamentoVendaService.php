@@ -17,7 +17,8 @@ use Illuminate\Support\Collection;
  *
  * Consumo interno (forma de pagamento "CONSUMO INTERNO") e cortesia não são vendas
  * de verdade (o produto/visita saiu sem cobrança): não geram receita nem desconto,
- * só a despesa do custo dos itens em 001.016.
+ * só a despesa do custo dos itens - cada uma na sua própria conta (001.016 e
+ * 001.017), para não misturar os dois tipos de saída sem receita.
  *
  * Idempotente: refazer o lançamento de uma venda substitui os anteriores.
  * Cancelar a venda apaga os lançamentos (ver estornar()).
@@ -31,6 +32,8 @@ class LancamentoVendaService
     public const CONTA_DESCONTOS = ['codigo' => '001.015', 'nome' => 'DESCONTOS CONCEDIDOS', 'tipo' => 'despesa'];
 
     public const CONTA_CONSUMO_INTERNO = ['codigo' => '001.016', 'nome' => 'CONSUMO INTERNO', 'tipo' => 'despesa'];
+
+    public const CONTA_CORTESIA = ['codigo' => '001.017', 'nome' => 'CORTESIA', 'tipo' => 'despesa'];
 
     public function registrar(Venda $venda): void
     {
@@ -55,7 +58,9 @@ class LancamentoVendaService
             $custoTotal = round((float) $venda->itens->sum('custo_total'), 2);
 
             if ($custoTotal > 0) {
-                $this->lancar($venda, self::CONTA_CONSUMO_INTERNO, 'consumo_interno', $custoTotal, $data, $venda->tipoSemReceita());
+                $conta = $venda->cortesia ? self::CONTA_CORTESIA : self::CONTA_CONSUMO_INTERNO;
+                $origem = $venda->cortesia ? 'cortesia' : 'consumo_interno';
+                $this->lancar($venda, $conta, $origem, $custoTotal, $data, $venda->tipoSemReceita());
             }
 
             return;

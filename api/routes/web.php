@@ -136,6 +136,8 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::delete('/visitas/{agendaId}', [DashboardController::class, 'excluirAgenda']);
 
     Route::get('/produtos', [DashboardController::class, 'produtos']);
+    Route::get('/inventario-historico', [DashboardController::class, 'inventarioHistorico']);
+    Route::get('/inventario-historico-datas', [DashboardController::class, 'inventarioDatasDisponiveis']);
     Route::post('/produtos', [DashboardController::class, 'criarProduto']);
     Route::put('/produtos/{produtoId}', [DashboardController::class, 'atualizarProduto']);
     Route::get('/produtos/{produtoId}/variacoes', [DashboardController::class, 'variacoesProduto']);

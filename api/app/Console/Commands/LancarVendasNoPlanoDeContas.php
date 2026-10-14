@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 #[Signature('app:lancar-vendas-plano-contas {--empresa= : Só esta empresa (id)} {--refazer : Refaz também as vendas que já têm lançamento} {--simular : Só conta, sem gravar}')]
-#[Description('Lança no plano de contas (002.001, 002.002, 001.015, 001.016) as vendas pagas que ainda não têm lançamento.')]
+#[Description('Lança no plano de contas (002.001, 002.002, 001.015, 001.016, 001.017) as vendas pagas que ainda não têm lançamento.')]
 class LancarVendasNoPlanoDeContas extends Command
 {
     public function handle(LancamentoVendaService $lancamentos): int

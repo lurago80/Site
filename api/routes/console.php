@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('app:liberar-reservas-expiradas')->everyMinute()->withoutOverlapping();
 Schedule::command('app:enviar-lembretes-visita')->dailyAt('09:00')->withoutOverlapping();
+Schedule::command('app:gerar-inventario-diario')->dailyAt('22:00')->withoutOverlapping();

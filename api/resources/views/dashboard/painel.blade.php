@@ -504,6 +504,42 @@
                     <p class="msg" id="msg-produtos-lista"></p>
                     <p class="msg" id="msg-produtos"></p>
                 </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Inventário para contagem de estoque</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Lista de produtos/tamanhos com estoque no sistema e uma coluna em branco para o funcionário
+                        anotar a contagem física. Não entram kits nem produtos sem controle de estoque.
+                    </p>
+                    <label style="font-size:12px;"><input type="checkbox" id="inv-incluir-inativos"> Incluir produtos inativos</label>
+                    <div class="linha-form" style="margin-top:8px;">
+                        <div><button class="secundario" onclick="imprimirInventarioA4()">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirInventarioCupom()">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarInventarioExcel()">Exportar Excel</button></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Inventário de um dia anterior</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Todo dia às 22h o sistema grava sozinho uma fotografia do estoque de cada produto/tamanho.
+                        Escolha uma data para ver, imprimir ou exportar o inventário daquele dia específico.
+                    </p>
+                    <div class="linha-form">
+                        <div><label>Data</label><select id="inv-hist-data"></select></div>
+                        <div><button class="secundario" onclick="carregarInventarioHistorico()">Consultar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Produto</th><th>Estoque gravado</th></tr></thead>
+                        <tbody id="tbody-inventario-historico"></tbody>
+                    </table>
+                    <p class="msg" id="msg-inventario-historico"></p>
+                    <div class="linha-form" id="acoes-inventario-historico" style="margin-top:8px; display:none;">
+                        <div><button class="secundario" onclick="imprimirInventarioHistoricoA4()">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirInventarioHistoricoCupom()">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarInventarioHistoricoExcel()">Exportar Excel</button></div>
+                    </div>
+                </div>
             </section>
 
             <section id="secao-pedidos-loja" class="secao">
@@ -1826,7 +1862,7 @@
         const carregadores = {
             dashboard: carregarIndicadores,
             agenda: carregarAgenda,
-            produtos: () => { carregarProdutos(); carregarGrupos(); },
+            produtos: () => { carregarProdutos(); carregarGrupos(); carregarDatasInventarioHistorico(); },
             'pedidos-loja': carregarPedidosLoja,
             nfe: carregarNfe,
             clientes: carregarClientes,
@@ -2013,6 +2049,134 @@
                     </td>
                 </tr>
             `).join('') || '<tr><td colspan="11">Nenhum produto cadastrado.</td></tr>';
+        }
+
+        // ---- Inventário para contagem de estoque ----
+
+        /** Uma linha por item com estoque proprio (produto sem variacao, ou cada variacao/tamanho). */
+        function montarLinhasInventario() {
+            const incluirInativos = document.getElementById('inv-incluir-inativos').checked;
+            const linhas = [];
+
+            produtosCache
+                .filter(p => (incluirInativos || p.ativo) && !p.eh_kit)
+                .forEach(p => {
+                    if (p.variacoes && p.variacoes.length) {
+                        p.variacoes
+                            .filter(v => incluirInativos || v.ativo !== false)
+                            .forEach(v => {
+                                // Variação vinculada (ex.: sabor que usa o estoque de um produto genérico): mostra o estoque de quem realmente controla.
+                                const estoque = v.produto_vinculado ? v.produto_vinculado.estoque_atual : v.estoque_atual;
+                                if (estoque === null || estoque === undefined) return;
+                                linhas.push({ produto: `${p.nome} (${v.tamanho})`, estoque });
+                            });
+                        return;
+                    }
+                    if (p.estoque_atual === null || p.estoque_atual === undefined) return;
+                    linhas.push({ produto: p.nome, estoque: p.estoque_atual });
+                });
+
+            return linhas.sort((a, b) => a.produto.localeCompare(b.produto, 'pt-BR'));
+        }
+
+        function dataHoraAgora() {
+            return new Date().toLocaleString('pt-BR');
+        }
+
+        function imprimirInventarioA4() {
+            const linhas = montarLinhasInventario();
+            if (!linhas.length) { alert('Nenhum produto com estoque controlado para inventariar.'); return; }
+            const corpo = `
+                <h2>Gerado em ${dataHoraAgora()}</h2>
+                <table>
+                    <thead><tr><th>Produto</th><th class="n">Estoque no sistema</th><th class="n">Contagem física</th></tr></thead>
+                    <tbody>${linhas.map(l => `
+                        <tr><td>${esc(l.produto)}</td><td class="n">${l.estoque}</td><td class="n">&nbsp;</td></tr>
+                    `).join('')}</tbody>
+                </table>`;
+            abrirJanelaImpressao('Inventário de Estoque', corpo, false);
+        }
+
+        function imprimirInventarioCupom() {
+            const linhas = montarLinhasInventario();
+            if (!linhas.length) { alert('Nenhum produto com estoque controlado para inventariar.'); return; }
+            const corpo = `
+                <h2>${dataHoraAgora()}</h2>
+                <div class="sep"></div>
+                ${linhas.map(l => `
+                    <table><tr><td>${esc(l.produto)}</td></tr><tr><td>Sistema: ${l.estoque} &nbsp;|&nbsp; Contagem: ____</td></tr></table>
+                    <div class="sep"></div>
+                `).join('')}`;
+            abrirJanelaImpressao('Inventário de Estoque', corpo, true);
+        }
+
+        function exportarInventarioExcel() {
+            const linhas = montarLinhasInventario();
+            if (!linhas.length) { alert('Nenhum produto com estoque controlado para inventariar.'); return; }
+            const csv = [['Produto', 'Estoque no sistema', 'Contagem física']]
+                .concat(linhas.map(l => [csvTxt(l.produto), csvNum(l.estoque), '']));
+            baixarCsv(`inventario-estoque_${new Date().toISOString().slice(0, 10)}.csv`, csv);
+        }
+
+        // ---- Inventário histórico (fotografia gravada todo dia às 22h) ----
+
+        let inventarioHistoricoAtual = null;
+
+        async function carregarDatasInventarioHistorico() {
+            const sel = document.getElementById('inv-hist-data');
+            const resp = await fetch(`${base}/inventario-historico-datas`);
+            const datas = await resp.json();
+            sel.innerHTML = datas.length
+                ? datas.map(d => `<option value="${d}">${new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')}</option>`).join('')
+                : '<option value="">Nenhum inventário gravado ainda</option>';
+        }
+
+        async function carregarInventarioHistorico() {
+            const data = document.getElementById('inv-hist-data').value;
+            const msg = document.getElementById('msg-inventario-historico');
+            const acoes = document.getElementById('acoes-inventario-historico');
+            if (!data) { msg.className = 'msg erro'; msg.textContent = 'Escolha uma data.'; return; }
+
+            const resp = await fetch(`${base}/inventario-historico?data=${data}`);
+            const resultado = await resp.json();
+            inventarioHistoricoAtual = resultado;
+
+            document.getElementById('tbody-inventario-historico').innerHTML = resultado.linhas.map(l => `
+                <tr><td>${esc(l.produto)}</td><td>${l.estoque}</td></tr>
+            `).join('') || '<tr><td colspan="2">Sem inventário gravado nesta data.</td></tr>';
+
+            msg.className = resultado.gerado ? 'msg ok' : 'msg erro';
+            msg.textContent = resultado.gerado ? '' : 'Nenhum inventário encontrado para esta data.';
+            acoes.style.display = resultado.gerado ? '' : 'none';
+        }
+
+        function imprimirInventarioHistoricoA4() {
+            if (!inventarioHistoricoAtual?.gerado) return;
+            const d = inventarioHistoricoAtual;
+            const corpo = `
+                <h2>Inventário de ${new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR')}</h2>
+                <table>
+                    <thead><tr><th>Produto</th><th class="n">Estoque gravado</th></tr></thead>
+                    <tbody>${d.linhas.map(l => `<tr><td>${esc(l.produto)}</td><td class="n">${l.estoque}</td></tr>`).join('')}</tbody>
+                </table>`;
+            abrirJanelaImpressao('Inventário Histórico', corpo, false);
+        }
+
+        function imprimirInventarioHistoricoCupom() {
+            if (!inventarioHistoricoAtual?.gerado) return;
+            const d = inventarioHistoricoAtual;
+            const corpo = `
+                <h2>${new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR')}</h2>
+                <div class="sep"></div>
+                ${d.linhas.map(l => `<table><tr><td>${esc(l.produto)}</td><td style="text-align:right;">${l.estoque}</td></tr></table>`).join('')}`;
+            abrirJanelaImpressao('Inventário Histórico', corpo, true);
+        }
+
+        function exportarInventarioHistoricoExcel() {
+            if (!inventarioHistoricoAtual?.gerado) return;
+            const d = inventarioHistoricoAtual;
+            const csv = [['Produto', 'Estoque gravado']].concat(d.linhas.map(l => [csvTxt(l.produto), csvNum(l.estoque)]));
+            baixarCsv(`inventario-historico_${d.data}.csv`, csv);
         }
 
         // Sem movimento: exclui. Com movimento (vendas, compras, notas, agenda, kit): desativa.

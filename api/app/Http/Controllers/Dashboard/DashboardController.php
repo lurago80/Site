@@ -24,6 +24,7 @@ use App\Models\FreteRegra;
 use App\Models\KitComponente;
 use App\Models\GravaBanco;
 use App\Models\Grupo;
+use App\Models\InventarioSnapshot;
 use App\Models\ItemVenda;
 use App\Models\PlanoContas;
 use App\Models\Produto;
@@ -183,6 +184,51 @@ class DashboardController extends Controller
                 ->orderBy('nome')
                 ->get()
         );
+    }
+
+    /**
+     * Inventário de um dia específico (fotografia gravada às 22h pelo comando
+     * app:gerar-inventario-diario) - para consultar o estoque de uma data
+     * passada, mesmo que o produto já tenha mudado de estoque ou sido excluído.
+     */
+    public function inventarioHistorico(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data' => ['required', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $linhas = InventarioSnapshot::where('empresa_id', $empresaAtual->id)
+            ->where('data', $dados['data'])
+            ->orderBy('nome')
+            ->orderBy('tamanho')
+            ->get()
+            ->map(fn (InventarioSnapshot $i) => [
+                'produto' => $i->tamanho ? "{$i->nome} ({$i->tamanho})" : $i->nome,
+                'estoque' => $i->estoque,
+            ]);
+
+        return response()->json([
+            'data' => $dados['data'],
+            'linhas' => $linhas,
+            'gerado' => $linhas->isNotEmpty(),
+        ]);
+    }
+
+    /** Datas com inventário gravado, mais recentes primeiro - para o seletor de data não deixar escolher um dia sem registro. */
+    public function inventarioDatasDisponiveis(Request $request, string $empresa)
+    {
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $datas = InventarioSnapshot::where('empresa_id', $empresaAtual->id)
+            ->distinct()
+            ->orderByDesc('data')
+            ->limit(120)
+            ->pluck('data')
+            ->map(fn ($d) => $d->toDateString());
+
+        return response()->json($datas);
     }
 
     /**
@@ -1474,6 +1520,7 @@ class DashboardController extends Controller
         $receitaServicos = round((float) ($porOrigem['receita_servicos'] ?? 0), 2);
         $descontos = round((float) ($porOrigem['desconto'] ?? 0), 2);
         $consumoInterno = round((float) ($porOrigem['consumo_interno'] ?? 0), 2);
+        $cortesia = round((float) ($porOrigem['cortesia'] ?? 0), 2);
 
         // Memo: faturamento bruto e custo só das vendas com receita (consumo interno/cortesia ficam de fora).
         $itens = \App\Models\ItemVenda::whereIn('venda_id', (clone $lancamentos)->whereIn('origem', ['receita_produtos', 'receita_servicos'])->select('venda_id'));
@@ -1487,7 +1534,11 @@ class DashboardController extends Controller
 
         $despesas = PlanoContas::where('empresa_id', $empresaAtual->id)
             ->where('tipo', 'despesa')
-            ->whereNotIn('codigo', [LancamentoVendaService::CONTA_DESCONTOS['codigo'], LancamentoVendaService::CONTA_CONSUMO_INTERNO['codigo']])
+            ->whereNotIn('codigo', [
+                LancamentoVendaService::CONTA_DESCONTOS['codigo'],
+                LancamentoVendaService::CONTA_CONSUMO_INTERNO['codigo'],
+                LancamentoVendaService::CONTA_CORTESIA['codigo'],
+            ])
             ->orderBy('codigo')
             ->get()
             ->map(fn (PlanoContas $p) => [
@@ -1501,14 +1552,23 @@ class DashboardController extends Controller
             ->filter(fn (array $linha) => $linha['total'] != 0)
             ->values();
 
-        // 001.016 vem dos lançamentos de consumo interno e cortesia (custo dos itens), não de contas a pagar.
+        // 001.016 e 001.017 vêm dos lançamentos de consumo interno e cortesia (custo dos
+        // itens), separados, não de contas a pagar.
         if ($consumoInterno != 0) {
             $despesas = $despesas->push([
                 'codigo' => LancamentoVendaService::CONTA_CONSUMO_INTERNO['codigo'],
-                'nome' => 'CONSUMO INTERNO / CORTESIAS',
+                'nome' => LancamentoVendaService::CONTA_CONSUMO_INTERNO['nome'],
                 'total' => $consumoInterno,
-            ])->sortBy('codigo')->values();
+            ]);
         }
+        if ($cortesia != 0) {
+            $despesas = $despesas->push([
+                'codigo' => LancamentoVendaService::CONTA_CORTESIA['codigo'],
+                'nome' => LancamentoVendaService::CONTA_CORTESIA['nome'],
+                'total' => $cortesia,
+            ]);
+        }
+        $despesas = $despesas->sortBy('codigo')->values();
 
         $totalReceitas = round($receitaProdutos + $receitaServicos, 2);
         $totalDespesas = round((float) $despesas->sum('total'), 2);
