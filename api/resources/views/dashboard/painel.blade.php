@@ -730,11 +730,12 @@
                     </table>
                     <p class="msg" id="msg-vendedores"></p>
                 </div>
-                <div class="card">
+                <div class="card" id="card-relatorio-vendedores">
                     <h2 style="font-size:14px; margin-top:0;">Relatório de vendas por vendedor</h2>
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="ver-inicio"></div>
                         <div><label>Até</label><input type="date" id="ver-fim"></div>
+                        <div><label>Vendedor</label><select id="ver-pessoa"><option value="">Todos os vendedores</option></select></div>
                         <div><label>Canal</label><select id="ver-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><label>Tipo</label>
                             <select id="ver-tipo">
@@ -749,6 +750,23 @@
                         <thead><tr><th>Vendedor</th><th>Chave PIX</th><th>Vendas</th><th>Itens</th><th>Valor total</th></tr></thead>
                         <tbody id="tbody-relatorio-vendedores"></tbody>
                     </table>
+                    <div class="linha-form" style="margin-top:8px;">
+                        <div><button class="secundario" onclick="imprimirRelatorioPessoaA4('vendedor')">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioPessoaCupom('vendedor')">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioPessoaExcel('vendedor')">Exportar Excel</button></div>
+                        <div><button class="secundario" onclick="carregarItensPorPessoa('vendedor')">Ver produtos e serviços de cada vendedor</button></div>
+                    </div>
+                    <p class="msg" id="msg-relatorio-vendedores"></p>
+                </div>
+
+                <div class="card" id="card-itens-vendedor" style="display:none;">
+                    <h2 style="font-size:14px; margin-top:0;">Produtos e serviços por vendedor</h2>
+                    <div id="itens-por-vendedor"></div>
+                    <div class="linha-form" style="margin-top:8px;">
+                        <div><button class="secundario" onclick="imprimirRelatorioItensPessoaA4('vendedor')">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioItensPessoaCupom('vendedor')">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioItensPessoaExcel('vendedor')">Exportar Excel</button></div>
+                    </div>
                 </div>
             </section>
 
@@ -792,11 +810,12 @@
                     </table>
                     <p class="msg" id="msg-atendentes"></p>
                 </div>
-                <div class="card">
+                <div class="card" id="card-relatorio-atendentes">
                     <h2 style="font-size:14px; margin-top:0;">Relatório de vendas por atendente</h2>
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="atr-inicio"></div>
                         <div><label>Até</label><input type="date" id="atr-fim"></div>
+                        <div><label>Atendente</label><select id="atr-pessoa"><option value="">Todos os atendentes</option></select></div>
                         <div><label>Canal</label><select id="atr-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
                         <div><label>Tipo</label>
                             <select id="atr-tipo">
@@ -811,6 +830,23 @@
                         <thead><tr><th>Atendente</th><th>Vendas</th><th>Itens</th><th>Valor total</th></tr></thead>
                         <tbody id="tbody-relatorio-atendentes"></tbody>
                     </table>
+                    <div class="linha-form" style="margin-top:8px;">
+                        <div><button class="secundario" onclick="imprimirRelatorioPessoaA4('atendente')">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioPessoaCupom('atendente')">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioPessoaExcel('atendente')">Exportar Excel</button></div>
+                        <div><button class="secundario" onclick="carregarItensPorPessoa('atendente')">Ver produtos e serviços de cada atendente</button></div>
+                    </div>
+                    <p class="msg" id="msg-relatorio-atendentes"></p>
+                </div>
+
+                <div class="card" id="card-itens-atendente" style="display:none;">
+                    <h2 style="font-size:14px; margin-top:0;">Produtos e serviços por atendente</h2>
+                    <div id="itens-por-atendente"></div>
+                    <div class="linha-form" style="margin-top:8px;">
+                        <div><button class="secundario" onclick="imprimirRelatorioItensPessoaA4('atendente')">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioItensPessoaCupom('atendente')">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioItensPessoaExcel('atendente')">Exportar Excel</button></div>
+                    </div>
                 </div>
             </section>
 
@@ -943,7 +979,7 @@
                         <div><button class="secundario" onclick="marcarAlertasLidas()">Marcar todos como lidos</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Quando</th><th>Tipo</th><th>Alerta</th><th>Valor</th><th>Venda</th></tr></thead>
+                        <thead><tr><th>Quando</th><th>Tipo</th><th>Alerta</th><th>Valor</th><th>Venda</th><th>WhatsApp</th></tr></thead>
                         <tbody id="tbody-alertas"></tbody>
                     </table>
                     <p class="msg" id="msg-alertas"></p>
@@ -1051,6 +1087,7 @@
             <section id="secao-plano-contas" class="secao">
                 <h1>Plano de Contas</h1>
                 <div class="card">
+                    <input type="hidden" id="pc-id">
                     <div class="linha-form">
                         <div><label>Código</label><input type="text" id="pc-codigo" style="width:90px"></div>
                         <div><label>Nome</label><input type="text" id="pc-nome"></div>
@@ -1060,10 +1097,17 @@
                                 <option value="receita">Receita (contas a receber)</option>
                             </select>
                         </div>
-                        <div><button class="acao" onclick="criarPlanoContas()">Cadastrar</button></div>
+                        <div><label>Ativo</label>
+                            <select id="pc-ativo">
+                                <option value="1">Sim</option>
+                                <option value="0">Não</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" id="pc-botao" onclick="salvarPlanoContas()">Cadastrar</button></div>
+                        <div><button class="secundario" onclick="limparFormularioPlanoContas()" style="display:none;" id="pc-cancelar">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Código</th><th>Nome</th><th>Tipo</th></tr></thead>
+                        <thead><tr><th>Código</th><th>Nome</th><th>Tipo</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-plano-contas"></tbody>
                     </table>
                     <p class="msg" id="msg-plano-contas"></p>
@@ -1119,7 +1163,7 @@
                 <div class="card">
                     <h2 style="font-size:14px; margin-top:0;">Vendas do período</h2>
                     <table>
-                        <thead><tr><th>#</th><th>Data</th><th>Canal</th><th>Atendente</th><th>Vendedor</th><th>Forma pgto.</th><th>Itens</th><th>Desconto</th><th>Total</th></tr></thead>
+                        <thead><tr><th>#</th><th>Data</th><th>Canal</th><th>Atendente</th><th>Vendedor</th><th>Forma pgto.</th><th>Itens</th><th>Desconto</th><th>Total</th><th></th></tr></thead>
                         <tbody id="tbody-rv-vendas"></tbody>
                     </table>
                     <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-rv-vendas"></p>
@@ -1148,6 +1192,7 @@
                         <thead><tr><th>Produto</th><th>Valor vendido</th><th>%</th><th>% acumulado</th><th>Classe</th></tr></thead>
                         <tbody id="tbody-rv-abc"></tbody>
                     </table>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-rv-abc"></p>
                 </div>
 
                 <div class="card">
@@ -1254,6 +1299,21 @@
                     <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
                         Usado quando um horário da agenda é criado sem custo. Entra no cálculo da receita de serviços (valor − custo − desconto).
                         Mudar aqui não altera horários já cadastrados.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h2>Agenda de visitas — brinde por visitante</h2>
+                    <div class="linha-form">
+                        <div>
+                            <label>Produto baixado a cada visita (ex.: caneca de chopp)</label>
+                            <select id="pm-brinde-visita" style="width:280px"><option value="">Nenhum (desligado)</option></select>
+                        </div>
+                    </div>
+                    <p style="font-size:11px; color:var(--cor-texto-suave); margin:4px 0 0;">
+                        A cada visitante que efetivar a visita, baixa 1 unidade deste produto do estoque.
+                        No PDV a baixa ocorre na hora da venda; na loja online só na validação do ticket na portaria.
+                        Deixe em branco para não baixar nada automaticamente.
                     </p>
                 </div>
 
@@ -2889,6 +2949,11 @@
         async function carregarVendedores() {
             const resp = await fetch(`${base}/vendedores`);
             vendedoresCache = await resp.json();
+            const selPessoa = document.getElementById('ver-pessoa');
+            if (selPessoa) {
+                selPessoa.innerHTML = '<option value="">Todos os vendedores</option>' +
+                    vendedoresCache.map(v => `<option value="${v.id}">${esc(v.nome)}</option>`).join('');
+            }
             document.getElementById('tbody-vendedores').innerHTML = vendedoresCache.map(v => `
                 <tr>
                     <td>${esc(v.nome)}</td>
@@ -2948,6 +3013,11 @@
         async function carregarAtendentes() {
             const resp = await fetch(`${base}/atendentes`);
             atendentesCache = await resp.json();
+            const selPessoa = document.getElementById('atr-pessoa');
+            if (selPessoa) {
+                selPessoa.innerHTML = '<option value="">Todos os atendentes</option>' +
+                    atendentesCache.map(a => `<option value="${a.id}">${esc(a.nome)}</option>`).join('');
+            }
             document.getElementById('tbody-atendentes').innerHTML = atendentesCache.map(a => `
                 <tr>
                     <td>${a.nome}</td>
@@ -3081,8 +3151,9 @@
                     <td>${esc(a.mensagem)}</td>
                     <td>${a.valor != null ? 'R$ ' + Number(a.valor).toFixed(2).replace('.', ',') : '-'}</td>
                     <td>${a.venda_id ?? '-'}</td>
+                    <td>${a.whatsapp_enviado ? '<span class="selo ok">Enviado</span>' : '-'}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="5">Nenhum alerta.</td></tr>';
+            `).join('') || '<tr><td colspan="6">Nenhum alerta.</td></tr>';
         }
 
         async function marcarAlertasLidas() {
@@ -3175,36 +3246,200 @@
                 </tr>` : '';
         }
 
-        async function carregarRelatorioAtendentes() {
+        // ---- Relatório por vendedor/atendente: filtros, impressão (A4/cupom) e Excel ----
+
+        const CONFIG_RELATORIO_PESSOA = {
+            vendedor: { prefixo: 'ver', endpoint: 'vendedores-relatorio', endpointItens: 'vendedores-itens-relatorio', titulo: 'Vendedor', tbody: 'tbody-relatorio-vendedores', msg: 'msg-relatorio-vendedores', divItens: 'itens-por-vendedor', cardItens: 'card-itens-vendedor' },
+            atendente: { prefixo: 'atr', endpoint: 'atendentes-relatorio', endpointItens: 'atendentes-itens-relatorio', titulo: 'Atendente', tbody: 'tbody-relatorio-atendentes', msg: 'msg-relatorio-atendentes', divItens: 'itens-por-atendente', cardItens: 'card-itens-atendente' },
+        };
+
+        function montarParamsRelatorioPessoa(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
             const params = new URLSearchParams();
-            const inicio = document.getElementById('atr-inicio').value;
-            const fim = document.getElementById('atr-fim').value;
+            const inicio = document.getElementById(`${cfg.prefixo}-inicio`).value;
+            const fim = document.getElementById(`${cfg.prefixo}-fim`).value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
-            params.set('canal', document.getElementById('atr-canal').value);
-            params.set('tipo', document.getElementById('atr-tipo').value);
+            params.set('canal', document.getElementById(`${cfg.prefixo}-canal`).value);
+            params.set('tipo', document.getElementById(`${cfg.prefixo}-tipo`).value);
+            const pessoaId = document.getElementById(`${cfg.prefixo}-pessoa`)?.value;
+            if (pessoaId) params.set('pessoa_id', pessoaId);
+            return { params, inicio, fim, pessoaId };
+        }
 
+        async function carregarRelatorioAtendentes() {
+            const { params, inicio, fim } = montarParamsRelatorioPessoa('atendente');
             const resp = await fetch(`${base}/atendentes-relatorio?${params}`);
             const lista = await resp.json();
+            ultimosRelatorios.atendente = { linhas: lista, inicio, fim };
             document.getElementById('tbody-relatorio-atendentes').innerHTML = lista.map(r => `
-                <tr><td>${r.nome}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
-            `).join('') || '<tr><td colspan="4">Nenhum atendente cadastrado.</td></tr>';
+                <tr><td>${esc(r.nome)}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+            `).join('') || '<tr><td colspan="4">Nenhum atendente encontrado.</td></tr>';
+            document.getElementById('card-itens-atendente').style.display = 'none';
         }
 
         async function carregarRelatorioVendedores() {
-            const params = new URLSearchParams();
-            const inicio = document.getElementById('ver-inicio').value;
-            const fim = document.getElementById('ver-fim').value;
-            if (inicio) params.set('data_inicio', inicio);
-            if (fim) params.set('data_fim', fim);
-            params.set('canal', document.getElementById('ver-canal').value);
-            params.set('tipo', document.getElementById('ver-tipo').value);
-
+            const { params, inicio, fim } = montarParamsRelatorioPessoa('vendedor');
             const resp = await fetch(`${base}/vendedores-relatorio?${params}`);
             const lista = await resp.json();
+            ultimosRelatorios.vendedor = { linhas: lista, inicio, fim };
             document.getElementById('tbody-relatorio-vendedores').innerHTML = lista.map(r => `
                 <tr><td>${esc(r.nome)}</td><td>${esc(r.chave_pix || '-')}</td><td>${r.vendas_count}</td><td>${r.itens_count}</td><td>R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
-            `).join('') || '<tr><td colspan="5">Nenhum vendedor cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="5">Nenhum vendedor encontrado.</td></tr>';
+            document.getElementById('card-itens-vendedor').style.display = 'none';
+        }
+
+        /** Janela de impressão genérica: A4 (retrato normal) ou cupom (80mm, igual ao PDV). */
+        function abrirJanelaImpressao(titulo, corpoHtml, cupom) {
+            const janela = window.open('', '_blank', cupom ? 'width=380,height=640' : 'width=900,height=700');
+            const estiloA4 = `
+                body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #000; margin: 16px; }
+                h1 { font-size: 16px; margin: 0 0 4px; } h2 { font-size: 13px; margin: 0 0 12px; color: #444; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                th, td { border: 1px solid #ccc; padding: 4px 6px; font-size: 12px; text-align: left; }
+                th { background: #f0f0f0; } td.n, th.n { text-align: right; }
+                tfoot td { font-weight: 700; }
+                @media print { @page { size: A4; margin: 14mm; } }
+            `;
+            const estiloCupom = `
+                @page { size: 80mm auto; margin: 0; }
+                body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 700; color: #000; width: 80mm; margin: 0 auto; padding: 8px; }
+                h1 { font-size: 13px; text-align: center; margin: 0 0 2px; } h2 { font-size: 11px; text-align: center; margin: 0 0 8px; font-weight: normal; }
+                table { width: 100%; border-collapse: collapse; } td, th { padding: 2px 0; font-size: 11px; }
+                .sep { border-top: 1px dashed #000; margin: 6px 0; }
+                .btn-imprimir { display: block; width: 100%; margin-top: 10px; padding: 8px; font-size: 13px; cursor: pointer; }
+                @media print { .btn-imprimir { display: none; } }
+            `;
+            janela.document.write(`
+                <!doctype html>
+                <html lang="pt-BR"><head><meta charset="utf-8"><title>${titulo}</title>
+                <style>${cupom ? estiloCupom : estiloA4}</style>
+                </head><body>
+                    <h1>${titulo}</h1>
+                    ${corpoHtml}
+                    ${cupom ? '<button class="btn-imprimir" onclick="window.print()">Imprimir</button>' : ''}
+                </body></html>
+            `);
+            janela.document.close();
+            if (!cupom) { janela.onload = () => janela.print(); }
+        }
+
+        function tituloPeriodo(inicio, fim) {
+            return `Período: ${inicio ? new Date(inicio + 'T00:00:00').toLocaleDateString('pt-BR') : 'início'} a ${fim ? new Date(fim + 'T00:00:00').toLocaleDateString('pt-BR') : 'hoje'}`;
+        }
+
+        function imprimirRelatorioPessoaA4(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
+            const d = ultimosRelatorios[tipoPessoa];
+            if (!d) { alert('Consulte o relatório antes de imprimir.'); return; }
+            const corpo = `
+                <h2>Relatório de vendas por ${cfg.titulo.toLowerCase()} - ${tituloPeriodo(d.inicio, d.fim)}</h2>
+                <table>
+                    <thead><tr><th>${cfg.titulo}</th>${tipoPessoa === 'vendedor' ? '<th>Chave PIX</th>' : ''}<th class="n">Vendas</th><th class="n">Itens</th><th class="n">Valor total</th></tr></thead>
+                    <tbody>${d.linhas.map(r => `
+                        <tr><td>${esc(r.nome)}</td>${tipoPessoa === 'vendedor' ? `<td>${esc(r.chave_pix || '-')}</td>` : ''}<td class="n">${r.vendas_count}</td><td class="n">${r.itens_count}</td><td class="n">R$ ${Number(r.valor_total).toFixed(2)}</td></tr>
+                    `).join('')}</tbody>
+                </table>`;
+            abrirJanelaImpressao(`Relatório de ${cfg.titulo}s`, corpo, false);
+        }
+
+        function imprimirRelatorioPessoaCupom(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
+            const d = ultimosRelatorios[tipoPessoa];
+            if (!d) { alert('Consulte o relatório antes de imprimir.'); return; }
+            const corpo = `
+                <h2>${tituloPeriodo(d.inicio, d.fim)}</h2>
+                <div class="sep"></div>
+                ${d.linhas.map(r => `
+                    <div>${esc(r.nome)}</div>
+                    <table><tr><td>${r.vendas_count} venda(s), ${r.itens_count} item(ns)</td><td style="text-align:right;">R$ ${Number(r.valor_total).toFixed(2)}</td></tr></table>
+                    <div class="sep"></div>
+                `).join('')}`;
+            abrirJanelaImpressao(`Relatório de ${cfg.titulo}s`, corpo, true);
+        }
+
+        function exportarRelatorioPessoaExcel(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
+            const d = ultimosRelatorios[tipoPessoa];
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const cabecalho = tipoPessoa === 'vendedor'
+                ? ['Vendedor', 'Chave PIX', 'Vendas', 'Itens', 'Valor total']
+                : ['Atendente', 'Vendas', 'Itens', 'Valor total'];
+            const linhas = [cabecalho].concat(d.linhas.map(r => tipoPessoa === 'vendedor'
+                ? [csvTxt(r.nome), csvTxt(r.chave_pix || ''), r.vendas_count, r.itens_count, csvNum(r.valor_total)]
+                : [csvTxt(r.nome), r.vendas_count, r.itens_count, csvNum(r.valor_total)]));
+            baixarCsv(`relatorio-${tipoPessoa}s_${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}.csv`, linhas);
+        }
+
+        /** Produtos e serviços de cada vendedor/atendente: uma tabela por pessoa. */
+        async function carregarItensPorPessoa(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
+            const { params, inicio, fim } = montarParamsRelatorioPessoa(tipoPessoa);
+            const resp = await fetch(`${base}/${cfg.endpointItens}?${params}`);
+            const lista = await resp.json();
+            ultimosRelatorios[`${tipoPessoa}_itens`] = { linhas: lista, inicio, fim };
+
+            document.getElementById(cfg.divItens).innerHTML = lista.map(p => `
+                <h3 style="font-size:13px; margin:14px 0 4px;">${esc(p.pessoa)} <span style="color:var(--cor-texto-suave); font-weight:normal;">(${p.totais.itens} item(ns), R$ ${Number(p.totais.valor_total).toFixed(2)})</span></h3>
+                <table>
+                    <thead><tr><th>Venda</th><th>Data</th><th>Produto/serviço</th><th>Variação</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
+                    <tbody>${(p.itens.length ? p.itens.map(i => `
+                        <tr><td>${i.venda_id}</td><td>${i.data}</td><td>${esc(i.produto)}</td><td>${esc(i.variacao || '-')}</td>
+                            <td>${i.quantidade}</td><td>R$ ${Number(i.valor_unitario).toFixed(2)}</td><td>R$ ${Number(i.valor_total).toFixed(2)}</td></tr>
+                    `).join('') : '<tr><td colspan="7">Nenhum produto/serviço no período.</td></tr>')}</tbody>
+                </table>
+            `).join('') || '<p>Nenhuma pessoa encontrada.</p>';
+            document.getElementById(cfg.cardItens).style.display = '';
+            document.getElementById(cfg.cardItens).scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function imprimirRelatorioItensPessoaA4(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
+            const d = ultimosRelatorios[`${tipoPessoa}_itens`];
+            if (!d) { alert('Consulte "Ver produtos e serviços" antes de imprimir.'); return; }
+            const corpo = `
+                <h2>Produtos e serviços por ${cfg.titulo.toLowerCase()} - ${tituloPeriodo(d.inicio, d.fim)}</h2>
+                ${d.linhas.map(p => `
+                    <h2 style="margin-top:16px;">${esc(p.pessoa)} - ${p.totais.itens} item(ns), R$ ${Number(p.totais.valor_total).toFixed(2)}</h2>
+                    <table>
+                        <thead><tr><th>Venda</th><th>Data</th><th>Produto/serviço</th><th>Variação</th><th class="n">Qtd</th><th class="n">Unit.</th><th class="n">Total</th></tr></thead>
+                        <tbody>${(p.itens.length ? p.itens.map(i => `
+                            <tr><td>${i.venda_id}</td><td>${i.data}</td><td>${esc(i.produto)}</td><td>${esc(i.variacao || '-')}</td>
+                                <td class="n">${i.quantidade}</td><td class="n">R$ ${Number(i.valor_unitario).toFixed(2)}</td><td class="n">R$ ${Number(i.valor_total).toFixed(2)}</td></tr>
+                        `).join('') : '<tr><td colspan="7">Nenhum produto/serviço no período.</td></tr>')}</tbody>
+                    </table>
+                `).join('')}`;
+            abrirJanelaImpressao(`Produtos e serviços por ${cfg.titulo}`, corpo, false);
+        }
+
+        function imprimirRelatorioItensPessoaCupom(tipoPessoa) {
+            const cfg = CONFIG_RELATORIO_PESSOA[tipoPessoa];
+            const d = ultimosRelatorios[`${tipoPessoa}_itens`];
+            if (!d) { alert('Consulte "Ver produtos e serviços" antes de imprimir.'); return; }
+            const corpo = `
+                <h2>${tituloPeriodo(d.inicio, d.fim)}</h2>
+                ${d.linhas.map(p => `
+                    <div class="sep"></div>
+                    <div><strong>${esc(p.pessoa)}</strong></div>
+                    ${(p.itens.length ? p.itens.map(i => `
+                        <div>${i.quantidade}x ${esc(i.produto)}${i.variacao ? ' (' + esc(i.variacao) + ')' : ''}</div>
+                        <table><tr><td>Venda #${i.venda_id} - ${i.data}</td><td style="text-align:right;">R$ ${Number(i.valor_total).toFixed(2)}</td></tr></table>
+                    `).join('') : '<div>Nenhum produto/serviço no período.</div>')}
+                    <table><tr><td><strong>Total</strong></td><td style="text-align:right;"><strong>R$ ${Number(p.totais.valor_total).toFixed(2)}</strong></td></tr></table>
+                `).join('')}`;
+            abrirJanelaImpressao(`Produtos por ${cfg.titulo}`, corpo, true);
+        }
+
+        function exportarRelatorioItensPessoaExcel(tipoPessoa) {
+            const d = ultimosRelatorios[`${tipoPessoa}_itens`];
+            if (!d) { alert('Consulte "Ver produtos e serviços" antes de exportar.'); return; }
+            const linhas = [['Pessoa', 'Venda', 'Data', 'Produto/serviço', 'Variação', 'Quantidade', 'Valor unitário', 'Valor total']];
+            d.linhas.forEach(p => {
+                if (!p.itens.length) { linhas.push([csvTxt(p.pessoa), '', '', '(nenhum produto/serviço no período)', '', '', '', '']); return; }
+                p.itens.forEach(i => linhas.push([csvTxt(p.pessoa), i.venda_id, i.data, csvTxt(i.produto), csvTxt(i.variacao || ''), i.quantidade, csvNum(i.valor_unitario), csvNum(i.valor_total)]));
+                linhas.push([csvTxt(p.pessoa), '', '', 'Total', '', p.totais.quantidade, '', csvNum(p.totais.valor_total)]);
+            });
+            baixarCsv(`produtos-servicos-${tipoPessoa}s_${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}.csv`, linhas);
         }
 
         async function carregarRelatorioIndicacoes() {
@@ -3522,27 +3757,60 @@
 
         // ---- Plano de contas ----
 
+        let planoContasCache = [];
+
         async function carregarPlanoContas() {
             const resp = await fetch(`${base}/plano-contas`);
-            const lista = await resp.json();
-            document.getElementById('tbody-plano-contas').innerHTML = lista.map(p => `
-                <tr><td>${p.codigo ?? '-'}</td><td>${p.nome}</td><td>${p.tipo}</td></tr>
-            `).join('') || '<tr><td colspan="3">Nenhuma categoria cadastrada.</td></tr>';
+            planoContasCache = await resp.json();
+            document.getElementById('tbody-plano-contas').innerHTML = planoContasCache.map(p => `
+                <tr>
+                    <td>${p.codigo ?? '-'}</td>
+                    <td>${p.nome}</td>
+                    <td>${p.tipo}</td>
+                    <td>${p.ativo ? 'Sim' : 'Não'}</td>
+                    <td><button class="secundario" onclick="editarPlanoContas(${p.id})">Editar</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhuma categoria cadastrada.</td></tr>';
         }
 
-        async function criarPlanoContas() {
+        function editarPlanoContas(id) {
+            const p = planoContasCache.find(x => x.id === id);
+            if (!p) return;
+            document.getElementById('pc-id').value = p.id;
+            document.getElementById('pc-codigo').value = p.codigo ?? '';
+            document.getElementById('pc-nome').value = p.nome;
+            document.getElementById('pc-tipo').value = p.tipo;
+            document.getElementById('pc-ativo').value = p.ativo ? '1' : '0';
+            document.getElementById('pc-botao').textContent = 'Salvar edição';
+            document.getElementById('pc-cancelar').style.display = 'inline-block';
+            document.getElementById('secao-plano-contas').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function limparFormularioPlanoContas() {
+            document.getElementById('pc-id').value = '';
+            document.getElementById('pc-codigo').value = '';
+            document.getElementById('pc-nome').value = '';
+            document.getElementById('pc-tipo').value = 'despesa';
+            document.getElementById('pc-ativo').value = '1';
+            document.getElementById('pc-botao').textContent = 'Cadastrar';
+            document.getElementById('pc-cancelar').style.display = 'none';
+        }
+
+        async function salvarPlanoContas() {
+            const id = document.getElementById('pc-id').value;
             const dados = {
                 codigo: document.getElementById('pc-codigo').value || null,
                 nome: document.getElementById('pc-nome').value,
                 tipo: document.getElementById('pc-tipo').value,
+                ativo: document.getElementById('pc-ativo').value === '1',
             };
-            const resp = await fetch(`${base}/plano-contas`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const url = id ? `${base}/plano-contas/${id}` : `${base}/plano-contas`;
+            const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();
             const msg = document.getElementById('msg-plano-contas');
             if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
-            msg.className = 'msg ok'; msg.textContent = 'Categoria cadastrada.';
-            document.getElementById('pc-codigo').value = '';
-            document.getElementById('pc-nome').value = '';
+            msg.className = 'msg ok'; msg.textContent = id ? 'Categoria atualizada.' : 'Categoria cadastrada.';
+            limparFormularioPlanoContas();
             carregarPlanoContas();
             carregarSelectsFinanceiro();
         }
@@ -3602,6 +3870,35 @@
                 linha('Receitas da loja online (dentro do total de receitas)', r.por_canal.site, memo);
         }
 
+        // ---- Cancelamento de pedidos (retaguarda) ----
+
+        async function abrirCancelamentoPedido(vendaId) {
+            const responsavel = (prompt(`Cancelar o pedido #${vendaId}.\n\nInforme quem está fazendo o cancelamento (nome do responsável):`) || '').trim();
+            if (!responsavel) return;
+
+            const motivo = (prompt('Informe o motivo do cancelamento (mínimo de 15 caracteres):') || '').trim();
+            if (!motivo) return;
+
+            const msg = document.getElementById('msg-relatorios-vendas');
+
+            if (motivo.length < 15) {
+                msg.className = 'msg erro'; msg.textContent = 'Motivo muito curto: informe pelo menos 15 caracteres.';
+                return;
+            }
+
+            if (!confirm(`Confirma o cancelamento do pedido #${vendaId} por "${responsavel}"?\n\nMotivo: ${motivo}`)) return;
+
+            const motivoCompleto = `Cancelado por ${responsavel}: ${motivo}`;
+
+            const resp = await fetch(`${base}/vendas/${vendaId}/cancelar`, {
+                method: 'POST', headers: headersJson, body: JSON.stringify({ motivo: motivoCompleto }),
+            });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || 'Não foi possível cancelar o pedido.'; return; }
+            msg.className = 'msg ok'; msg.textContent = `Pedido #${vendaId} cancelado.`;
+            carregarRelatoriosVendas();
+        }
+
         // ---- Relatórios de vendas ----
 
         async function carregarRelatoriosVendas() {
@@ -3634,13 +3931,17 @@
                         <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
                         <td>${esc(v.forma_pagamento ?? '-')}</td><td>${v.itens}</td>
                         <td>${brl(v.valor_desconto)}</td><td>${brl(v.valor_total)}</td>
+                        <td>${v.status_pagamento === 'cancelado'
+                            ? '<span class="selo info">Cancelada</span>'
+                            : (v.canal === 'pdv' ? `<button class="secundario" onclick="abrirCancelamentoPedido(${v.id})">Cancelar</button>` : '')}</td>
                     </tr>
-                `).join('') || '<tr><td colspan="9">Nenhuma venda no período.</td></tr>';
+                `).join('') || '<tr><td colspan="10">Nenhuma venda no período.</td></tr>';
                 document.getElementById('totais-rv-vendas').textContent =
                     `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns) - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}` +
                     (vendas.fora_do_total.vendas ? ` | Fora do total (consumo interno / cortesia): ${vendas.fora_do_total.vendas} venda(s), ${brl(vendas.fora_do_total.valor_total)}` : '');
                 document.getElementById('totais-rv-vendas').textContent +=
-                    ` | PDV: ${vendas.por_canal.pdv.vendas} venda(s), ${brl(vendas.por_canal.pdv.valor_total)} | Loja online: ${vendas.por_canal.site.vendas} venda(s), ${brl(vendas.por_canal.site.valor_total)}`;
+                    ` | PDV: ${vendas.por_canal.pdv.vendas} venda(s), ${brl(vendas.por_canal.pdv.valor_total)} | Loja online: ${vendas.por_canal.site.vendas} venda(s), ${brl(vendas.por_canal.site.valor_total)}` +
+                    (vendas.canceladas.vendas ? ` | Canceladas (fora do total): ${vendas.canceladas.vendas} venda(s), ${brl(vendas.canceladas.valor_total)}` : '');
 
                 document.getElementById('tbody-rv-itens').innerHTML = itens.linhas.map(i => `
                     <tr>
@@ -3650,7 +3951,8 @@
                     </tr>
                 `).join('') || '<tr><td colspan="8">Nenhum item no período.</td></tr>';
                 document.getElementById('totais-rv-itens').textContent =
-                    `${itens.totais.itens} linha(s) - ${itens.totais.quantidade} unidade(s) - total ${brl(itens.totais.valor_total)} - custo ${brl(itens.totais.custo_total)}`;
+                    `${itens.totais.itens} linha(s) - ${itens.totais.quantidade} unidade(s) - total ${brl(itens.totais.valor_total)} - custo ${brl(itens.totais.custo_total)}` +
+                    (itens.cancelados.itens ? ` | Cancelados (fora do total): ${itens.cancelados.itens} linha(s), ${itens.cancelados.quantidade} unidade(s), ${brl(itens.cancelados.valor_total)}` : '');
 
                 document.getElementById('tbody-rv-mais-vendidos').innerHTML = maisVendidos.linhas.map(p => `
                     <tr><td>${esc(p.produto)}</td><td>${p.quantidade}</td><td>${brl(p.valor_total)}</td></tr>
@@ -3663,6 +3965,8 @@
                         <td><strong>${p.classe}</strong></td>
                     </tr>
                 `).join('') || '<tr><td colspan="5">Nenhum produto vendido no período.</td></tr>';
+                document.getElementById('totais-rv-abc').textContent =
+                    abc.canceladas.vendas ? `Canceladas (fora da curva): ${abc.canceladas.vendas} venda(s), ${brl(abc.canceladas.valor_total)}` : '';
 
                 document.getElementById('tbody-rv-lucratividade').innerHTML = lucratividade.linhas.map(p => `
                     <tr>
@@ -4405,6 +4709,13 @@
             document.getElementById('pm-alerta-diferenca').value = dados.alerta_diferenca_caixa ?? 5;
             document.getElementById('pm-alerta-sangria').value = dados.alerta_sangria ?? 200;
             document.getElementById('pm-alerta-whatsapp').value = dados.alerta_whatsapp ?? '';
+
+            if (! produtosCache.length) {
+                produtosCache = await (await fetch(`${base}/produtos`)).json();
+            }
+            document.getElementById('pm-brinde-visita').innerHTML = '<option value="">Nenhum (desligado)</option>' +
+                produtosCache.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+            document.getElementById('pm-brinde-visita').value = dados.produto_brinde_visita_id ?? '';
         }
 
         async function salvarConfigOperacional() {
@@ -4413,6 +4724,7 @@
                 pdv_impressao_direta: document.getElementById('pm-impressao-direta').checked,
                 pdv_caixa_pode_cancelar: document.getElementById('pm-caixa-cancela').checked,
                 custo_visita_padrao: Number(document.getElementById('pm-custo-visita').value || 0),
+                produto_brinde_visita_id: document.getElementById('pm-brinde-visita').value || null,
                 operacao_inicio: document.getElementById('pm-operacao-inicio').value || null,
                 alerta_desconto_percentual: Number(document.getElementById('pm-alerta-desconto').value || 0),
                 alerta_diferenca_caixa: Number(document.getElementById('pm-alerta-diferenca').value || 0),

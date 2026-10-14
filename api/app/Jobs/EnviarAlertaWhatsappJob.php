@@ -36,6 +36,10 @@ class EnviarAlertaWhatsappJob implements ShouldQueue
             return;
         }
 
-        $notificacaoService->enviarParaAdministrador($alerta->empresa_id, $telefone, "⚠️ Alerta: {$alerta->mensagem}");
+        $notificacao = $notificacaoService->enviarParaAdministrador($alerta->empresa_id, $telefone, "⚠️ Alerta: {$alerta->mensagem}");
+
+        if ($notificacao->status === 'enviado') {
+            $alerta->update(['whatsapp_enviado_em' => now()]);
+        }
     }
 }

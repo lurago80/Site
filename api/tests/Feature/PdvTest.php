@@ -16,6 +16,7 @@ use App\Models\ProdutoVariacao;
 use App\Models\User;
 use App\Models\Atendente;
 use App\Models\Vendedor;
+use App\Models\Venda;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\InteractsWithTenantContext;
 use Tests\TestCase;
@@ -36,6 +37,8 @@ class PdvTest extends TestCase
     private Atendente $atendentePadrao;
 
     private FormaPagamento $formaPagamentoPadrao;
+
+    private Vendedor $vendedorPadrao;
 
     protected function setUp(): void
     {
@@ -78,6 +81,10 @@ class PdvTest extends TestCase
         $this->formaPagamentoPadrao = FormaPagamento::create([
             'empresa_id' => $this->empresa->id, 'descricao' => 'Dinheiro',
             'tipo' => 'dinheiro', 'codigo_tpag' => '01', 'ativo' => true,
+        ]);
+        $this->vendedorPadrao = Vendedor::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Vendedor Padrão', 'telefone' => '11999990000',
+            'chave_pix' => 'vendedor@padrao.com', 'percentual_comissao' => 5, 'ativo' => true,
         ]);
     }
 
@@ -486,8 +493,10 @@ class PdvTest extends TestCase
             'ativo' => true, 'chave_pix' => 'pix@exemplo.com',
         ]);
 
-        $this->getJson("/pdv/{$this->empresa->slug}/vendedores")
-            ->assertOk()->assertJsonPath('0.nome', 'Vendedor Pix')->assertJsonMissingPath('0.chave_pix');
+        $resposta = $this->getJson("/pdv/{$this->empresa->slug}/vendedores")->assertOk();
+        $vendedores = collect($resposta->json());
+        $this->assertTrue($vendedores->contains('nome', 'Vendedor Pix'));
+        $this->assertFalse($vendedores->contains(fn ($v) => array_key_exists('chave_pix', $v)));
     }
 
     public function test_pdv_cadastra_vendedor_com_comissao_fixa_de_5_por_cento(): void
@@ -538,6 +547,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 2,
@@ -546,6 +556,126 @@ class PdvTest extends TestCase
         $response->assertCreated();
         $response->assertJsonPath('valor_total', '120.00');
         $this->assertSame(3, $agenda->fresh()->vagasDisponiveis());
+    }
+
+    /** Visita vencida continua vendável por até 8h (pedido do cliente: atraso do visitante). */
+    public function test_lista_de_visitas_do_pdv_mantem_vencida_a_venda_dentro_de_8h_e_bloqueia_depois(): void
+    {
+        $dentroDaTolerancia = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->subHours(7),
+            'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+        $foraDaTolerancia = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->subHours(9),
+            'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+        $futura = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+
+        $resposta = $this->getJson("/pdv/{$this->empresa->slug}/visitas")->assertOk();
+        $lista = collect($resposta->json())->keyBy('id');
+
+        // Dentro da tolerância: já passou do horário, mas ainda pode vender.
+        $this->assertTrue($lista[$dentroDaTolerancia->id]['vencida']);
+        $this->assertTrue($lista[$dentroDaTolerancia->id]['disponivel']);
+
+        // Fora da tolerância (mais de 8h): nem aparece mais na lista.
+        $this->assertFalse($lista->has($foraDaTolerancia->id));
+
+        // Futura: normal, disponível e não marcada como vencida.
+        $this->assertFalse($lista[$futura->id]['vencida']);
+        $this->assertTrue($lista[$futura->id]['disponivel']);
+    }
+
+    public function test_venda_de_visita_no_pdv_baixa_o_brinde_configurado(): void
+    {
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca Chopp 300ml', 'tipo' => 'fisico',
+            'preco_venda' => 0, 'estoque_atual' => 10,
+        ]);
+        $this->empresa->update(['produto_brinde_visita_id' => $caneca->id]);
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+
+        $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
+            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'agenda_visitacao_id' => $agenda->id,
+            'agenda_quantidade' => 2,
+        ]);
+
+        $response->assertCreated();
+        // A baixa já acontece na hora da venda - o PDV paga sempre na hora.
+        $this->assertSame(8, $caneca->fresh()->estoque_atual);
+    }
+
+    public function test_venda_na_loja_online_so_baixa_o_brinde_no_checkin(): void
+    {
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca Chopp 300ml', 'tipo' => 'fisico',
+            'preco_venda' => 0, 'estoque_atual' => 10,
+        ]);
+        $this->empresa->update(['produto_brinde_visita_id' => $caneca->id]);
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'vagas_reservadas' => 2, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'site', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 120, 'data_venda' => now(),
+        ]);
+        $venda->itens()->create([
+            'empresa_id' => $this->empresa->id, 'agenda_visitacao_id' => $agenda->id,
+            'quantidade' => 2, 'valor_unitario' => 60, 'valor_total' => 120,
+        ]);
+
+        // Antes do check-in, a venda da loja ainda não baixou o brinde.
+        $this->assertSame(10, $caneca->fresh()->estoque_atual);
+
+        $checkIn = $this->postJson("/pdv/{$this->empresa->slug}/verificar/{$venda->id}/check-in", [
+            'atendente_id' => $this->atendentePadrao->id,
+        ]);
+
+        $checkIn->assertOk();
+        $this->assertSame(8, $caneca->fresh()->estoque_atual);
+    }
+
+    public function test_checkin_bloqueia_sem_estoque_do_brinde(): void
+    {
+        $caneca = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca Chopp 300ml', 'tipo' => 'fisico',
+            'preco_venda' => 0, 'estoque_atual' => 1,
+        ]);
+        $this->empresa->update(['produto_brinde_visita_id' => $caneca->id]);
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'vagas_reservadas' => 2, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'site', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 120, 'data_venda' => now(),
+        ]);
+        $venda->itens()->create([
+            'empresa_id' => $this->empresa->id, 'agenda_visitacao_id' => $agenda->id,
+            'quantidade' => 2, 'valor_unitario' => 60, 'valor_total' => 120,
+        ]);
+
+        $checkIn = $this->postJson("/pdv/{$this->empresa->slug}/verificar/{$venda->id}/check-in", [
+            'atendente_id' => $this->atendentePadrao->id,
+        ]);
+
+        $checkIn->assertStatus(409);
+        $this->assertNull($venda->fresh()->check_in_em);
+        $this->assertSame(1, $caneca->fresh()->estoque_atual);
     }
 
     public function test_venda_falha_sem_atendente_ou_sem_forma_pagamento(): void
@@ -579,6 +709,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // R$18, sem desconto
             'agenda_visitacao_id' => $agenda->id,
@@ -608,6 +739,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // 15% de R$100 seria R$15, mas o teto (1 ticket) é R$12
@@ -643,6 +775,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]], // 2 x 18 = 36
             'agenda_visitacao_id' => $agenda->id,
@@ -666,6 +799,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // 18, sem desconto
             'agenda_visitacao_id' => $agenda->id,
@@ -687,6 +821,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1,
@@ -733,6 +868,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // 18 -> 1,80
             'agenda_visitacao_id' => $agenda->id,
@@ -1067,6 +1203,7 @@ class PdvTest extends TestCase
         // 2 x R$ 18 (custo 7) + 2 visitas de R$ 50 (custo 10), 50% de desconto nas visitas (R$ 50)
         $venda = $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
             'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
             'agenda_visitacao_id' => $agenda->id, 'agenda_quantidade' => 2,
@@ -1417,9 +1554,13 @@ class PdvTest extends TestCase
         $alerta = \App\Models\Alerta::latest('id')->first();
         (new \App\Jobs\EnviarAlertaWhatsappJob($alerta->id))->handle(app(\App\Services\Notificacao\NotificacaoService::class));
         $envio = \App\Models\Notificacao::latest('id')->first();
-        $this->assertSame('11999998888', $envio->telefone);
+        // O parâmetro guarda só DDD + número; o envio em si acrescenta o DDI 55.
+        $this->assertSame('5511999998888', $envio->telefone);
         $this->assertNull($envio->cliente_id);
         $this->assertStringContainsString('Cortesia', $envio->mensagem);
+
+        // Envio confirmado (provedor simulado sempre responde "enviado") marca o alerta.
+        $this->assertNotNull($alerta->fresh()->whatsapp_enviado_em);
     }
 
     public function test_cortesia_dispensa_a_forma_de_pagamento_mas_venda_comum_continua_exigindo(): void

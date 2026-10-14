@@ -13,7 +13,13 @@ use App\Services\Fiscal\EmissaoFiscalService;
 use App\Services\Fiscal\ExportacaoFiscalService;
 use App\Services\Fiscal\OperacoesNfe;
 use Illuminate\Http\Request;
+use App\Models\ConfigWhatsapp;
+use App\Models\Notificacao;
+use App\Services\Notificacao\NotificacaoGatewayFactory;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Painel de gestão fiscal: cancelamento, inutilização de numeração,
@@ -47,25 +53,46 @@ class GestaoFiscalController extends Controller
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
+        // "Inutilizada" não existe como status gravado (é uma faixa homologada em numeracao_inutilizada):
+        // busca sem filtro de status no banco e filtra pelo status exibido, que já considera a inutilização.
+        $statusFiltro = $filtros['status'] ?? null;
+
         $documentos = $this->exportacaoFiscalService->relatorio(
             $empresaAtual,
             $filtros['data_inicio'] ?? null,
             $filtros['data_fim'] ?? null,
-            $filtros['status'] ?? null,
+            $statusFiltro === 'inutilizada' ? null : $statusFiltro,
             $filtros['modelo'] ?? null,
         );
 
-        return response()->json($documentos->map(fn (DocumentoFiscal $d) => [
+        // Número que foi inutilizado na SEFAZ não é mais "rejeitado": exibe como inutilizada.
+        $inutilizacoes = \App\Models\NumeracaoInutilizada::where('empresa_id', $empresaAtual->id)
+            ->where('status', 'homologada')->get();
+
+        $inutilizacaoDe = fn (DocumentoFiscal $d) => in_array($d->status, ['rejeitada', 'contingencia'], true)
+            ? $inutilizacoes->first(fn ($i) => (int) $i->modelo === (int) $d->modelo
+                && (string) $i->serie === (string) $d->serie
+                && $d->numero >= $i->numero_inicial && $d->numero <= $i->numero_final)
+            : null;
+
+        $linhas = $documentos->map(fn (DocumentoFiscal $d) => [
             'id' => $d->id,
             'modelo' => $d->modelo,
             'serie' => $d->serie,
             'numero' => $d->numero,
-            'status' => $d->status,
+            'status' => $inutilizacaoDe($d) ? 'inutilizada' : $d->status,
             'chave_acesso' => $d->chave_acesso,
+            'motivo' => ($i = $inutilizacaoDe($d)) ? "Numeração inutilizada na SEFAZ (protocolo {$i->protocolo})" : $d->motivo_cancelamento,
             'total' => $d->total,
             'documento_fiscal_origem_id' => $d->documento_fiscal_origem_id,
             'created_at' => $d->created_at,
-        ]));
+        ]);
+
+        if ($statusFiltro) {
+            $linhas = $linhas->filter(fn (array $l) => $l['status'] === $statusFiltro);
+        }
+
+        return response()->json($linhas->values());
     }
 
     public function vendasNaoFiscais(Request $request, string $empresa)
@@ -426,11 +453,107 @@ class GestaoFiscalController extends Controller
 
     public function reimprimir(Request $request, string $empresa, int $documentoId)
     {
-        $documento = DocumentoFiscal::with(['itens.produto', 'venda.cliente', 'cliente', 'empresa', 'compra.fornecedor'])->findOrFail($documentoId);
+        $documento = DocumentoFiscal::with(['itens.produto', 'venda.cliente', 'venda.itens.agendaVisitacao', 'cliente', 'empresa', 'compra.fornecedor'])->findOrFail($documentoId);
 
         $view = $documento->modelo === 55 ? 'fiscal.nfe' : 'fiscal.cupom';
 
         return view($view, ['documento' => $documento]);
+    }
+
+    /**
+     * Envia o documento (link do cupom/DANFE + chave de acesso) ao cliente
+     * por WhatsApp ou e-mail. O link é assinado e expira em 90 dias, para
+     * abrir sem login no celular do destinatário.
+     */
+    public function enviar(Request $request, string $empresa, int $documentoId, NotificacaoGatewayFactory $factory)
+    {
+        $dados = $request->validate([
+            'canal' => ['required', 'in:whatsapp,email'],
+            'destino' => ['required', 'string', 'max:150'],
+        ]);
+
+        $documento = DocumentoFiscal::with(['empresa', 'venda.cliente'])->findOrFail($documentoId);
+
+        if (! in_array($documento->status, ['autorizada', 'cancelada'], true)) {
+            return response()->json(['message' => 'Só é possível enviar documentos autorizados.'], 422);
+        }
+
+        $tipo = $documento->modelo === 55 ? 'NF-e' : 'NFC-e';
+        // Assinatura sobre o caminho relativo + origem do APP_URL: o APP_URL já
+        // inclui o ROUTE_PREFIX, então route() absoluto duplicaria o "/app".
+        $origem = parse_url((string) config('app.url'), PHP_URL_SCHEME).'://'.parse_url((string) config('app.url'), PHP_URL_HOST)
+            .(parse_url((string) config('app.url'), PHP_URL_PORT) ? ':'.parse_url((string) config('app.url'), PHP_URL_PORT) : '');
+        $link = $origem.URL::temporarySignedRoute('documento-fiscal.publico', now()->addDays(90), ['documentoId' => $documento->id], absolute: false);
+        $razao = $documento->empresa->razao_social;
+        $mensagem = "Olá! Segue a {$tipo} nº {$documento->numero} (série {$documento->serie}) de {$razao}, no valor de R$ "
+            .number_format($documento->total, 2, ',', '.').".\n\nVisualizar/imprimir: {$link}\n\nChave de acesso: {$documento->chave_acesso}";
+
+        if ($dados['canal'] === 'whatsapp') {
+            $telefone = preg_replace('/\D/', '', $dados['destino']);
+            if (strlen($telefone) < 10) {
+                return response()->json(['message' => 'Informe o celular com DDD.'], 422);
+            }
+            if (strlen($telefone) <= 11) {
+                $telefone = '55'.$telefone;
+            }
+
+            $config = ConfigWhatsapp::where('empresa_id', $documento->empresa_id)->first();
+            $resultado = $factory->paraEmpresa($config)->enviarMensagem($config ?? new ConfigWhatsapp(), $telefone, $mensagem);
+
+            Notificacao::create([
+                'empresa_id' => $documento->empresa_id,
+                'cliente_id' => $documento->venda?->cliente?->id,
+                'venda_id' => $documento->venda_id,
+                'canal' => 'whatsapp',
+                'tipo' => 'outro',
+                'telefone' => $telefone,
+                'mensagem' => $mensagem,
+                'provider' => ($config && $config->ativo) ? $config->provider : 'simulado',
+                'status' => $resultado->status,
+                'referencia_externa' => $resultado->referenciaExterna,
+                'payload_retorno' => $resultado->payloadBruto,
+            ]);
+
+            if ($resultado->status !== 'enviado') {
+                return response()->json(['message' => 'Não foi possível enviar pelo WhatsApp. Verifique a conexão em Configurações → WhatsApp.'], 422);
+            }
+
+            return response()->json(['message' => 'Enviado por WhatsApp.']);
+        }
+
+        $email = trim($dados['destino']);
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return response()->json(['message' => 'E-mail inválido.'], 422);
+        }
+
+        try {
+            Mail::html(nl2br(e($mensagem)).'<br><br>O XML da nota segue em anexo.', function ($m) use ($email, $documento, $tipo, $razao) {
+                $m->to($email)->subject("{$tipo} nº {$documento->numero} - {$razao}");
+                if (! empty($documento->xml_path) && is_file($documento->xml_path)) {
+                    $m->attach($documento->xml_path, ['as' => basename($documento->xml_path), 'mime' => 'application/xml']);
+                }
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => 'Falha ao enviar o e-mail. Verifique a configuração de e-mail do servidor.'], 422);
+        }
+
+        return response()->json(['message' => 'Enviado por e-mail.']);
+    }
+
+    /**
+     * Visualização pública (link assinado) do cupom/DANFE, sem login.
+     * O contexto de RLS é aberto aqui porque não há usuário autenticado -
+     * a assinatura da URL é que autoriza o acesso a este documento.
+     */
+    public function visualizarPublico(Request $request, int $documentoId)
+    {
+        DB::statement("SELECT set_config('app.is_super_admin', 'true', false)");
+
+        $documento = DocumentoFiscal::with(['itens.produto', 'venda.cliente', 'venda.itens.agendaVisitacao', 'cliente', 'empresa', 'compra.fornecedor'])->findOrFail($documentoId);
+
+        return view($documento->modelo === 55 ? 'fiscal.nfe' : 'fiscal.cupom', ['documento' => $documento]);
     }
 
     public function exportarXmls(Request $request, string $empresa)

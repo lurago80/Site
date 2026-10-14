@@ -146,6 +146,9 @@
             display: flex; align-items: center; justify-content: space-between; gap: 8px;
         }
         .agenda-item button { flex-shrink: 0; padding: 5px 12px; }
+        .agenda-item.vencida { opacity: 0.55; }
+        .agenda-item .tag-vencida { color: var(--danger, #d9534f); font-weight: 600; margin-left: 6px; }
+        .agenda-item .tag-atrasada { color: var(--warn, #e0b95c); font-weight: 600; margin-left: 6px; }
 
         /* Carrinho */
         .carrinho-tabela-wrap { flex: 1; min-height: 80px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev-2); }
@@ -320,12 +323,20 @@
 
             <div class="linha">
                 <div class="campo">
-                    <label for="vendedor">Vendedor</label>
+                    <label for="vendedor" id="label-vendedor">Vendedor</label>
                     <select id="vendedor"><option value="">Sem vendedor (guia)</option></select>
                 </div>
                 <div class="campo">
                     <label for="atendente">Atendente *</label>
                     <select id="atendente"><option value="">Selecione o atendente</option></select>
+                </div>
+            </div>
+
+            <div class="linha" id="linha-indicacao" style="display:none;">
+                <div class="campo">
+                    <label for="venda-indicacao">Indicação (como chegou até nós)</label>
+                    <input type="text" id="venda-indicacao" list="lista-indicacoes-venda" maxlength="120" autocomplete="off" placeholder="Digite para buscar ou cadastrar uma nova" oninput="normalizarCampoIndicacao(this)" style="width:100%; text-transform:uppercase;">
+                    <datalist id="lista-indicacoes-venda"></datalist>
                 </div>
             </div>
 
@@ -629,11 +640,12 @@
             const resp = await fetch(`${base}/visitas`);
             const horarios = await resp.json();
             document.getElementById('lista-agenda').innerHTML = horarios.map(a => `
-                <div class="agenda-item">
+                <div class="agenda-item${a.disponivel ? '' : ' vencida'}">
                     ${new Date(a.data_hora).toLocaleString('pt-BR')} — ${a.vagas_disponiveis} vagas — R$ ${Number(a.valor_visita).toFixed(2)}
-                    <button class="secundario" style="float:right;" onclick="adicionarAgenda(${a.id}, '${a.data_hora}', ${a.valor_visita}, ${a.vagas_disponiveis})">+</button>
+                    ${!a.disponivel ? '<span class="tag-vencida">ENCERRADA</span>' : a.vencida ? '<span class="tag-atrasada">ATRASADA</span>' : ''}
+                    <button class="secundario" style="float:right;" ${a.disponivel ? '' : 'disabled title="Horário encerrado - não pode mais ser vendido"'} onclick="adicionarAgenda(${a.id}, '${a.data_hora}', ${a.valor_visita}, ${a.vagas_disponiveis})">+</button>
                 </div>
-            `).join('') || '<p style="color:#9aa5b1; font-size:12px;">Nenhum horário em aberto.</p>';
+            `).join('') || '<p style="color:#9aa5b1; font-size:12px;">Nenhum horário cadastrado.</p>';
         }
 
         let vendedoresCache = [];
@@ -658,7 +670,7 @@
             const resp = await fetch(`${base}/vendedores`);
             vendedoresCache = await resp.json();
             document.getElementById('vendedor').innerHTML = '<option value="">Sem vendedor (guia)</option>' +
-                vendedoresCache.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('');
+                vendedoresCache.map(v => `<option value="${v.id}">${v.nome}</option>`).join('');
         }
 
         async function carregarAtendentes() {
@@ -737,6 +749,13 @@
                 document.getElementById('valor-desconto').textContent = `- R$ ${valorDesconto.toFixed(2)}`;
                 document.getElementById('total-final').textContent = `R$ ${(total - valorDesconto).toFixed(2)}`;
             }
+
+            // Venda de visita precisa de vendedor e de indicação (como o
+            // cliente chegou até a visita) - só exigido quando há visita.
+            const temVisita = carrinho.some(i => i.tipo === 'agenda');
+            document.getElementById('label-vendedor').textContent = temVisita ? 'Vendedor *' : 'Vendedor';
+            document.getElementById('linha-indicacao').style.display = temVisita ? '' : 'none';
+            document.getElementById('lista-indicacoes-venda').innerHTML = indicacoesCache.map(i => `<option value="${escapeHtml(i.nome)}"></option>`).join('');
         }
 
         let descontosPdvCache = [];
@@ -856,6 +875,13 @@
             }
 
             const agendaItem = carrinho.find(i => i.tipo === 'agenda');
+
+            if (agendaItem && !document.getElementById('vendedor').value) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Informe o vendedor para vender uma visita agendada.';
+                return;
+            }
+
             const dados = {
                 tipo_doc: document.getElementById('tipo-doc').value,
                 vendedor_id: document.getElementById('vendedor').value || null,
@@ -872,6 +898,7 @@
                 desconto_pdv_id: descontoPdv && !descontoPdv.cortesia ? descontoPdv.id : null,
                 cortesia: !!(descontoPdv && descontoPdv.cortesia),
                 motivo_desconto: descontoPdv ? motivoDesconto : null,
+                indicacao: agendaItem ? (document.getElementById('venda-indicacao').value || null) : null,
             };
 
             btn.disabled = true;
@@ -912,6 +939,7 @@
             document.getElementById('vendedor').value = '';
             document.getElementById('atendente').value = '';
             document.getElementById('forma-pagamento').value = '';
+            document.getElementById('venda-indicacao').value = '';
             renderizarCarrinho();
             carregarAgenda();
         }
@@ -955,6 +983,21 @@
                 const qtd = Number(item.quantidade);
                 const unit = Number(item.valor_unitario);
                 const total = Number(item.valor_total);
+
+                // Composição do kit (garrafas/copos escolhidos) e data/hora da visita,
+                // como informação extra abaixo do item - não altera o item em si.
+                const detalhes = [];
+                (item.composicao || []).forEach(c => {
+                    detalhes.push(`- ${c.quantidade}x ${c.nome}${c.tamanho ? ` (${c.tamanho})` : ''}`);
+                });
+                if (item.agenda_visitacao && item.agenda_visitacao.data_hora) {
+                    const dh = new Date(item.agenda_visitacao.data_hora);
+                    detalhes.push(`- Visita agendada: ${dh.toLocaleDateString('pt-BR')} ${dh.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
+                }
+                const linhaDetalhe = detalhes.length
+                    ? `<tr><td colspan="3" style="font-size:11px; font-weight:normal; padding-left:6px;">${detalhes.map(escapeHtml).join('<br>')}</td></tr>`
+                    : '';
+
                 return `
                     <tr>
                         <td colspan="3" style="padding-top:6px;">${nome}</td>
@@ -963,7 +1006,8 @@
                         <td>${qtd} x ${unit.toFixed(2)}</td>
                         <td></td>
                         <td style="text-align:right;">${total.toFixed(2)}</td>
-                    </tr>`;
+                    </tr>
+                    ${linhaDetalhe}`;
             }).join('');
 
             const enderecoEmpresa = [empresa.logradouro, empresa.numero, empresa.bairro, empresa.municipio, empresa.uf]
@@ -1260,7 +1304,7 @@
                             <label for="verificar-vendedor">Vendedor</label>
                             <select id="verificar-vendedor" style="width:100%;">
                                 <option value="">Sem vendedor (guia)</option>
-                                ${vendedoresCache.map(v => `<option value="${v.id}">${v.nome} (${v.percentual_comissao}%)</option>`).join('')}
+                                ${vendedoresCache.map(v => `<option value="${v.id}">${v.nome}</option>`).join('')}
                             </select>
                         </div>
                         <div class="campo" style="margin-bottom:4px;">

@@ -10,6 +10,7 @@ use App\Models\DocumentoFiscalItem;
 use App\Models\Empresa;
 use App\Models\Fornecedor;
 use App\Models\Produto;
+use App\Services\Ibpt\TributosAproximadosService;
 use App\Services\Fiscal\Dto\ResultadoEmissaoFiscal;
 use App\Services\Fiscal\Dto\ResultadoEventoFiscal;
 use Illuminate\Support\Collection;
@@ -42,7 +43,11 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
     public function __construct(
         private readonly CfopResolver $cfopResolver = new CfopResolver(),
         private readonly ImpostosNfeService $impostosNfe = new ImpostosNfeService(),
+        private readonly TributosAproximadosService $tributosAproximados = new TributosAproximadosService(),
     ) {}
+
+    /** Soma do valor aproximado de tributos (Lei 12.741) dos itens da nota em montagem. */
+    private float $vTotTribAcumulado = 0.0;
 
     public function emitir(
         DocumentoFiscal $documento,
@@ -195,6 +200,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         // schema > 9 habilita os campos da Reforma Tributária (IBS/CBS)
         // exigidos pela SEFAZ a partir de 2026 - ver tagIBSCBS abaixo.
         $nfe = new Make('PL_010_V130');
+        $this->vTotTribAcumulado = 0.0;
 
         $cUF = $this->codigoUf($empresa->uf);
         $tpAmb = $configFiscal->ambiente_ativo === 'producao' ? 1 : 2;
@@ -278,6 +284,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $std->vUnTrib = (float) $item->valor_unitario;
             $std->indTot = 1;
             $nfe->tagprod($std);
+            $ncmItem = (string) $std->NCM;
 
             if ($regimeNormal) {
                 if ($item->produto === null) {
@@ -298,7 +305,10 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
                 // NFC-e não leva grupo de IPI; o IPI não tributado também fica de fora.
                 $impostos['ipi'] = null;
 
-                $this->tagsImpostosRegimeNormal($nfe, $numeroItem, $impostos);
+                $this->tagsImpostosRegimeNormal(
+                    $nfe, $numeroItem, $impostos,
+                    $this->tributosDoItem($ncmItem, $valorItem, $impostos['orig'] ?? '0'),
+                );
                 $this->acumularImpostos($totaisImpostos, $impostos);
 
                 $item->cst_csosn = $impostos['icms']['cst'];
@@ -316,7 +326,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
                 $std = new \stdClass();
                 $std->item = $numeroItem;
-                $std->vTotTrib = 0;
+                $std->vTotTrib = $this->tributosDoItem($ncmItem, $valorItem, 0);
                 $nfe->tagimposto($std);
 
                 $this->tagPisCofinsIsento($nfe, $numeroItem);
@@ -373,6 +383,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
         // schema > 9 habilita os campos da Reforma Tributária (IBS/CBS)
         $nfe = new Make('PL_010_V130');
+        $this->vTotTribAcumulado = 0.0;
 
         $cUF = $this->codigoUf($empresa->uf);
         $tpAmb = $configFiscal->ambiente_ativo === 'producao' ? 1 : 2;
@@ -531,6 +542,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             }
             $std->indTot = 1;
             $nfe->tagprod($std);
+            $ncmItem = (string) $std->NCM;
 
             if ($regimeNormal) {
                 if ($item->produto === null) {
@@ -538,7 +550,10 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
                 }
 
                 $impostos = $this->impostosNfe->calcularItem($item->produto, $valorItem, (float) $item->valor_frete, $contextoImpostos);
-                $this->tagsImpostosRegimeNormal($nfe, $numeroItem, $impostos);
+                $this->tagsImpostosRegimeNormal(
+                    $nfe, $numeroItem, $impostos,
+                    $this->tributosDoItem($ncmItem, $valorItem, $impostos['orig'] ?? '0'),
+                );
                 $this->acumularImpostos($totaisImpostos, $impostos);
 
                 // Guarda no item o que foi calculado (fica gravado junto do documento).
@@ -557,7 +572,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
 
                 $std = new \stdClass();
                 $std->item = $numeroItem;
-                $std->vTotTrib = 0;
+                $std->vTotTrib = $this->tributosDoItem($ncmItem, $valorItem, 0);
                 $nfe->tagimposto($std);
 
                 $this->tagPisCofinsIsento($nfe, $numeroItem);
@@ -702,11 +717,11 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
      *
      * @param  array<string, mixed>  $impostos  retorno de ImpostosNfeService::calcularItem()
      */
-    private function tagsImpostosRegimeNormal(Make $nfe, int $numeroItem, array $impostos): void
+    private function tagsImpostosRegimeNormal(Make $nfe, int $numeroItem, array $impostos, float $vTotTrib = 0.0): void
     {
         $std = new \stdClass();
         $std->item = $numeroItem;
-        $std->vTotTrib = 0;
+        $std->vTotTrib = $vTotTrib;
         $nfe->tagimposto($std);
 
         $icms = $impostos['icms'];
@@ -777,6 +792,15 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
      * destaca PIS/COFINS por fora (já estão dentro do DAS unificado),
      * mas a SEFAZ exige os grupos mesmo assim, com CST 07 (PISNT/COFINSNT).
      */
+    /** Valor aproximado de tributos do item (IBPT); acumula para o total da nota. */
+    private function tributosDoItem(string $ncm, float $valorItem, string|int $origem = '0'): float
+    {
+        $valor = $this->tributosAproximados->calcular($ncm, $valorItem, $origem)['valor'];
+        $this->vTotTribAcumulado += $valor;
+
+        return $valor;
+    }
+
     private function tagPisCofinsIsento(Make $nfe, int $numeroItem): void
     {
         $std = new \stdClass();
@@ -849,7 +873,7 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         $std->vCOFINS = round((float) ($totaisImpostos['vCOFINS'] ?? 0), 2);
         $std->vOutro = 0;
         $std->vNF = $valorNota;
-        $std->vTotTrib = 0;
+        $std->vTotTrib = round($this->vTotTribAcumulado, 2);
         $nfe->tagICMSTot($std);
 
         $std = new \stdClass();
@@ -893,9 +917,9 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
         if ($tpag === '99') {
             $std->xPag = 'Outros';
         }
-        // Cartão de crédito/débito exige o grupo card (rejeição 391). 2 = não integrado
+        // Cartão (03/04) e Pix (17/18) exigem o grupo card (rejeição 391). 2 = não integrado
         // (maquininha sem TEF): CNPJ da credenciadora, bandeira e autorização ficam opcionais.
-        if (in_array($tpag, ['03', '04'], true)) {
+        if (in_array($tpag, ['03', '04', '17', '18'], true)) {
             $std->tpIntegra = 2;
         }
         $nfe->tagdetPag($std);

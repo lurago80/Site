@@ -42,6 +42,7 @@ export default async function EmpresaLayout({
                     }}
                 >
                     {info.nome_fantasia} · {info.razao_social}
+                    <div style={{ marginTop: 6, fontSize: 11.5 }}>By In9ve Informática 2026</div>
                 </footer>
             </CarrinhoProvider>
         </div>

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** Aviso ao administrador/gerente sobre uma operação fora do normal (ver AlertaService). */
-#[Fillable(['empresa_id', 'tipo', 'mensagem', 'valor', 'venda_id', 'usuario_id', 'lida_em'])]
+#[Fillable(['empresa_id', 'tipo', 'mensagem', 'valor', 'venda_id', 'usuario_id', 'lida_em', 'whatsapp_enviado_em'])]
 class Alerta extends Model
 {
     protected $table = 'alertas';
@@ -17,6 +17,7 @@ class Alerta extends Model
         return [
             'valor' => 'decimal:2',
             'lida_em' => 'datetime',
+            'whatsapp_enviado_em' => 'datetime',
         ];
     }
 

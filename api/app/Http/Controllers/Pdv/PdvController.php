@@ -11,6 +11,7 @@ use App\Models\ItemVenda;
 use App\Models\Produto;
 use App\Models\Vendedor;
 use App\Models\Venda;
+use App\Services\Agendamento\BrindeVisitaService;
 use App\Services\Alertas\AlertaService;
 use App\Services\Pdv\CaixaService;
 use App\Services\Pdv\CancelamentoVendaPdvService;
@@ -18,6 +19,7 @@ use App\Services\Pdv\VendaPdvService;
 use App\Services\Vendas\KitService;
 use App\Services\Vendas\QuantidadeMinimaVendaService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * PDV (frente de caixa) - Escopo v2, seção 2.2: vendas fiscais e não
@@ -34,6 +36,7 @@ class PdvController extends Controller
         private readonly CancelamentoVendaPdvService $cancelamentoVendaPdvService,
         private readonly KitService $kitService,
         private readonly AlertaService $alertaService,
+        private readonly BrindeVisitaService $brindeVisitaService,
     ) {}
 
     public function caixa(Request $request, string $empresa)
@@ -132,13 +135,26 @@ class PdvController extends Controller
             abort(422, 'Este ticket já teve entrada confirmada em '.$venda->check_in_em->format('d/m/Y H:i').'.');
         }
 
-        $venda->update([
-            'vendedor_id' => $dados['vendedor_id'] ?? $venda->vendedor_id,
-            'atendente_id' => $dados['atendente_id'],
-            'indicacao_id' => $this->resolverIndicacao($request->attributes->get('empresaAtual')->id, $dados['indicacao'] ?? null) ?? $venda->indicacao_id,
-            'check_in_em' => now(),
-            'check_in_usuario_id' => $request->user()->id,
-        ]);
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        DB::transaction(function () use ($venda, $dados, $request, $empresaAtual) {
+            // Loja online: o brinde da visita (ex.: caneca de chopp) só é baixado agora,
+            // na validação do ticket - no PDV ele já foi baixado na hora da venda.
+            if ($venda->canal === 'site') {
+                $quantidadeVisitantes = (int) $venda->itens()->whereNotNull('agenda_visitacao_id')->sum('quantidade');
+                if ($quantidadeVisitantes > 0) {
+                    $this->brindeVisitaService->baixar($venda, $empresaAtual, $quantidadeVisitantes);
+                }
+            }
+
+            $venda->update([
+                'vendedor_id' => $dados['vendedor_id'] ?? $venda->vendedor_id,
+                'atendente_id' => $dados['atendente_id'],
+                'indicacao_id' => $this->resolverIndicacao($empresaAtual->id, $dados['indicacao'] ?? null) ?? $venda->indicacao_id,
+                'check_in_em' => now(),
+                'check_in_usuario_id' => $request->user()->id,
+            ]);
+        });
 
         return response()->json($venda->fresh(['checkInUsuario', 'vendedor', 'atendente', 'indicacao']));
     }
@@ -215,12 +231,21 @@ class PdvController extends Controller
         );
     }
 
+    /** Visita continua vendável por até 8h depois do horário (pedido do cliente: atraso na chegada). */
+    private const HORAS_TOLERANCIA_VISITA_VENCIDA = 8;
+
+    /**
+     * Horários de hoje em diante, mais os vencidos (até o limite de tolerância), para o
+     * caixa ver que existiam mas não podem mais ser vendidos - em vez de simplesmente
+     * desaparecerem da lista (Escopo v2, seção 3.5).
+     */
     public function agenda(Request $request, string $empresa)
     {
+        $limiteTolerancia = now()->subHours(self::HORAS_TOLERANCIA_VISITA_VENCIDA);
+
         return response()->json(
             AgendaVisitacao::query()
-                ->where('status', 'aberta')
-                ->where('data_hora', '>=', now())
+                ->where('data_hora', '>=', $limiteTolerancia)
                 ->orderBy('data_hora')
                 ->get()
                 ->map(fn (AgendaVisitacao $agenda) => [
@@ -228,6 +253,9 @@ class PdvController extends Controller
                     'data_hora' => $agenda->data_hora,
                     'vagas_disponiveis' => $agenda->vagasDisponiveis(),
                     'valor_visita' => $agenda->valor_visita,
+                    'vencida' => $agenda->data_hora->isPast(),
+                    // Dentro da tolerância de 8h, continua vendável mesmo já tendo passado o horário.
+                    'disponivel' => $agenda->status === 'aberta',
                 ])
         );
     }
@@ -310,7 +338,16 @@ class PdvController extends Controller
             'desconto_pdv_id' => ['nullable', 'integer'],
             'cortesia' => ['nullable', 'boolean'],
             'motivo_desconto' => ['nullable', 'string', 'max:255'],
+            'indicacao' => ['nullable', 'string', 'max:120'],
         ]);
+
+        // Venda de visita precisa de vendedor e atendente identificados (atendente já é
+        // obrigatório em toda venda; vendedor só passa a ser obrigatório quando há visita).
+        abort_if(
+            ! empty($dados['agenda_visitacao_id']) && empty($dados['vendedor_id']),
+            422,
+            'Informe o vendedor para vender uma visita agendada.'
+        );
 
         // Cortesia = desconto de 100%: não combina com outro desconto, cupom nem nota fiscal
         // (NFC-e não aceita valor zero) e exige o motivo, como todo desconto manual do PDV.
@@ -353,6 +390,8 @@ class PdvController extends Controller
         $this->quantidadeMinimaVendaService->validar($dados['itens'] ?? []);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $dados['indicacao_id'] = $this->resolverIndicacao($empresaAtual->id, $dados['indicacao'] ?? null);
 
         try {
             $venda = $this->vendaPdvService->finalizar($empresaAtual, $dados, $request->user()->id);

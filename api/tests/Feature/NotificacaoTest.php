@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\EnviarLembretesVisita;
+use App\Jobs\EnviarAlertaWhatsappJob;
 use App\Jobs\EnviarConfirmacaoAgendamentoJob;
 use App\Jobs\EnviarPedidoEnviadoJob;
+use App\Models\Alerta;
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
 use App\Models\ConfigWhatsapp;
@@ -163,6 +165,93 @@ class NotificacaoTest extends TestCase
         $this->assertSame('baileys', $notificacao->provider);
         $this->assertSame('enviado', $notificacao->status);
         $this->assertSame('BAILEYS-MSG-1', $notificacao->referencia_externa);
+    }
+
+    /**
+     * Sem o DDI 55, o Baileys monta um JID que não corresponde a nenhuma conta
+     * real do WhatsApp - "envia" sem erro, mas a mensagem nunca chega. Mesmo
+     * risco existe no Z-API. O telefone é cadastrado só como DDD + número.
+     */
+    public function test_envio_acrescenta_ddi_55_quando_telefone_nao_tem(): void
+    {
+        Http::fake([
+            '*/empresas/*/enviar' => Http::response(['id' => 'BAILEYS-MSG-1'], 200),
+        ]);
+
+        ConfigWhatsapp::create([
+            'empresa_id' => $this->empresa->id, 'provider' => 'baileys', 'ativo' => true,
+        ]);
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'status' => 'aberta', 'valor_visita' => 60,
+        ]);
+
+        $service = app(NotificacaoService::class);
+        // Fixture: '11999998888' (DDD + número, sem DDI).
+        $notificacao = $service->enviarLembreteVisita($agenda, $this->cliente, $this->cliente->telefone);
+
+        $this->assertSame('5511999998888', $notificacao->telefone);
+        Http::assertSent(fn ($request) => $request['telefone'] === '5511999998888');
+    }
+
+    public function test_envio_nao_duplica_ddi_quando_telefone_ja_tem_55(): void
+    {
+        Http::fake([
+            '*/empresas/*/enviar' => Http::response(['id' => 'BAILEYS-MSG-2'], 200),
+        ]);
+
+        ConfigWhatsapp::create([
+            'empresa_id' => $this->empresa->id, 'provider' => 'baileys', 'ativo' => true,
+        ]);
+
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'status' => 'aberta', 'valor_visita' => 60,
+        ]);
+
+        $service = app(NotificacaoService::class);
+        $notificacao = $service->enviarLembreteVisita($agenda, $this->cliente, '5511999998888');
+
+        $this->assertSame('5511999998888', $notificacao->telefone);
+    }
+
+    public function test_job_de_alerta_marca_whatsapp_enviado_em_quando_confirma_envio(): void
+    {
+        Http::fake([
+            '*/empresas/*/enviar' => Http::response(['id' => 'BAILEYS-ALERTA-1'], 200),
+        ]);
+        ConfigWhatsapp::create([
+            'empresa_id' => $this->empresa->id, 'provider' => 'baileys', 'ativo' => true,
+        ]);
+        $this->empresa->update(['alerta_whatsapp' => '11999998888']);
+
+        $alerta = Alerta::create([
+            'empresa_id' => $this->empresa->id, 'tipo' => 'cortesia', 'mensagem' => 'Cortesia na venda #1',
+        ]);
+
+        (new EnviarAlertaWhatsappJob($alerta->id))->handle(app(NotificacaoService::class));
+
+        $this->assertNotNull($alerta->fresh()->whatsapp_enviado_em);
+    }
+
+    public function test_job_de_alerta_nao_marca_whatsapp_enviado_em_quando_falha(): void
+    {
+        Http::fake([
+            '*/empresas/*/enviar' => Http::response(['erro' => 'Sessão do WhatsApp não está conectada para esta empresa.'], 409),
+        ]);
+        ConfigWhatsapp::create([
+            'empresa_id' => $this->empresa->id, 'provider' => 'baileys', 'ativo' => true,
+        ]);
+        $this->empresa->update(['alerta_whatsapp' => '11999998888']);
+
+        $alerta = Alerta::create([
+            'empresa_id' => $this->empresa->id, 'tipo' => 'cortesia', 'mensagem' => 'Cortesia na venda #1',
+        ]);
+
+        (new EnviarAlertaWhatsappJob($alerta->id))->handle(app(NotificacaoService::class));
+
+        $this->assertNull($alerta->fresh()->whatsapp_enviado_em);
     }
 
     public function test_baileys_com_sessao_desconectada_registra_falha_sem_quebrar(): void

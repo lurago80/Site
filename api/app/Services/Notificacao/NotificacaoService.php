@@ -98,7 +98,7 @@ class NotificacaoService
             $gateway = $this->factory->paraEmpresa($config);
             $providerNome = ($config && $config->ativo) ? $config->provider : 'simulado';
 
-            $telefoneDestino = $telefone ?? $cliente?->telefone;
+            $telefoneDestino = $this->normalizarTelefone($telefone ?? $cliente?->telefone);
 
             $resultado = $gateway->enviarMensagem($config ?? new ConfigWhatsapp(), $telefoneDestino, $mensagem);
 
@@ -116,5 +116,30 @@ class NotificacaoService
                 'payload_retorno' => $resultado->payloadBruto,
             ]);
         });
+    }
+
+    /**
+     * Garante o DDI 55 na frente do número (DDD + telefone, como é cadastrado no sistema).
+     * Sem isso, o Baileys monta um JID que não corresponde a nenhuma conta real do WhatsApp
+     * e "envia" sem erro, mas a mensagem nunca chega - mesmo risco existe no Z-API.
+     */
+    private function normalizarTelefone(?string $telefone): ?string
+    {
+        if ($telefone === null) {
+            return null;
+        }
+
+        $numero = preg_replace('/\D/', '', $telefone);
+
+        if ($numero === '' || str_starts_with($numero, '55')) {
+            return $numero;
+        }
+
+        // DDD (2) + telefone (8 ou 9 dígitos) = 10 ou 11 dígitos sem DDI.
+        if (in_array(strlen($numero), [10, 11], true)) {
+            return '55'.$numero;
+        }
+
+        return $numero;
     }
 }

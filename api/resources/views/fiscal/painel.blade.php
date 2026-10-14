@@ -146,7 +146,7 @@
     <script>
         const empresa = @json($empresaSlug);
         const apiBase = `{{ url('/fiscal') }}/${empresa}`;
-        const webBase = `/fiscal/${empresa}`;
+        const webBase = `{{ url('/fiscal') }}/${empresa}`;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
         const headersJson = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken };
 

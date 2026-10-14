@@ -969,13 +969,33 @@ class DashboardController extends Controller
             'data_fim' => ['nullable', 'date'],
             'canal' => ['nullable', 'in:todos,pdv,site'],
             'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
+            'pessoa_id' => ['nullable', 'integer'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         return response()->json(
-            $this->relatorioVendasPorPessoa('atendente_id', Atendente::class, $empresaAtual, $dados)
+            $this->relatorioVendasPorPessoa('atendente_id', Atendente::class, $empresaAtual, $dados)->values()
+        );
+    }
+
+    /** Todos os produtos e serviços (visitações) vendidos por cada atendente no período - uma linha por item. */
+    public function relatorioItensPorAtendente(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
+            'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
+            'pessoa_id' => ['nullable', 'integer'],
+        ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            $this->itensVendidosPorPessoa('atendente_id', Atendente::class, $empresaAtual, $dados)
         );
     }
 
@@ -990,6 +1010,7 @@ class DashboardController extends Controller
             'data_fim' => ['nullable', 'date'],
             'canal' => ['nullable', 'in:todos,pdv,site'],
             'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
+            'pessoa_id' => ['nullable', 'integer'],
         ]);
         $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
 
@@ -1004,6 +1025,25 @@ class DashboardController extends Controller
         }
 
         return response()->json($relatorio->values());
+    }
+
+    /** Todos os produtos e serviços (visitações) vendidos por cada vendedor no período - uma linha por item. */
+    public function relatorioItensPorVendedor(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
+            'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
+            'pessoa_id' => ['nullable', 'integer'],
+        ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        return response()->json(
+            $this->itensVendidosPorPessoa('vendedor_id', Vendedor::class, $empresaAtual, $dados)
+        );
     }
 
     /** Quantos pedidos/visitantes/valor vieram de cada indicação (informada pelo atendente no check-in). */
@@ -1050,11 +1090,13 @@ class DashboardController extends Controller
         $tipo = $dados['tipo'] ?? 'todos';
 
         return $modeloPessoa::where('empresa_id', $empresaAtual->id)
+            ->when($dados['pessoa_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->orderBy('nome')
             ->get()
             ->map(function ($pessoa) use ($colunaPessoa, $dados, $tipo) {
                 $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoa, $dados) {
                     $q->where($colunaPessoa, $pessoa->id)
+                        ->where('status_pagamento', '!=', 'cancelado')
                         ->when($this->canalFiltro($dados), fn ($qq, $c) => $qq->where('canal', $c))
                         ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', $d))
                         ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', $d));
@@ -1070,6 +1112,67 @@ class DashboardController extends Controller
                     'valor_total' => (clone $itens)->sum('valor_total'),
                 ];
             });
+    }
+
+    /**
+     * Todos os produtos e serviços (visitações) vendidos por cada pessoa no período,
+     * uma linha por item - para o relatório detalhado de vendedor/atendente.
+     */
+    private function itensVendidosPorPessoa(string $colunaPessoa, string $modeloPessoa, Empresa $empresaAtual, array $dados): Collection
+    {
+        $tipo = $dados['tipo'] ?? 'todos';
+        $fuso = 'America/Sao_Paulo';
+
+        $pessoas = $modeloPessoa::where('empresa_id', $empresaAtual->id)
+            ->when($dados['pessoa_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
+            ->orderBy('nome')
+            ->get()
+            ->keyBy('id');
+
+        if ($pessoas->isEmpty()) {
+            return collect();
+        }
+
+        $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoas, $dados) {
+            $q->whereIn($colunaPessoa, $pessoas->keys())
+                ->where('status_pagamento', '!=', 'cancelado')
+                ->when($this->canalFiltro($dados), fn ($qq, $c) => $qq->where('canal', $c))
+                ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', $d))
+                ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', $d));
+        })
+            ->when($tipo === 'produtos', fn ($q) => $q->whereNotNull('produto_id'))
+            ->when($tipo === 'visitacoes', fn ($q) => $q->whereNotNull('agenda_visitacao_id'))
+            ->with(['produto:id,nome', 'produtoVariacao:id,tamanho', 'venda:id,data_venda,'.$colunaPessoa])
+            ->get();
+
+        return $itens
+            ->groupBy(fn (ItemVenda $i) => $i->venda->{$colunaPessoa})
+            ->map(function (Collection $itensDaPessoa, $pessoaId) use ($pessoas, $fuso) {
+                return [
+                    'pessoa_id' => (int) $pessoaId,
+                    'pessoa' => $pessoas[$pessoaId]->nome,
+                    'itens' => $itensDaPessoa->map(fn (ItemVenda $i) => [
+                        'venda_id' => $i->venda_id,
+                        'data' => $i->venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+                        'produto' => $i->agenda_visitacao_id ? 'Visita/visitação' : ($i->produto?->nome ?? '(produto removido)'),
+                        'variacao' => $i->produtoVariacao?->tamanho,
+                        'quantidade' => (int) $i->quantidade,
+                        'valor_unitario' => round((float) $i->valor_unitario, 2),
+                        'valor_total' => round((float) $i->valor_total, 2),
+                    ])->values(),
+                    'totais' => [
+                        'itens' => $itensDaPessoa->count(),
+                        'quantidade' => (int) $itensDaPessoa->sum('quantidade'),
+                        'valor_total' => round((float) $itensDaPessoa->sum('valor_total'), 2),
+                    ],
+                ];
+            })
+            // Pessoas sem venda no período também aparecem, com lista vazia.
+            ->union($pessoas->map(fn ($p) => [
+                'pessoa_id' => $p->id, 'pessoa' => $p->nome, 'itens' => collect(), 'totais' => ['itens' => 0, 'quantidade' => 0, 'valor_total' => 0],
+            ])->keyBy('pessoa_id'))
+            ->values()
+            ->sortBy('pessoa');
     }
 
     // ---- Financeiro ----
@@ -1457,6 +1560,18 @@ class DashboardController extends Controller
             ->when($this->canalFiltro($dados), fn ($q, $c) => $q->where('canal', $c));
     }
 
+    /** Vendas canceladas no período (pela data da venda, não do cancelamento) - informativo, fora dos totais dos relatórios. */
+    private function vendasCanceladasNoPeriodo(array $dados)
+    {
+        $fuso = 'America/Sao_Paulo';
+        $dataInicio = $this->inicioEfetivo($dados['data_inicio'] ?? null);
+
+        return Venda::where('status_pagamento', 'cancelado')
+            ->when($dataInicio, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
+            ->when($this->canalFiltro($dados), fn ($q, $c) => $q->where('canal', $c));
+    }
+
     /** Vendas do período: uma linha por venda, com canal, atendente, vendedor e forma de pagamento. */
     public function relatorioVendas(Request $request, string $empresa)
     {
@@ -1518,6 +1633,15 @@ class DashboardController extends Controller
                 'vendas' => $semReceita->count(),
                 'valor_total' => round((float) $semReceita->sum('valor_total'), 2),
             ],
+            // Vendas canceladas no período: não entram em nenhum total acima, só informativo.
+            'canceladas' => (function () use ($dados) {
+                $canceladas = $this->vendasCanceladasNoPeriodo($dados)->get();
+
+                return [
+                    'vendas' => $canceladas->count(),
+                    'valor_total' => round((float) $canceladas->sum('valor_total'), 2),
+                ];
+            })(),
         ]);
     }
 
@@ -1549,6 +1673,10 @@ class DashboardController extends Controller
             'custo_total' => round((float) $i->custo_total, 2),
         ])->values();
 
+        $itensCancelados = ItemVenda::whereIn('venda_id', $this->vendasCanceladasNoPeriodo($dados)->select('id'))
+            ->whereNull('agenda_visitacao_id')
+            ->get();
+
         return response()->json([
             'linhas' => $linhas,
             'totais' => [
@@ -1556,6 +1684,12 @@ class DashboardController extends Controller
                 'quantidade' => (int) $linhas->sum('quantidade'),
                 'valor_total' => round((float) $linhas->sum('valor_total'), 2),
                 'custo_total' => round((float) $linhas->sum('custo_total'), 2),
+            ],
+            // Itens de vendas canceladas no período: não entram nos totais acima, só informativo.
+            'cancelados' => [
+                'itens' => $itensCancelados->count(),
+                'quantidade' => (int) $itensCancelados->sum('quantidade'),
+                'valor_total' => round((float) $itensCancelados->sum('valor_total'), 2),
             ],
         ]);
     }
@@ -1628,6 +1762,8 @@ class DashboardController extends Controller
             ];
         })->values();
 
+        $canceladas = $this->vendasCanceladasNoPeriodo($dados)->get();
+
         return response()->json([
             'linhas' => $linhas,
             'totais' => [
@@ -1636,6 +1772,11 @@ class DashboardController extends Controller
                 'classe_a' => $linhas->where('classe', 'A')->count(),
                 'classe_b' => $linhas->where('classe', 'B')->count(),
                 'classe_c' => $linhas->where('classe', 'C')->count(),
+            ],
+            // Vendas canceladas no período: não entram na curva acima, só informativo.
+            'canceladas' => [
+                'vendas' => $canceladas->count(),
+                'valor_total' => round((float) $canceladas->sum('valor_total'), 2),
             ],
         ]);
     }
@@ -2391,18 +2532,21 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
-        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria', 'alerta_whatsapp']));
+        return response()->json($empresaAtual->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'produto_brinde_visita_id', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria', 'alerta_whatsapp']));
     }
 
     public function atualizarConfigOperacional(Request $request, string $empresa)
     {
         $this->exigirAdmin($request);
 
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
         $dados = $request->validate([
             'estoque_permite_negativo' => ['required', 'boolean'],
             'pdv_impressao_direta' => ['required', 'boolean'],
             'pdv_caixa_pode_cancelar' => ['required', 'boolean'],
             'custo_visita_padrao' => ['sometimes', 'numeric', 'min:0'],
+            'produto_brinde_visita_id' => ['sometimes', 'nullable', 'integer', \Illuminate\Validation\Rule::exists('produtos', 'id')->where('empresa_id', $empresaAtual->id)],
             'operacao_inicio' => ['sometimes', 'nullable', 'date'],
             'alerta_desconto_percentual' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'alerta_diferenca_caixa' => ['sometimes', 'numeric', 'min:0'],
@@ -2410,7 +2554,6 @@ class DashboardController extends Controller
             'alerta_whatsapp' => ['sometimes', 'nullable', 'string', 'max:20'],
         ]);
 
-        $empresaAtual = $request->attributes->get('empresaAtual');
         // WhatsApp dos alertas: guarda só os dígitos (vazio desliga o envio).
         if (array_key_exists('alerta_whatsapp', $dados)) {
             $dados['alerta_whatsapp'] = preg_replace('/\D/', '', (string) $dados['alerta_whatsapp']) ?: null;
@@ -2418,7 +2561,7 @@ class DashboardController extends Controller
 
         $empresaAtual->update($dados);
 
-        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria', 'alerta_whatsapp']));
+        return response()->json($empresaAtual->fresh()->only(['estoque_permite_negativo', 'pdv_impressao_direta', 'pdv_caixa_pode_cancelar', 'custo_visita_padrao', 'produto_brinde_visita_id', 'operacao_inicio', 'alerta_desconto_percentual', 'alerta_diferenca_caixa', 'alerta_sangria', 'alerta_whatsapp']));
     }
 
     // ---- Configuração de gateway de pagamento ----
@@ -2619,6 +2762,7 @@ class DashboardController extends Controller
                 'usuario' => $a->usuario?->name,
                 'quando' => $a->created_at->copy()->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i'),
                 'lida' => $a->lida_em !== null,
+                'whatsapp_enviado' => $a->whatsapp_enviado_em !== null,
             ]);
 
         return response()->json(['nao_lidas' => $naoLidas, 'alertas' => $lista]);

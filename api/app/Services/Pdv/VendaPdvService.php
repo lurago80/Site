@@ -13,6 +13,7 @@ use App\Models\Produto;
 use App\Models\ProdutoVariacao;
 use App\Models\Venda;
 use App\Models\Vendedor;
+use App\Services\Agendamento\BrindeVisitaService;
 use App\Services\Agendamento\ReservaVagaService;
 use App\Services\Fiscal\EmissaoFiscalService;
 use App\Services\Alertas\AlertaService;
@@ -31,6 +32,7 @@ class VendaPdvService
 {
     public function __construct(
         private readonly ReservaVagaService $reservaVagaService,
+        private readonly BrindeVisitaService $brindeVisitaService,
         private readonly EmissaoFiscalService $emissaoFiscalService,
         private readonly CaixaService $caixaService,
         private readonly KitService $kitService,
@@ -64,6 +66,7 @@ class VendaPdvService
                 'vendedor_id' => $vendedor?->id,
                 'atendente_id' => $atendente?->id,
                 'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
+                'indicacao_id' => $dados['indicacao_id'] ?? null,
                 'canal' => 'pdv',
                 'tipo_doc' => $dados['tipo_doc'],
                 'status_pagamento' => 'pago',
@@ -98,6 +101,11 @@ class VendaPdvService
                 $valorVisitas = $valorItem;
                 $quantidadeTickets = (int) $dados['agenda_quantidade'];
                 $comissaoTotal += $comissaoItem;
+
+                // Toda visita efetivada no PDV já baixa o brinde (ex.: caneca de chopp) na
+                // hora - o pagamento no PDV é sempre imediato. Na loja online esse mesmo
+                // brinde só é baixado no check-in (ver PdvController::confirmarCheckIn).
+                $this->brindeVisitaService->baixar($venda, $empresa, $quantidadeTickets);
 
                 // Cupom só se aplica sobre a visita agendada (pedido do
                 // cliente) - uma venda com produto + visita desconta só a
