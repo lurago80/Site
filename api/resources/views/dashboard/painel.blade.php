@@ -1232,6 +1232,13 @@
                         <div><label>De</label><input type="date" id="rv-inicio"></div>
                         <div><label>Até</label><input type="date" id="rv-fim"></div>
                         <div><label>Canal</label><select id="rv-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
+                        <div><label>Tipo</label>
+                            <select id="rv-tipo">
+                                <option value="todos">Produtos + serviços</option>
+                                <option value="produtos">Produtos</option>
+                                <option value="visitacoes">Serviços</option>
+                            </select>
+                        </div>
                         <div><button class="acao" onclick="carregarRelatoriosVendas()">Consultar</button></div>
                         <div><button class="secundario" onclick="window.print()">Imprimir</button></div>
                         <div><button class="secundario" onclick="exportarRelatorio('vendas')">Exportar CSV</button></div>
@@ -4252,6 +4259,7 @@
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
             params.set('canal', document.getElementById('rv-canal').value);
+            params.set('tipo', document.getElementById('rv-tipo').value);
 
             const msg = document.getElementById('msg-relatorios-vendas');
             msg.className = 'msg'; msg.textContent = 'Carregando...';

@@ -1812,13 +1812,17 @@ class DashboardController extends Controller
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
             'canal' => ['nullable', 'in:todos,pdv,site'],
+            'tipo' => ['nullable', 'in:todos,produtos,visitacoes'],
         ]);
 
         $fuso = 'America/Sao_Paulo';
+        $tipo = $dados['tipo'] ?? 'todos';
 
         // Inclui produtos e serviços (visitações) - cada item diz de qual tipo é,
         // para o administrador separar o valor de serviço do valor de produto.
         $itens = ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
+            ->when($tipo === 'produtos', fn ($q) => $q->whereNotNull('produto_id'))
+            ->when($tipo === 'visitacoes', fn ($q) => $q->whereNotNull('agenda_visitacao_id'))
             ->with(['produto:id,nome', 'produtoVariacao:id,tamanho', 'agendaVisitacao.produto:id,nome', 'venda:id,data_venda'])
             ->orderBy('venda_id')
             ->get();
@@ -1837,7 +1841,10 @@ class DashboardController extends Controller
             'custo_total' => round((float) $i->custo_total, 2),
         ])->values();
 
-        $itensCancelados = ItemVenda::whereIn('venda_id', $this->vendasCanceladasNoPeriodo($dados)->select('id'))->get();
+        $itensCancelados = ItemVenda::whereIn('venda_id', $this->vendasCanceladasNoPeriodo($dados)->select('id'))
+            ->when($tipo === 'produtos', fn ($q) => $q->whereNotNull('produto_id'))
+            ->when($tipo === 'visitacoes', fn ($q) => $q->whereNotNull('agenda_visitacao_id'))
+            ->get();
 
         $produtos = $linhas->where('tipo', 'produto');
         $servicos = $linhas->where('tipo', 'servico');
