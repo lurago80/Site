@@ -1063,6 +1063,49 @@
             <section id="secao-financeiro" class="secao">
                 <h1>Financeiro</h1>
                 <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Pagamento (já pago, com recibo)</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Para pagar alguém agora (atendente, vendedor ou fornecedor) e emitir o recibo. Para uma conta
+                        com vencimento futuro, use "Contas a pagar" abaixo.
+                    </p>
+                    <div class="linha-form">
+                        <div><label>Data/hora</label><input type="datetime-local" id="pg-data-hora"></div>
+                        <div><label>Beneficiário</label>
+                            <select id="pg-tipo-beneficiario" onchange="atualizarSelectBeneficiario()">
+                                <option value="nenhum">Nenhum (ex.: despesa geral)</option>
+                                <option value="atendente">Atendente</option>
+                                <option value="vendedor">Vendedor</option>
+                                <option value="fornecedor">Fornecedor</option>
+                            </select>
+                        </div>
+                        <div><label>&nbsp;</label><select id="pg-beneficiario-id" style="display:none;"></select></div>
+                        <div><label>Categoria (plano de contas)</label><select id="pg-plano-conta"><option value="">Sem categoria</option></select></div>
+                    </div>
+                    <div class="linha-form">
+                        <div style="flex:1"><label>Histórico</label><input type="text" id="pg-historico" placeholder="Ex: Comissão da semana, compra de material de limpeza..."></div>
+                        <div><label>Valor (R$)</label><input type="number" step="0.01" min="0.01" id="pg-valor" style="width:110px"></div>
+                        <div><label>Forma de pagamento</label><select id="pg-forma-pagamento"><option value="">Não informada</option></select></div>
+                        <div><label>Banco (lança no extrato)</label><select id="pg-banco"><option value="">Nenhum</option></select></div>
+                        <div><button class="acao" onclick="registrarPagamento()">Registrar pagamento</button></div>
+                    </div>
+                    <p class="msg" id="msg-pagamento"></p>
+                    <div class="linha-form" id="acoes-recibo-pagamento" style="display:none;">
+                        <div><button class="secundario" onclick="imprimirReciboPagamentoA4()">Imprimir recibo A4</button></div>
+                        <div><button class="secundario" onclick="imprimirReciboPagamentoCupom()">Imprimir recibo cupom (80 col.)</button></div>
+                    </div>
+
+                    <h2 style="font-size:14px; margin-top:18px;">Pagamentos lançados</h2>
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="pg-lista-inicio"></div>
+                        <div><label>Até</label><input type="date" id="pg-lista-fim"></div>
+                        <div><button class="secundario" onclick="carregarPagamentos()">Consultar</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Data/hora</th><th>Beneficiário</th><th>Categoria</th><th>Histórico</th><th>Forma</th><th>Valor</th><th></th></tr></thead>
+                        <tbody id="tbody-pagamentos"></tbody>
+                    </table>
+                </div>
+                <div class="card">
                     <h2 style="font-size:14px; margin-top:0;">Contas a pagar</h2>
                     <div class="linha-form">
                         <div><label>Fornecedor</label><select id="cp-fornecedor"><option value="">Nenhum</option></select></div>
@@ -1206,9 +1249,9 @@
                 </div>
 
                 <div class="card">
-                    <h2 style="font-size:14px; margin-top:0;">Itens vendidos</h2>
+                    <h2 style="font-size:14px; margin-top:0;">Itens vendidos (produtos e serviços)</h2>
                     <table>
-                        <thead><tr><th>Venda</th><th>Data</th><th>Produto</th><th>Variação</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Custo</th></tr></thead>
+                        <thead><tr><th>Venda</th><th>Data</th><th>Tipo</th><th>Produto/serviço</th><th>Variação</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Custo</th></tr></thead>
                         <tbody id="tbody-rv-itens"></tbody>
                     </table>
                     <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-rv-itens"></p>
@@ -1877,7 +1920,7 @@
             'relatorio-cancelamentos': carregarRelatorioCancelamentos,
             alertas: carregarAlertas,
             grupos: carregarGrupos,
-            financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); }); },
+            financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); carregarPagamentos(); }); },
             'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
             'relatorios-vendas': carregarRelatoriosVendas,
             bancos: carregarBancos,
@@ -3862,21 +3905,158 @@
         }
 
         async function carregarSelectsFinanceiro() {
-            const [planos, bancosLista, fornecedoresLista, clientesLista] = await Promise.all([
+            const [planos, bancosLista, fornecedoresLista, clientesLista, formasLista] = await Promise.all([
                 fetch(`${base}/plano-contas`).then(r => r.json()),
                 fetch(`${base}/bancos`).then(r => r.json()),
                 fetch(`${base}/fornecedores`).then(r => r.json()),
                 fetch(`${base}/clientes`).then(r => r.json()),
+                fetch(`${base}/formas-pagamento`).then(r => r.json()),
             ]);
+            fornecedoresParaBeneficiario = fornecedoresLista;
+
             const opcoesPlanos = '<option value="">Sem categoria</option>' + planos.map(p => `<option value="${p.id}">${p.codigo ? p.codigo + ' - ' : ''}${p.nome}</option>`).join('');
             document.getElementById('cp-plano-conta').innerHTML = opcoesPlanos;
             document.getElementById('cr-plano-conta').innerHTML = opcoesPlanos;
+            document.getElementById('pg-plano-conta').innerHTML = opcoesPlanos;
             document.getElementById('fin-banco-pagamento').innerHTML = '<option value="">Nenhum (não lança no banco)</option>' +
+                bancosLista.map(b => `<option value="${b.id}">${b.nome}</option>`).join('');
+            document.getElementById('pg-banco').innerHTML = '<option value="">Nenhum</option>' +
                 bancosLista.map(b => `<option value="${b.id}">${b.nome}</option>`).join('');
             document.getElementById('cp-fornecedor').innerHTML = '<option value="">Nenhum</option>' +
                 fornecedoresLista.map(f => `<option value="${f.id}">${f.razao_social}</option>`).join('');
             document.getElementById('cr-cliente').innerHTML = '<option value="">Nenhum</option>' +
                 clientesLista.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('');
+            document.getElementById('pg-forma-pagamento').innerHTML = '<option value="">Não informada</option>' +
+                formasLista.filter(f => f.ativo).map(f => `<option value="${f.id}">${esc(f.descricao)}</option>`).join('');
+        }
+
+        // ---- Pagamento direto (já pago, com recibo) ----
+
+        let fornecedoresParaBeneficiario = [];
+        let ultimoReciboPagamento = null;
+        let pagamentosCache = [];
+
+        async function atualizarSelectBeneficiario() {
+            const tipo = document.getElementById('pg-tipo-beneficiario').value;
+            const sel = document.getElementById('pg-beneficiario-id');
+
+            if (tipo === 'nenhum') {
+                sel.style.display = 'none';
+                sel.innerHTML = '';
+                return;
+            }
+
+            sel.style.display = '';
+            if (tipo === 'fornecedor') {
+                sel.innerHTML = fornecedoresParaBeneficiario.map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('') || '<option value="">Nenhum cadastrado</option>';
+                return;
+            }
+
+            const resp = await fetch(`${base}/${tipo === 'atendente' ? 'atendentes' : 'vendedores'}`);
+            const lista = await resp.json();
+            sel.innerHTML = lista.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('') || '<option value="">Nenhum cadastrado</option>';
+        }
+
+        async function registrarPagamento() {
+            const msg = document.getElementById('msg-pagamento');
+            const tipo = document.getElementById('pg-tipo-beneficiario').value;
+            const dataHora = document.getElementById('pg-data-hora').value;
+            const valor = Number(document.getElementById('pg-valor').value);
+
+            if (!dataHora) { msg.className = 'msg erro'; msg.textContent = 'Informe a data/hora.'; return; }
+            if (!valor || valor <= 0) { msg.className = 'msg erro'; msg.textContent = 'Informe o valor.'; return; }
+            if (tipo !== 'nenhum' && !document.getElementById('pg-beneficiario-id').value) {
+                msg.className = 'msg erro'; msg.textContent = 'Escolha o beneficiário.'; return;
+            }
+
+            const dados = {
+                tipo_beneficiario: tipo,
+                beneficiario_id: tipo !== 'nenhum' ? Number(document.getElementById('pg-beneficiario-id').value) : null,
+                data_hora: dataHora,
+                plano_conta_id: document.getElementById('pg-plano-conta').value || null,
+                historico: document.getElementById('pg-historico').value || null,
+                valor,
+                forma_pagamento_id: document.getElementById('pg-forma-pagamento').value || null,
+                banco_id: document.getElementById('pg-banco').value || null,
+            };
+
+            const resp = await fetch(`${base}/pagamentos-diretos`, { method: 'POST', headers: headersJson, body: JSON.stringify(dados) });
+            const resposta = await resp.json();
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = resposta.message || JSON.stringify(resposta.errors); return; }
+
+            msg.className = 'msg ok'; msg.textContent = `Pagamento #${resposta.id} registrado.`;
+            ultimoReciboPagamento = resposta;
+            document.getElementById('acoes-recibo-pagamento').style.display = '';
+
+            document.getElementById('pg-data-hora').value = '';
+            document.getElementById('pg-tipo-beneficiario').value = 'nenhum';
+            atualizarSelectBeneficiario();
+            document.getElementById('pg-historico').value = '';
+            document.getElementById('pg-valor').value = '';
+            document.getElementById('pg-forma-pagamento').value = '';
+            document.getElementById('pg-banco').value = '';
+
+            carregarPagamentos();
+        }
+
+        function corpoReciboPagamento(recibo) {
+            const dh = new Date(recibo.data_hora);
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            const linha = (rotulo, valor) => `<tr><td>${rotulo}</td><td>${valor ?? '-'}</td></tr>`;
+            return `
+                <h2>Recibo de pagamento #${recibo.id}</h2>
+                <table>
+                    ${linha('Data/hora', dh.toLocaleString('pt-BR'))}
+                    ${linha('Beneficiário', esc(recibo.beneficiario || 'Não informado'))}
+                    ${linha('Categoria', esc(recibo.plano_conta || '-'))}
+                    ${linha('Histórico', esc(recibo.historico || '-'))}
+                    ${linha('Forma de pagamento', esc(recibo.forma_pagamento || '-'))}
+                    ${linha('Valor', `<strong>${brl(recibo.valor)}</strong>`)}
+                    ${linha('Lançado por', esc(recibo.lancado_por || '-'))}
+                </table>
+                <p style="margin-top:28px;">Assinatura: ______________________________________</p>`;
+        }
+
+        function imprimirReciboPagamentoA4() {
+            if (!ultimoReciboPagamento) return;
+            abrirJanelaImpressao('Recibo de Pagamento', corpoReciboPagamento(ultimoReciboPagamento), false);
+        }
+
+        function imprimirReciboPagamentoCupom() {
+            if (!ultimoReciboPagamento) return;
+            abrirJanelaImpressao('Recibo de Pagamento', corpoReciboPagamento(ultimoReciboPagamento), true);
+        }
+
+        async function carregarPagamentos() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('pg-lista-inicio').value;
+            const fim = document.getElementById('pg-lista-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const resp = await fetch(`${base}/pagamentos-diretos?${params}`);
+            pagamentosCache = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+            document.getElementById('tbody-pagamentos').innerHTML = pagamentosCache.map((p, i) => `
+                <tr>
+                    <td>${new Date(p.data_hora).toLocaleString('pt-BR')}</td>
+                    <td>${esc(p.beneficiario)}</td>
+                    <td>${esc(p.plano_conta ?? '-')}</td>
+                    <td>${esc(p.historico ?? '-')}</td>
+                    <td>${esc(p.forma_pagamento ?? '-')}</td>
+                    <td>${brl(p.valor)}</td>
+                    <td><button class="secundario" onclick="reimprimirRecibo(${i})">Reimprimir</button></td>
+                </tr>
+            `).join('') || '<tr><td colspan="7">Nenhum pagamento lançado.</td></tr>';
+        }
+
+        function reimprimirRecibo(indice) {
+            const p = pagamentosCache[indice];
+            if (!p) return;
+            ultimoReciboPagamento = { ...p, lancado_por: null };
+            document.getElementById('acoes-recibo-pagamento').style.display = '';
+            imprimirReciboPagamentoA4();
         }
 
         // ---- Grupos de produto ----
@@ -4109,13 +4289,17 @@
 
                 document.getElementById('tbody-rv-itens').innerHTML = itens.linhas.map(i => `
                     <tr>
-                        <td>${i.venda_id}</td><td>${i.data}</td><td>${esc(i.produto)}</td>
+                        <td>${i.venda_id}</td><td>${i.data}</td>
+                        <td>${i.tipo === 'servico' ? '<span class="selo info">Serviço</span>' : 'Produto'}</td>
+                        <td>${esc(i.produto)}</td>
                         <td>${esc(i.variacao ?? '-')}</td><td>${i.quantidade}</td>
                         <td>${brl(i.valor_unitario)}</td><td>${brl(i.valor_total)}</td><td>${brl(i.custo_total)}</td>
                     </tr>
-                `).join('') || '<tr><td colspan="8">Nenhum item no período.</td></tr>';
+                `).join('') || '<tr><td colspan="9">Nenhum item no período.</td></tr>';
                 document.getElementById('totais-rv-itens').textContent =
                     `${itens.totais.itens} linha(s) - ${itens.totais.quantidade} unidade(s) - total ${brl(itens.totais.valor_total)} - custo ${brl(itens.totais.custo_total)}` +
+                    ` | Produtos: ${itens.por_tipo.produtos.itens} linha(s), ${brl(itens.por_tipo.produtos.valor_total)}` +
+                    ` | Serviços: ${itens.por_tipo.servicos.itens} linha(s), ${brl(itens.por_tipo.servicos.valor_total)}` +
                     (itens.cancelados.itens ? ` | Cancelados (fora do total): ${itens.cancelados.itens} linha(s), ${itens.cancelados.quantidade} unidade(s), ${brl(itens.cancelados.valor_total)}` : '');
 
                 document.getElementById('tbody-rv-mais-vendidos').innerHTML = maisVendidos.linhas.map(p => `

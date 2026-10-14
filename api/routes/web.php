@@ -186,6 +186,8 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::get('/contas-pagar', [DashboardController::class, 'contasPagar']);
     Route::post('/contas-pagar', [DashboardController::class, 'criarContaPagar']);
     Route::put('/contas-pagar/{contaId}/pagar', [DashboardController::class, 'marcarContaPagarPaga']);
+    Route::post('/pagamentos-diretos', [DashboardController::class, 'criarPagamento']);
+    Route::get('/pagamentos-diretos', [DashboardController::class, 'pagamentos']);
 
     Route::get('/contas-receber', [DashboardController::class, 'contasReceber']);
     Route::post('/contas-receber', [DashboardController::class, 'criarContaReceber']);

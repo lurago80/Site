@@ -1282,6 +1282,106 @@ class DashboardController extends Controller
         return response()->json($conta->fresh());
     }
 
+    /**
+     * Tela de "Pagamento": lança e já marca como pago na hora (diferente da
+     * conta a pagar comum, que nasce em aberto para um vencimento futuro),
+     * com beneficiário podendo ser fornecedor, atendente ou vendedor, forma
+     * de pagamento e horário exato - dados que o recibo impresso usa.
+     */
+    public function criarPagamento(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'tipo_beneficiario' => ['required', 'in:fornecedor,atendente,vendedor,nenhum'],
+            'beneficiario_id' => ['required_unless:tipo_beneficiario,nenhum', 'nullable', 'integer'],
+            'data_hora' => ['required', 'date'],
+            'plano_conta_id' => ['nullable', 'integer'],
+            'historico' => ['nullable', 'string', 'max:255'],
+            'valor' => ['required', 'numeric', 'min:0.01'],
+            'forma_pagamento_id' => ['nullable', 'integer'],
+            'banco_id' => ['nullable', 'integer'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $dataHora = \Carbon\Carbon::parse($dados['data_hora']);
+
+        $conta = DB::transaction(function () use ($dados, $empresaAtual, $dataHora) {
+            $conta = ContaPagar::create([
+                'empresa_id' => $empresaAtual->id,
+                'fornecedor_id' => $dados['tipo_beneficiario'] === 'fornecedor' ? $dados['beneficiario_id'] : null,
+                'atendente_id' => $dados['tipo_beneficiario'] === 'atendente' ? $dados['beneficiario_id'] : null,
+                'vendedor_id' => $dados['tipo_beneficiario'] === 'vendedor' ? $dados['beneficiario_id'] : null,
+                'historico' => $dados['historico'] ?? null,
+                'plano_conta_id' => $dados['plano_conta_id'] ?? null,
+                'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
+                'banco_id' => $dados['banco_id'] ?? null,
+                'valor' => $dados['valor'],
+                'vencimento' => $dataHora->toDateString(),
+                'status' => 'pago',
+                'pago_em' => $dataHora,
+            ]);
+
+            if (! empty($dados['banco_id'])) {
+                GravaBanco::create([
+                    'empresa_id' => $empresaAtual->id,
+                    'banco_id' => $dados['banco_id'],
+                    'conta_pagar_id' => $conta->id,
+                    'data_movimento' => $dataHora->toDateString(),
+                    'tipo' => 'debito',
+                    'valor' => $conta->valor,
+                    'descricao' => $dados['historico'] ?? "Pagamento #{$conta->id}",
+                    'origem' => 'conta_pagar',
+                ]);
+            }
+
+            return $conta;
+        });
+
+        $conta->load(['fornecedor', 'atendente', 'vendedor', 'planoContas', 'formaPagamento', 'banco']);
+
+        return response()->json([
+            'id' => $conta->id,
+            'data_hora' => $conta->pago_em->toIso8601String(),
+            'beneficiario' => $conta->beneficiarioNome(),
+            'tipo_beneficiario' => $dados['tipo_beneficiario'],
+            'plano_conta' => $conta->planoContas ? ($conta->planoContas->codigo ? "{$conta->planoContas->codigo} - {$conta->planoContas->nome}" : $conta->planoContas->nome) : null,
+            'historico' => $conta->historico,
+            'valor' => round((float) $conta->valor, 2),
+            'forma_pagamento' => $conta->formaPagamento?->descricao,
+            'banco' => $conta->banco?->nome,
+            'lancado_por' => $request->user()->name,
+        ], 201);
+    }
+
+    /** Pagamentos lançados pela tela de "Pagamento" (têm pago_em preenchido) - para reimprimir o recibo. */
+    public function pagamentos(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $linhas = ContaPagar::where('empresa_id', $empresaAtual->id)
+            ->whereNotNull('pago_em')
+            ->with(['fornecedor', 'atendente', 'vendedor', 'planoContas', 'formaPagamento'])
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('pago_em', '>=', $d))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('pago_em', '<=', $d.' 23:59:59'))
+            ->orderByDesc('pago_em')
+            ->get()
+            ->map(fn (ContaPagar $c) => [
+                'id' => $c->id,
+                'data_hora' => $c->pago_em->toIso8601String(),
+                'beneficiario' => $c->beneficiarioNome() ?? '-',
+                'plano_conta' => $c->planoContas?->nome,
+                'historico' => $c->historico,
+                'valor' => round((float) $c->valor, 2),
+                'forma_pagamento' => $c->formaPagamento?->descricao,
+            ]);
+
+        return response()->json($linhas);
+    }
+
     public function contasReceber(Request $request, string $empresa)
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
@@ -1716,26 +1816,31 @@ class DashboardController extends Controller
 
         $fuso = 'America/Sao_Paulo';
 
+        // Inclui produtos e serviços (visitações) - cada item diz de qual tipo é,
+        // para o administrador separar o valor de serviço do valor de produto.
         $itens = ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
-            ->whereNull('agenda_visitacao_id')
-            ->with(['produto:id,nome', 'produtoVariacao:id,tamanho', 'venda:id,data_venda'])
+            ->with(['produto:id,nome', 'produtoVariacao:id,tamanho', 'agendaVisitacao.produto:id,nome', 'venda:id,data_venda'])
             ->orderBy('venda_id')
             ->get();
 
         $linhas = $itens->map(fn (ItemVenda $i) => [
             'venda_id' => $i->venda_id,
             'data' => $i->venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
-            'produto' => $i->produto?->nome ?? '(produto removido)',
+            'produto' => $i->agenda_visitacao_id !== null
+                ? ($i->agendaVisitacao?->produto?->nome ?? 'Visita/visitação')
+                : ($i->produto?->nome ?? '(produto removido)'),
             'variacao' => $i->produtoVariacao?->tamanho,
+            'tipo' => $i->agenda_visitacao_id !== null ? 'servico' : 'produto',
             'quantidade' => (int) $i->quantidade,
             'valor_unitario' => round((float) $i->valor_unitario, 2),
             'valor_total' => round((float) $i->valor_total, 2),
             'custo_total' => round((float) $i->custo_total, 2),
         ])->values();
 
-        $itensCancelados = ItemVenda::whereIn('venda_id', $this->vendasCanceladasNoPeriodo($dados)->select('id'))
-            ->whereNull('agenda_visitacao_id')
-            ->get();
+        $itensCancelados = ItemVenda::whereIn('venda_id', $this->vendasCanceladasNoPeriodo($dados)->select('id'))->get();
+
+        $produtos = $linhas->where('tipo', 'produto');
+        $servicos = $linhas->where('tipo', 'servico');
 
         return response()->json([
             'linhas' => $linhas,
@@ -1744,6 +1849,11 @@ class DashboardController extends Controller
                 'quantidade' => (int) $linhas->sum('quantidade'),
                 'valor_total' => round((float) $linhas->sum('valor_total'), 2),
                 'custo_total' => round((float) $linhas->sum('custo_total'), 2),
+            ],
+            // Produtos e serviços separados, para informar ao administrador o valor de cada um.
+            'por_tipo' => [
+                'produtos' => ['itens' => $produtos->count(), 'quantidade' => (int) $produtos->sum('quantidade'), 'valor_total' => round((float) $produtos->sum('valor_total'), 2)],
+                'servicos' => ['itens' => $servicos->count(), 'quantidade' => (int) $servicos->sum('quantidade'), 'valor_total' => round((float) $servicos->sum('valor_total'), 2)],
             ],
             // Itens de vendas canceladas no período: não entram nos totais acima, só informativo.
             'cancelados' => [
