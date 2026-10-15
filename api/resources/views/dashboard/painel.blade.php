@@ -5,7 +5,12 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ ($empresaAtual?->nome_fantasia ?: ($empresaAtual?->razao_social ?: $empresaSlug)) }} — Retaguarda</title>
     <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
+        .graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .graficos .card { margin-bottom: 0; height: 300px; display: flex; flex-direction: column; }
+        .graficos .card canvas { flex: 1; min-height: 0; }
+        .tabelas-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
         .layout { display: flex; min-height: 100vh; }
         .sidebar { display: flex; flex-direction: column; width: 240px; }
 
@@ -207,17 +212,50 @@
             <section id="secao-dashboard" class="secao ativa">
                 <h1>Dashboard</h1>
                 <div class="cards">
+                    <div class="stat"><div class="label">Vendas hoje</div><div class="valor" id="ind-vendas-hoje">-</div><div class="label" id="ind-vendas-hoje-qtd"></div></div>
+                    <div class="stat"><div class="label">Vendas do mês</div><div class="valor" id="ind-vendas-mes">-</div><div class="label" id="ind-vendas-mes-qtd"></div></div>
+                    <div class="stat"><div class="label">Ticket médio (mês)</div><div class="valor" id="ind-ticket-medio">-</div></div>
                     <div class="stat"><div class="label">Vagas ocupadas hoje</div><div class="valor" id="ind-vagas-hoje">-</div></div>
-                    <div class="stat"><div class="label">Vendas do mês</div><div class="valor" id="ind-vendas-mes">-</div></div>
-                    <div class="stat"><div class="label">Ocupação média</div><div class="valor" id="ind-ocupacao">-</div></div>
+                    <div class="stat"><div class="label">Ocupação média (agenda futura)</div><div class="valor" id="ind-ocupacao">-</div></div>
                     <div class="stat"><div class="label">Comissões do mês</div><div class="valor" id="ind-comissoes">-</div></div>
+                    <div class="stat"><div class="label">Contas a pagar (em aberto)</div><div class="valor" id="ind-contas-pagar" style="color:var(--cor-perigo-texto);">-</div></div>
+                    <div class="stat"><div class="label">Contas a receber (em aberto)</div><div class="valor" id="ind-contas-receber" style="color:var(--cor-sucesso-texto);">-</div></div>
                 </div>
-                <div class="card">
-                    <h2 style="font-size:14px; margin-top:0;">Próximas visitas</h2>
-                    <table>
-                        <thead><tr><th>Data/hora</th><th>Vagas</th><th>Status</th></tr></thead>
-                        <tbody id="tbody-proximas-visitas"></tbody>
-                    </table>
+
+                <div class="graficos">
+                    <div class="card">
+                        <h2 style="font-size:14px; margin-top:0;">Vendas - últimos 14 dias</h2>
+                        <canvas id="grafico-vendas-14-dias"></canvas>
+                    </div>
+                    <div class="card">
+                        <h2 style="font-size:14px; margin-top:0;">Vendas por canal (mês)</h2>
+                        <canvas id="grafico-vendas-canal"></canvas>
+                    </div>
+                    <div class="card">
+                        <h2 style="font-size:14px; margin-top:0;">Top 5 produtos do mês</h2>
+                        <canvas id="grafico-top-produtos"></canvas>
+                    </div>
+                    <div class="card">
+                        <h2 style="font-size:14px; margin-top:0;">Ocupação da agenda - próximos 7 dias</h2>
+                        <canvas id="grafico-ocupacao-7-dias"></canvas>
+                    </div>
+                </div>
+
+                <div class="tabelas-dashboard">
+                    <div class="card">
+                        <h2 style="font-size:14px; margin-top:0;">Próximas visitas</h2>
+                        <table>
+                            <thead><tr><th>Data/hora</th><th>Vagas</th><th>Status</th></tr></thead>
+                            <tbody id="tbody-proximas-visitas"></tbody>
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h2 style="font-size:14px; margin-top:0;">Últimas vendas</h2>
+                        <table>
+                            <thead><tr><th>#</th><th>Data/hora</th><th>Canal</th><th>Atendente</th><th>Valor</th></tr></thead>
+                            <tbody id="tbody-ultimas-vendas"></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
@@ -2077,13 +2115,31 @@
             carregadores[nome]?.();
         }
 
+        const graficosDashboard = {};
+
+        function renderizarGraficoDashboard(id, config) {
+            const canvas = document.getElementById(id);
+            if (!canvas) return;
+            graficosDashboard[id]?.destroy();
+            graficosDashboard[id] = new Chart(canvas.getContext('2d'), config);
+        }
+
         async function carregarIndicadores() {
             const resp = await fetch(`${base}/indicadores`);
             const dados = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+            document.getElementById('ind-vendas-hoje').textContent = brl(dados.vendas_hoje);
+            document.getElementById('ind-vendas-hoje-qtd').textContent = `${dados.vendas_hoje_qtd} venda(s)`;
+            document.getElementById('ind-vendas-mes').textContent = brl(dados.vendas_mes);
+            document.getElementById('ind-vendas-mes-qtd').textContent = `${dados.vendas_mes_qtd} venda(s)`;
+            document.getElementById('ind-ticket-medio').textContent = brl(dados.ticket_medio_mes);
             document.getElementById('ind-vagas-hoje').textContent = dados.vagas_hoje;
-            document.getElementById('ind-vendas-mes').textContent = `R$ ${Number(dados.vendas_mes).toFixed(2)}`;
             document.getElementById('ind-ocupacao').textContent = `${dados.ocupacao_media}%`;
-            document.getElementById('ind-comissoes').textContent = `R$ ${Number(dados.comissoes_a_pagar).toFixed(2)}`;
+            document.getElementById('ind-comissoes').textContent = brl(dados.comissoes_a_pagar);
+            document.getElementById('ind-contas-pagar').textContent = brl(dados.contas_pagar_aberto);
+            document.getElementById('ind-contas-receber').textContent = brl(dados.contas_receber_aberto);
+
             document.getElementById('tbody-proximas-visitas').innerHTML = dados.proximas_visitas.map(v => `
                 <tr>
                     <td>${new Date(v.data_hora).toLocaleString('pt-BR')}</td>
@@ -2091,6 +2147,72 @@
                     <td><span class="status status-${v.status}">${v.status}</span></td>
                 </tr>
             `).join('') || '<tr><td colspan="3">Nenhuma visita agendada.</td></tr>';
+
+            document.getElementById('tbody-ultimas-vendas').innerHTML = dados.ultimas_vendas.map(v => `
+                <tr>
+                    <td>${v.id}</td><td>${v.data}</td><td>${esc(v.canal)}</td>
+                    <td>${esc(v.atendente ?? '-')}</td><td>${brl(v.valor_total)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhuma venda nos últimos 30 dias.</td></tr>';
+
+            const corPrimaria = '#394285';
+            const corSecundaria = '#615a52';
+            const corSucesso = '#046c4e';
+            const corAlerta = '#8a6d00';
+
+            renderizarGraficoDashboard('grafico-vendas-14-dias', {
+                type: 'bar',
+                data: {
+                    labels: dados.serie_vendas_14_dias.map(d => new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
+                    datasets: [{ label: 'Valor vendido', data: dados.serie_vendas_14_dias.map(d => d.valor), backgroundColor: corPrimaria, borderRadius: 4 }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => brl(ctx.parsed.y) } } },
+                    scales: { y: { beginAtZero: true, ticks: { callback: v => brl(v) } } },
+                },
+            });
+
+            renderizarGraficoDashboard('grafico-vendas-canal', {
+                type: 'doughnut',
+                data: {
+                    labels: ['PDV', 'Loja online'],
+                    datasets: [{ data: [dados.vendas_por_canal.pdv.total, dados.vendas_por_canal.site.total], backgroundColor: [corPrimaria, corSecundaria] }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { tooltip: { callbacks: { label: ctx => `${ctx.label}: ${brl(ctx.parsed)}` } } },
+                },
+            });
+
+            renderizarGraficoDashboard('grafico-top-produtos', {
+                type: 'bar',
+                data: {
+                    labels: dados.top_produtos_mes.map(p => p.produto),
+                    datasets: [{ label: 'Quantidade', data: dados.top_produtos_mes.map(p => p.quantidade), backgroundColor: corSucesso, borderRadius: 4 }],
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+                },
+            });
+
+            renderizarGraficoDashboard('grafico-ocupacao-7-dias', {
+                type: 'bar',
+                data: {
+                    labels: dados.ocupacao_proximos_7_dias.map(d => new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })),
+                    datasets: [{ label: 'Ocupação (%)', data: dados.ocupacao_proximos_7_dias.map(d => d.percentual), backgroundColor: corAlerta, borderRadius: 4 }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => `${dados.ocupacao_proximos_7_dias[ctx.dataIndex].vagas_reservadas}/${dados.ocupacao_proximos_7_dias[ctx.dataIndex].vagas_total} vagas (${ctx.parsed.y}%)` } },
+                    },
+                    scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => `${v}%` } } },
+                },
+            });
         }
 
         let agendaCache = [];

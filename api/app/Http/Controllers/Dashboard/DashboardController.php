@@ -61,15 +61,13 @@ class DashboardController extends Controller
     public function indicadores(Request $request, string $empresa)
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
+        $fuso = 'America/Sao_Paulo';
+        $agora = now($fuso);
 
         $vagasHoje = AgendaVisitacao::where('empresa_id', $empresaAtual->id)
             ->whereDate('data_hora', today())
             ->selectRaw('COALESCE(SUM(vagas_reservadas), 0) as total')
             ->value('total');
-
-        $vendasMes = Venda::where('empresa_id', $empresaAtual->id)
-            ->whereBetween('data_venda', [now()->startOfMonth(), now()->endOfMonth()])
-            ->sum('valor_total');
 
         $agendaFutura = AgendaVisitacao::where('empresa_id', $empresaAtual->id)
             ->where('data_hora', '>=', now())
@@ -78,9 +76,63 @@ class DashboardController extends Controller
             ? 0
             : round($agendaFutura->avg(fn ($a) => $a->vagas_total > 0 ? $a->vagas_reservadas / $a->vagas_total * 100 : 0), 1);
 
-        $comissoesAPagar = Venda::where('empresa_id', $empresaAtual->id)
-            ->whereBetween('data_venda', [now()->startOfMonth(), now()->endOfMonth()])
-            ->sum('comissao');
+        $inicioMes = $agora->copy()->startOfMonth()->toDateString();
+        $fimMes = $agora->copy()->endOfMonth()->toDateString();
+        $hoje = $agora->toDateString();
+
+        // Vendas do mês e de hoje reaproveitam o mesmo filtro dos relatórios
+        // (exclui canceladas, cortesia e consumo interno) - evita o painel
+        // mostrar um número de faturamento diferente do resto do sistema.
+        $vendasMesQuery = $this->vendasNoPeriodo(['data_inicio' => $inicioMes, 'data_fim' => $fimMes]);
+        $vendasMesCount = (clone $vendasMesQuery)->count();
+        $vendasMesValor = round((float) (clone $vendasMesQuery)->sum('valor_total'), 2);
+        $ticketMedioMes = $vendasMesCount > 0 ? round($vendasMesValor / $vendasMesCount, 2) : 0.0;
+        $comissoesMes = round((float) (clone $vendasMesQuery)->sum('comissao'), 2);
+
+        $vendasHojeQuery = $this->vendasNoPeriodo(['data_inicio' => $hoje, 'data_fim' => $hoje]);
+        $vendasHojeCount = (clone $vendasHojeQuery)->count();
+        $vendasHojeValor = round((float) (clone $vendasHojeQuery)->sum('valor_total'), 2);
+
+        $contasPagarAberto = round((float) ContaPagar::where('empresa_id', $empresaAtual->id)->where('status', 'em_aberto')->sum('valor'), 2);
+        $contasReceberAberto = round((float) ContaReceber::where('empresa_id', $empresaAtual->id)->where('status', 'em_aberto')->sum('valor'), 2);
+
+        // Série dos últimos 14 dias (gráfico): um ponto por dia, valor e nº de vendas.
+        $inicio14 = $agora->copy()->subDays(13)->toDateString();
+        $vendas14dias = $this->vendasNoPeriodo(['data_inicio' => $inicio14, 'data_fim' => $hoje])->get(['data_venda', 'valor_total']);
+        $porDia = $vendas14dias->groupBy(fn (Venda $v) => $v->data_venda->copy()->setTimezone($fuso)->toDateString());
+        $serieVendas = collect(range(0, 13))->map(function ($i) use ($porDia, $agora) {
+            $dia = $agora->copy()->subDays(13 - $i)->toDateString();
+            $doDia = $porDia->get($dia, collect());
+
+            return ['data' => $dia, 'valor' => round((float) $doDia->sum('valor_total'), 2), 'vendas' => $doDia->count()];
+        })->values();
+
+        // Vendas por canal no mês, para o gráfico de pizza.
+        $vendasPorCanal = (clone $vendasMesQuery)->selectRaw('canal, count(*) as qtd, sum(valor_total) as total')
+            ->groupBy('canal')->get()->keyBy('canal');
+
+        // Top 5 produtos do mês (por quantidade vendida).
+        $topProdutos = $this->itensAgrupadosPorProduto(['data_inicio' => $inicioMes, 'data_fim' => $fimMes])
+            ->sortByDesc('quantidade')->take(5)->values();
+
+        // Ocupação da agenda nos próximos 7 dias, dia a dia.
+        $agendaProximos = AgendaVisitacao::where('empresa_id', $empresaAtual->id)
+            ->whereBetween('data_hora', [$agora->copy()->startOfDay(), $agora->copy()->addDays(6)->endOfDay()])
+            ->get(['data_hora', 'vagas_total', 'vagas_reservadas']);
+        $agendaPorDia = $agendaProximos->groupBy(fn (AgendaVisitacao $a) => $a->data_hora->copy()->setTimezone($fuso)->toDateString());
+        $ocupacaoProximos7Dias = collect(range(0, 6))->map(function ($i) use ($agendaPorDia, $agora) {
+            $dia = $agora->copy()->addDays($i)->toDateString();
+            $doDia = $agendaPorDia->get($dia, collect());
+            $totalVagas = (int) $doDia->sum('vagas_total');
+            $totalReservadas = (int) $doDia->sum('vagas_reservadas');
+
+            return [
+                'data' => $dia,
+                'percentual' => $totalVagas > 0 ? round($totalReservadas / $totalVagas * 100, 1) : 0,
+                'vagas_reservadas' => $totalReservadas,
+                'vagas_total' => $totalVagas,
+            ];
+        })->values();
 
         $proximasVisitas = AgendaVisitacao::where('empresa_id', $empresaAtual->id)
             ->where('data_hora', '>=', now())
@@ -88,12 +140,39 @@ class DashboardController extends Controller
             ->limit(5)
             ->get(['id', 'data_hora', 'vagas_total', 'vagas_reservadas', 'status']);
 
+        $ultimasVendas = $this->vendasNoPeriodo(['data_inicio' => $agora->copy()->subDays(30)->toDateString()])
+            ->with(['atendente:id,nome'])
+            ->orderByDesc('data_venda')
+            ->limit(6)
+            ->get(['id', 'data_venda', 'canal', 'valor_total', 'atendente_id'])
+            ->map(fn (Venda $v) => [
+                'id' => $v->id,
+                'data' => $v->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+                'canal' => $v->canal,
+                'valor_total' => round((float) $v->valor_total, 2),
+                'atendente' => $v->atendente?->nome,
+            ]);
+
         return response()->json([
             'vagas_hoje' => (int) $vagasHoje,
-            'vendas_mes' => $vendasMes,
+            'vendas_mes' => $vendasMesValor,
+            'vendas_mes_qtd' => $vendasMesCount,
+            'vendas_hoje' => $vendasHojeValor,
+            'vendas_hoje_qtd' => $vendasHojeCount,
+            'ticket_medio_mes' => $ticketMedioMes,
             'ocupacao_media' => $ocupacaoMedia,
-            'comissoes_a_pagar' => $comissoesAPagar,
+            'comissoes_a_pagar' => $comissoesMes,
+            'contas_pagar_aberto' => $contasPagarAberto,
+            'contas_receber_aberto' => $contasReceberAberto,
+            'serie_vendas_14_dias' => $serieVendas,
+            'vendas_por_canal' => [
+                'pdv' => ['qtd' => (int) ($vendasPorCanal['pdv']->qtd ?? 0), 'total' => round((float) ($vendasPorCanal['pdv']->total ?? 0), 2)],
+                'site' => ['qtd' => (int) ($vendasPorCanal['site']->qtd ?? 0), 'total' => round((float) ($vendasPorCanal['site']->total ?? 0), 2)],
+            ],
+            'top_produtos_mes' => $topProdutos,
+            'ocupacao_proximos_7_dias' => $ocupacaoProximos7Dias,
             'proximas_visitas' => $proximasVisitas,
+            'ultimas_vendas' => $ultimasVendas,
         ]);
     }
 
