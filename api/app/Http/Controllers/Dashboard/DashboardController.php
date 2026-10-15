@@ -50,9 +50,12 @@ use NFePHP\Common\Certificate;
  */
 class DashboardController extends Controller
 {
-    public function painel(string $empresa)
+    public function painel(Request $request, string $empresa)
     {
-        return view('dashboard.painel', ['empresaSlug' => $empresa]);
+        return view('dashboard.painel', [
+            'empresaSlug' => $empresa,
+            'empresaAtual' => $request->attributes->get('empresaAtual'),
+        ]);
     }
 
     public function indicadores(Request $request, string $empresa)

@@ -3,15 +3,52 @@
 <head>
     <meta charset="utf-8">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Dashboard — {{ $empresaSlug }}</title>
+    <title>{{ ($empresaAtual?->nome_fantasia ?: ($empresaAtual?->razao_social ?: $empresaSlug)) }} — Retaguarda</title>
     <link rel="stylesheet" href="{{ asset('css/sistema.css') }}">
     <style>
         .layout { display: flex; min-height: 100vh; }
-        .sidebar .logo { padding: 0 16px 12px; }
-        .sidebar .logo img { height: 28px; }
-        .sidebar .grupo-label { padding: 14px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.45); }
-        .sidebar .link-pdv { display: block; padding: 10px 16px; font-size: 13px; color: #fff; background: var(--cor-primaria); text-decoration: none; margin: 0 12px; border-radius: 6px; }
+        .sidebar { display: flex; flex-direction: column; width: 240px; }
+
+        /* Cabeçalho da sidebar: identidade da empresa (logo + nome) em destaque */
+        .sidebar-empresa {
+            display: flex; align-items: center; gap: 10px;
+            padding: 16px; margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255,255,255,.15);
+        }
+        .sidebar-empresa .logo-chip {
+            width: 42px; height: 42px; flex-shrink: 0; border-radius: 10px;
+            background: #fff; display: flex; align-items: center; justify-content: center;
+            overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+        }
+        .sidebar-empresa .logo-chip img { width: 100%; height: 100%; object-fit: contain; }
+        .sidebar-empresa .nomes { min-width: 0; }
+        .sidebar-empresa .nome-fantasia {
+            font-weight: 700; font-size: 14px; color: #fff; line-height: 1.25;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .sidebar-empresa .razao-social {
+            font-size: 11px; color: rgba(255,255,255,.55); line-height: 1.3;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        /* Navegação rolável entre o cabeçalho e o rodapé (Sair) */
+        .sidebar-nav { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+        .sidebar-nav::-webkit-scrollbar { width: 6px; }
+        .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+        .sidebar-rodape { border-top: 1px solid rgba(255,255,255,.15); }
+
+        .sidebar .grupo-label {
+            display: flex; align-items: center; gap: 8px;
+            padding: 16px 16px 6px; font-size: 10.5px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.4);
+        }
+        .sidebar .grupo-label svg { width: 13px; height: 13px; flex-shrink: 0; opacity: .8; }
+        .sidebar button { display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; }
+        .sidebar button svg { width: 15px; height: 15px; flex-shrink: 0; opacity: .75; }
+        .sidebar button.ativo { border-left-color: #fff; font-weight: 600; }
+        .sidebar .link-pdv { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 13px; color: #fff; background: var(--cor-primaria); text-decoration: none; margin: 4px 12px 0; border-radius: 6px; }
         .sidebar .link-pdv:hover { background: var(--cor-primaria-escura); }
+        .sidebar .link-pdv svg { width: 15px; height: 15px; flex-shrink: 0; }
         .abas-produto { display: flex; gap: 2px; border-bottom: 1px solid var(--cor-borda); margin-bottom: 24px; flex-wrap: wrap; }
         .abas-produto button { background: none; border: none; padding: 12px 16px; font-size: 12.5px; font-weight: 500; color: var(--cor-texto-suave); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
         .abas-produto button:hover { color: var(--cor-primaria); }
@@ -54,59 +91,116 @@
     </style>
 </head>
 <body>
+    @php
+        $nomeEmpresa = $empresaAtual?->nome_fantasia ?: ($empresaAtual?->razao_social ?: $empresaSlug);
+        $razaoEmpresa = $empresaAtual?->razao_social;
+        $logoEmpresa = $empresaAtual?->logo_url ?: asset('images/logo.jpg');
+    @endphp
     <div class="layout">
         <div class="sidebar">
-            <div class="logo"><img src="{{ asset('images/logo.jpg') }}" alt="Logo"></div>
-            <div class="empresa">{{ $empresaSlug }}</div>
-            <button class="ativo" onclick="mostrarSecao('dashboard', this)">Dashboard</button>
+            <div class="sidebar-empresa">
+                <div class="logo-chip"><img src="{{ $logoEmpresa }}" alt="Logo"></div>
+                <div class="nomes">
+                    <div class="nome-fantasia" title="{{ $nomeEmpresa }}">{{ $nomeEmpresa }}</div>
+                    @if ($razaoEmpresa && $razaoEmpresa !== $nomeEmpresa)
+                        <div class="razao-social" title="{{ $razaoEmpresa }}">{{ $razaoEmpresa }}</div>
+                    @endif
+                </div>
+            </div>
 
-            <div class="grupo-label">PDV</div>
-            <a class="link-pdv" href="{{ url("/pdv/{$empresaSlug}/caixa") }}" target="_blank">Abrir frente de caixa ↗</a>
+            <div class="sidebar-nav">
+                <button class="ativo" onclick="mostrarSecao('dashboard', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                    Dashboard
+                </button>
+                <button onclick="mostrarSecao('alertas', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    Alertas <span id="badge-alertas" class="selo info" style="display:none;"></span>
+                </button>
 
-            <div class="grupo-label">Loja virtual</div>
-            <button onclick="mostrarSecao('pedidos-loja', this)">Pedidos da Loja</button>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    PDV
+                </div>
+                <a class="link-pdv" href="{{ url("/pdv/{$empresaSlug}/caixa") }}" target="_blank">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                    Abrir frente de caixa ↗
+                </a>
 
-            <div class="grupo-label">Cadastros</div>
-            <button onclick="mostrarSecao('agenda', this)">Agenda de Visitas</button>
-            <button onclick="mostrarSecao('produtos', this)">Produtos</button>
-            <button onclick="mostrarSecao('grupos', this)">Grupos de Produto</button>
-            <button onclick="mostrarSecao('clientes', this)">Clientes</button>
-            <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
-            <button onclick="mostrarSecao('compras', this)">Entrada de Notas</button>
-            <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
-            <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
-            <button onclick="mostrarSecao('indicacoes', this)">Indicações</button>
-            <button onclick="mostrarSecao('cupons', this)">Cupons de Desconto</button>
-            <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
-            <button onclick="mostrarSecao('relatorio-descontos', this)">Relatório de Descontos</button>
-            <button onclick="mostrarSecao('relatorio-cancelamentos', this)">Relatório de Cancelamentos</button>
-            <button onclick="mostrarSecao('alertas', this)">Alertas <span id="badge-alertas" class="selo info" style="display:none;"></span></button>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                    Loja Virtual
+                </div>
+                <button onclick="mostrarSecao('pedidos-loja', this)">Pedidos da Loja</button>
 
-            <div class="grupo-label">Relatórios</div>
-            <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
-            <button onclick="mostrarSecao('relatorio-visitas', this)">Relatório de Visitas</button>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"></path></svg>
+                    Cadastros
+                </div>
+                <button onclick="mostrarSecao('agenda', this)">Agenda de Visitas</button>
+                <button onclick="mostrarSecao('produtos', this)">Produtos</button>
+                <button onclick="mostrarSecao('grupos', this)">Grupos de Produto</button>
+                <button onclick="mostrarSecao('clientes', this)">Clientes</button>
+                <button onclick="mostrarSecao('fornecedores', this)">Fornecedores</button>
+                <button onclick="mostrarSecao('vendedores', this)">Vendedores</button>
+                <button onclick="mostrarSecao('atendentes', this)">Atendentes</button>
 
-            <div class="grupo-label">Financeiro</div>
-            <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
-            <button onclick="mostrarSecao('plano-contas', this)">Plano de Contas</button>
-            <button onclick="mostrarSecao('bancos', this)">Bancos</button>
-            <button onclick="mostrarSecao('caixa-consulta', this)">Caixa (consulta)</button>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Compras
+                </div>
+                <button onclick="mostrarSecao('compras', this)">Entrada de Notas</button>
 
-            <div class="grupo-label">Fiscal</div>
-            <button onclick="mostrarSecao('nfe', this)">Emitir NF-e</button>
-            <button onclick="mostrarSecao('fiscal', this)">Emissão e Relatórios</button>
-            <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><circle cx="7" cy="7" r="1.5"></circle></svg>
+                    Vendas &amp; Descontos
+                </div>
+                <button onclick="mostrarSecao('indicacoes', this)">Indicações</button>
+                <button onclick="mostrarSecao('cupons', this)">Cupons de Desconto</button>
+                <button onclick="mostrarSecao('descontos-pdv', this)">Descontos do PDV</button>
+                <button onclick="mostrarSecao('relatorio-descontos', this)">Relatório de Descontos</button>
+                <button onclick="mostrarSecao('relatorio-cancelamentos', this)">Relatório de Cancelamentos</button>
 
-            <div class="grupo-label">Configurações</div>
-            <button onclick="mostrarSecao('parametros', this)">Parâmetros</button>
-            <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
-            <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
-            <button onclick="mostrarSecao('whatsapp', this)">WhatsApp</button>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                    Relatórios
+                </div>
+                <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
+                <button onclick="mostrarSecao('relatorio-visitas', this)">Relatório de Visitas</button>
 
-            <form method="POST" action="{{ url('/logout') }}" style="padding: 16px;">
-                @csrf
-                <button type="submit" class="secundario" style="width:100%;">Sair</button>
-            </form>
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                    Financeiro
+                </div>
+                <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
+                <button onclick="mostrarSecao('plano-contas', this)">Plano de Contas</button>
+                <button onclick="mostrarSecao('bancos', this)">Bancos</button>
+                <button onclick="mostrarSecao('caixa-consulta', this)">Caixa (consulta)</button>
+
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    Fiscal
+                </div>
+                <button onclick="mostrarSecao('nfe', this)">Emitir NF-e</button>
+                <button onclick="mostrarSecao('fiscal', this)">Emissão e Relatórios</button>
+                <button onclick="mostrarSecao('config-fiscal', this)">Config. Fiscal</button>
+
+                <div class="grupo-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Configurações
+                </div>
+                <button onclick="mostrarSecao('parametros', this)">Parâmetros</button>
+                <button onclick="mostrarSecao('usuarios', this)">Usuários</button>
+                <button onclick="mostrarSecao('pagamentos', this)">Pagamentos</button>
+                <button onclick="mostrarSecao('whatsapp', this)">WhatsApp</button>
+            </div>
+
+            <div class="sidebar-rodape">
+                <form method="POST" action="{{ url('/logout') }}" style="padding: 16px;">
+                    @csrf
+                    <button type="submit" class="secundario" style="width:100%;">Sair</button>
+                </form>
+            </div>
         </div>
 
         <div class="conteudo">
