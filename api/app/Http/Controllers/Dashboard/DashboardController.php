@@ -1126,6 +1126,102 @@ class DashboardController extends Controller
     }
 
     /**
+     * Relatório de visitas: uma linha por visita vendida (item de venda com
+     * agenda_visitacao_id), com o máximo de informação possível - data/hora da
+     * visita, pedido, agenda, cliente, atendente/vendedor, valores e se teve
+     * desconto. Pensado para o administrador conferir cada visita agendada.
+     */
+    public function relatorioVisitas(Request $request, string $empresa, LancamentoVendaService $lancamentoVendaService)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
+            'status_pagamento' => ['nullable', 'in:todos,pago,cancelado'],
+        ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
+
+        $fuso = 'America/Sao_Paulo';
+        $canal = $this->canalFiltro($dados);
+        $statusPagamento = $dados['status_pagamento'] ?? 'todos';
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $itens = ItemVenda::where('empresa_id', $empresaAtual->id)
+            ->whereNotNull('agenda_visitacao_id')
+            ->whereHas('agendaVisitacao', fn ($q) => $q
+                ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->whereDate('data_hora', '>=', $d))
+                ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->whereDate('data_hora', '<=', $d)))
+            ->whereHas('venda', fn ($q) => $q
+                ->when($canal, fn ($qq, $c) => $qq->where('canal', $c))
+                ->when($statusPagamento !== 'todos', fn ($qq) => $qq->where('status_pagamento', $statusPagamento)))
+            ->with([
+                'agendaVisitacao.produto:id,nome',
+                'venda.cliente:id,nome,telefone',
+                'venda.atendente:id,nome',
+                'venda.vendedor:id,nome',
+                'venda.formaPagamento:id,descricao',
+                'venda.cupom:id,codigo',
+                'venda.descontoPdv:id,descricao,aplica_em',
+                'venda.itens:id,venda_id,agenda_visitacao_id,valor_total',
+            ])
+            ->get()
+            ->sortBy(fn (ItemVenda $i) => $i->agendaVisitacao?->data_hora)
+            ->values();
+
+        $linhas = $itens->map(function (ItemVenda $i) use ($lancamentoVendaService, $fuso) {
+            $venda = $i->venda;
+            $agenda = $i->agendaVisitacao;
+
+            $produtos = $venda->itens->whereNull('agenda_visitacao_id');
+            $visitas = $venda->itens->whereNotNull('agenda_visitacao_id');
+            $brutoVisitas = (float) $visitas->sum('valor_total');
+
+            [, $descontoVisitas] = $lancamentoVendaService->ratearDesconto($venda, $produtos, $visitas, (float) $venda->valor_desconto);
+            // Rateia o desconto das visitas da venda proporcionalmente a este item (uma venda pode ter mais de uma visita).
+            $descontoItem = $brutoVisitas > 0 ? round($descontoVisitas * ((float) $i->valor_total / $brutoVisitas), 2) : 0.0;
+
+            return [
+                'pedido' => $i->venda_id,
+                'agenda' => $agenda?->id,
+                'data_hora_visita' => $agenda?->data_hora?->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+                'servico' => $agenda?->produto?->nome ?? 'Visita',
+                'cliente' => $venda->cliente?->nome,
+                'telefone' => $venda->cliente?->telefone,
+                'atendente' => $venda->atendente?->nome,
+                'vendedor' => $venda->vendedor?->nome,
+                'canal' => $venda->canal,
+                'quantidade' => (int) $i->quantidade,
+                'valor_unitario' => round((float) $i->valor_unitario, 2),
+                'valor_bruto' => round((float) $i->valor_total, 2),
+                'teve_desconto' => $descontoItem > 0 || (bool) $venda->cortesia,
+                'valor_desconto' => $descontoItem,
+                'valor_pago' => round((float) $i->valor_total - $descontoItem, 2),
+                'cortesia' => (bool) $venda->cortesia,
+                'cupom' => $venda->cupom?->codigo,
+                'desconto_pdv' => $venda->descontoPdv?->descricao,
+                'motivo_desconto' => $venda->motivo_desconto,
+                'forma_pagamento' => $venda->formaPagamento?->descricao,
+                'status_pagamento' => $venda->status_pagamento,
+                'compareceu' => $venda->check_in_em !== null,
+                'check_in_em' => $venda->check_in_em?->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+            ];
+        })->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'visitas' => $linhas->count(),
+                'pessoas' => (int) $linhas->sum('quantidade'),
+                'valor_bruto' => round((float) $linhas->sum('valor_bruto'), 2),
+                'valor_desconto' => round((float) $linhas->sum('valor_desconto'), 2),
+                'valor_pago' => round((float) $linhas->sum('valor_pago'), 2),
+                'com_desconto' => $linhas->where('teve_desconto', true)->count(),
+                'compareceram' => $linhas->where('compareceu', true)->count(),
+            ],
+        ]);
+    }
+
+    /**
      * Agrega itens_venda (não vendas inteiras) por pessoa, porque uma
      * mesma venda pode ter produtos físicos e visitas agendadas ao mesmo
      * tempo - o filtro "tipo" (produtos/visitações) só faz sentido no

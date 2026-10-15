@@ -103,7 +103,7 @@ class LancamentoVendaService
      *
      * @return array{0: float, 1: float} [descontoProdutos, descontoVisitas]
      */
-    private function ratearDesconto(Venda $venda, Collection $produtos, Collection $visitas, float $desconto): array
+    public function ratearDesconto(Venda $venda, Collection $produtos, Collection $visitas, float $desconto): array
     {
         if ($desconto <= 0) {
             return [0.0, 0.0];

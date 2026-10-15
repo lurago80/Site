@@ -84,6 +84,7 @@
 
             <div class="grupo-label">Relatórios</div>
             <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
+            <button onclick="mostrarSecao('relatorio-visitas', this)">Relatório de Visitas</button>
 
             <div class="grupo-label">Financeiro</div>
             <button onclick="mostrarSecao('financeiro', this)">Contas a Pagar/Receber</button>
@@ -1291,6 +1292,39 @@
                 </div>
             </section>
 
+            <section id="secao-relatorio-visitas" class="secao">
+                <h1>Relatório de Visitas</h1>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="rvis-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rvis-fim"></div>
+                        <div><label>Canal</label><select id="rvis-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
+                        <div><label>Pagamento</label>
+                            <select id="rvis-status">
+                                <option value="todos">Todos</option>
+                                <option value="pago">Só pagas</option>
+                                <option value="cancelado">Só canceladas</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" onclick="carregarRelatorioVisitas()">Consultar</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioVisitasA4()">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioVisitasCupom()">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioVisitasExcel()">Exportar Excel</button></div>
+                    </div>
+                    <table>
+                        <thead><tr>
+                            <th>Pedido</th><th>Agenda</th><th>Data/hora da visita</th><th>Serviço</th>
+                            <th>Cliente</th><th>Atendente</th><th>Vendedor</th><th>Canal</th><th>Qtd</th>
+                            <th>Unit.</th><th>Bruto</th><th>Desconto</th><th>Pago</th><th>Forma pgto.</th>
+                            <th>Status</th><th>Compareceu</th>
+                        </tr></thead>
+                        <tbody id="tbody-relatorio-visitas"></tbody>
+                    </table>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-relatorio-visitas"></p>
+                    <p class="msg" id="msg-relatorio-visitas"></p>
+                </div>
+            </section>
+
             <section id="secao-bancos" class="secao">
                 <h1>Bancos</h1>
                 <div class="card">
@@ -1930,6 +1964,7 @@
             financeiro: () => { carregarSelectsFinanceiro().then(() => { carregarContasPagar(); carregarContasReceber(); carregarPagamentos(); }); },
             'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
             'relatorios-vendas': carregarRelatoriosVendas,
+            'relatorio-visitas': carregarRelatorioVisitas,
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
@@ -4336,6 +4371,137 @@
                 msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar os relatórios.';
                 console.error(erro);
             }
+        }
+
+        // ---- Relatório de Visitas ----
+
+        let ultimoRelatorioVisitas = null;
+
+        async function carregarRelatorioVisitas() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('rvis-inicio').value;
+            const fim = document.getElementById('rvis-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('rvis-canal').value);
+            params.set('status_pagamento', document.getElementById('rvis-status').value);
+
+            const msg = document.getElementById('msg-relatorio-visitas');
+            msg.className = 'msg'; msg.textContent = 'Carregando...';
+
+            const resp = await fetch(`${base}/visitas-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const r = await resp.json();
+            ultimoRelatorioVisitas = { r, inicio, fim };
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+            document.getElementById('tbody-relatorio-visitas').innerHTML = r.linhas.map(v => `
+                <tr${v.status_pagamento === 'cancelado' ? ' style="color:var(--cor-texto-suave); font-style:italic;"' : ''}>
+                    <td>${v.pedido}</td><td>${v.agenda ?? '-'}</td><td>${v.data_hora_visita ?? '-'}</td>
+                    <td>${esc(v.servico)}</td>
+                    <td>${esc(v.cliente ?? '-')}${v.telefone ? ' - ' + esc(v.telefone) : ''}</td>
+                    <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
+                    <td>${esc(v.canal)}</td><td>${v.quantidade}</td>
+                    <td>${brl(v.valor_unitario)}</td><td>${brl(v.valor_bruto)}</td>
+                    <td>${v.teve_desconto
+                        ? `${brl(v.valor_desconto)}${v.cortesia ? ' <span class="selo info">cortesia</span>' : ''}${v.cupom ? ` <span class="selo info">cupom ${esc(v.cupom)}</span>` : ''}${v.desconto_pdv ? ` <span class="selo info">${esc(v.desconto_pdv)}</span>` : ''}`
+                        : '-'}</td>
+                    <td>${brl(v.valor_pago)}</td>
+                    <td>${esc(v.forma_pagamento ?? '-')}</td>
+                    <td>${v.status_pagamento === 'cancelado' ? '<span class="selo info">Cancelada</span>' : '<span class="selo ok">Paga</span>'}</td>
+                    <td>${v.compareceu ? `<span class="selo ok">Sim</span> ${v.check_in_em ?? ''}` : '<span class="selo info">Não</span>'}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="16">Nenhuma visita no período.</td></tr>';
+
+            document.getElementById('totais-relatorio-visitas').textContent =
+                `${r.totais.visitas} visita(s) - ${r.totais.pessoas} pessoa(s) - bruto ${brl(r.totais.valor_bruto)} - desconto ${brl(r.totais.valor_desconto)} - pago ${brl(r.totais.valor_pago)}` +
+                ` | Com desconto: ${r.totais.com_desconto} | Compareceram: ${r.totais.compareceram}`;
+        }
+
+        function corpoRelatorioVisitas() {
+            if (!ultimoRelatorioVisitas) return null;
+            const { r, inicio, fim } = ultimoRelatorioVisitas;
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            return {
+                titulo: `Relatório de Visitas - ${tituloPeriodo(inicio, fim)}`,
+                linhas: r.linhas,
+                totais: r.totais,
+                brl,
+            };
+        }
+
+        function imprimirRelatorioVisitasA4() {
+            const d = corpoRelatorioVisitas();
+            if (!d) { alert('Consulte o relatório antes de imprimir.'); return; }
+            const corpo = `
+                <h2>${d.titulo}</h2>
+                <table>
+                    <thead><tr>
+                        <th>Pedido</th><th>Agenda</th><th>Data/hora</th><th>Serviço</th><th>Cliente</th>
+                        <th>Atendente</th><th>Vendedor</th><th class="n">Qtd</th><th class="n">Bruto</th>
+                        <th class="n">Desconto</th><th class="n">Pago</th><th>Status</th><th>Compareceu</th>
+                    </tr></thead>
+                    <tbody>${d.linhas.map(v => `
+                        <tr>
+                            <td>${v.pedido}</td><td>${v.agenda ?? '-'}</td><td>${v.data_hora_visita ?? '-'}</td>
+                            <td>${esc(v.servico)}</td><td>${esc(v.cliente ?? '-')}</td>
+                            <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
+                            <td class="n">${v.quantidade}</td><td class="n">${d.brl(v.valor_bruto)}</td>
+                            <td class="n">${d.brl(v.valor_desconto)}</td><td class="n">${d.brl(v.valor_pago)}</td>
+                            <td>${v.status_pagamento === 'cancelado' ? 'Cancelada' : 'Paga'}</td>
+                            <td>${v.compareceu ? 'Sim' : 'Não'}</td>
+                        </tr>
+                    `).join('')}</tbody>
+                    <tfoot><tr>
+                        <td colspan="7">Total - ${d.totais.visitas} visita(s), ${d.totais.pessoas} pessoa(s)</td>
+                        <td class="n">${d.brl(d.totais.valor_bruto)}</td><td class="n">${d.brl(d.totais.valor_desconto)}</td>
+                        <td class="n">${d.brl(d.totais.valor_pago)}</td><td colspan="2"></td>
+                    </tr></tfoot>
+                </table>`;
+            abrirJanelaImpressao('Relatório de Visitas', corpo, false);
+        }
+
+        function imprimirRelatorioVisitasCupom() {
+            const d = corpoRelatorioVisitas();
+            if (!d) { alert('Consulte o relatório antes de imprimir.'); return; }
+            const corpo = `
+                <h2>${d.titulo}</h2>
+                <div class="sep"></div>
+                ${d.linhas.map(v => `
+                    <div>#${v.pedido} - ${esc(v.servico)} - ${v.data_hora_visita ?? '-'}</div>
+                    <div>${esc(v.cliente ?? 'Sem cliente')} - ${v.quantidade}x</div>
+                    <table><tr><td>Bruto</td><td style="text-align:right;">${d.brl(v.valor_bruto)}</td></tr>
+                    <tr><td>Desconto</td><td style="text-align:right;">${d.brl(v.valor_desconto)}</td></tr>
+                    <tr><td><strong>Pago</strong></td><td style="text-align:right;"><strong>${d.brl(v.valor_pago)}</strong></td></tr></table>
+                    <div class="sep"></div>
+                `).join('')}
+                <div>Total: ${d.totais.visitas} visita(s), ${d.totais.pessoas} pessoa(s)</div>
+                <table><tr><td><strong>Total pago</strong></td><td style="text-align:right;"><strong>${d.brl(d.totais.valor_pago)}</strong></td></tr></table>`;
+            abrirJanelaImpressao('Relatório de Visitas', corpo, true);
+        }
+
+        function exportarRelatorioVisitasExcel() {
+            const d = corpoRelatorioVisitas();
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const linhas = [[
+                'Pedido', 'Agenda', 'Data/hora da visita', 'Serviço', 'Cliente', 'Telefone', 'Atendente', 'Vendedor',
+                'Canal', 'Quantidade', 'Valor unitário', 'Valor bruto', 'Teve desconto', 'Valor desconto', 'Valor pago',
+                'Cortesia', 'Cupom', 'Desconto PDV', 'Forma de pagamento', 'Status', 'Compareceu', 'Check-in',
+            ]].concat(d.linhas.map(v => [
+                v.pedido, v.agenda ?? '', v.data_hora_visita ?? '', csvTxt(v.servico), csvTxt(v.cliente ?? ''),
+                csvTxt(v.telefone ?? ''), csvTxt(v.atendente ?? ''), csvTxt(v.vendedor ?? ''), csvTxt(v.canal),
+                v.quantidade, csvNum(v.valor_unitario), csvNum(v.valor_bruto), v.teve_desconto ? 'Sim' : 'Não',
+                csvNum(v.valor_desconto), csvNum(v.valor_pago), v.cortesia ? 'Sim' : 'Não', csvTxt(v.cupom ?? ''),
+                csvTxt(v.desconto_pdv ?? ''), csvTxt(v.forma_pagamento ?? ''), v.status_pagamento,
+                v.compareceu ? 'Sim' : 'Não', v.check_in_em ?? '',
+            ])).concat([[
+                'Total', '', '', '', '', '', '', '', '', d.totais.pessoas, '', csvNum(d.totais.valor_bruto), '',
+                csvNum(d.totais.valor_desconto), csvNum(d.totais.valor_pago), '', '', '', '', '', '', '',
+            ]]);
+            const periodo = `${ultimoRelatorioVisitas.inicio || 'inicio'}_a_${ultimoRelatorioVisitas.fim || 'hoje'}`;
+            baixarCsv(`relatorio-visitas_${periodo}.csv`, linhas);
         }
 
         // ---- Bancos ----
