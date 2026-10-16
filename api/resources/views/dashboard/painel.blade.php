@@ -902,15 +902,6 @@
                 </div>
 
                 <div class="card">
-                    <h2>Notas de entrada</h2>
-                    <table>
-                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data entrada</th><th>Valor total</th><th>Status</th><th></th></tr></thead>
-                        <tbody id="tbody-compras"></tbody>
-                    </table>
-                    <p class="msg" id="msg-compras"></p>
-                </div>
-
-                <div class="card">
                     <h2>Relatório de Entrada de Notas</h2>
                     <div class="linha-form">
                         <div><label>De</label><input type="date" id="ren-inicio"></div>
@@ -936,6 +927,15 @@
                         <tfoot id="tfoot-relatorio-entrada-notas"></tfoot>
                     </table>
                     <p class="msg" id="msg-relatorio-entrada-notas"></p>
+                </div>
+
+                <div class="card">
+                    <h2>Notas de entrada</h2>
+                    <table>
+                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data entrada</th><th>Valor total</th><th>Status</th><th></th></tr></thead>
+                        <tbody id="tbody-compras"></tbody>
+                    </table>
+                    <p class="msg" id="msg-compras"></p>
                 </div>
 
                 <div class="card" id="compra-conferencia-card" style="display:none;">
