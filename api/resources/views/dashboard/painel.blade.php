@@ -173,6 +173,7 @@
                 <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
                 <button onclick="mostrarSecao('relatorio-visitas', this)">Relatório de Visitas</button>
                 <button onclick="mostrarSecao('relatorio-cortesia', this)">Cortesia / Consumo Interno</button>
+                <button onclick="mostrarSecao('relatorio-entrada-notas', this)">Relatório de Entrada de Notas</button>
 
                 <div class="grupo-label">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
@@ -902,34 +903,6 @@
                 </div>
 
                 <div class="card">
-                    <h2>Relatório de Entrada de Notas</h2>
-                    <div class="linha-form">
-                        <div><label>De</label><input type="date" id="ren-inicio"></div>
-                        <div><label>Até</label><input type="date" id="ren-fim"></div>
-                        <div style="flex:1; min-width:200px">
-                            <label>Fornecedor</label>
-                            <select id="ren-fornecedor"><option value="">Todos</option></select>
-                        </div>
-                        <div>
-                            <label>Status</label>
-                            <select id="ren-status">
-                                <option value="">Todos</option>
-                                <option value="pendente">Pendente</option>
-                                <option value="confirmada">Confirmada</option>
-                            </select>
-                        </div>
-                        <div><button class="acao" onclick="carregarRelatorioEntradaNotas()">Consultar</button></div>
-                        <div><button class="secundario" onclick="exportarRelatorioEntradaNotas()">Exportar CSV</button></div>
-                    </div>
-                    <table>
-                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data emissão</th><th>Data entrada</th><th>Itens</th><th>Produtos</th><th>Frete</th><th>Desconto</th><th>Total</th><th>Status</th></tr></thead>
-                        <tbody id="tbody-relatorio-entrada-notas"></tbody>
-                        <tfoot id="tfoot-relatorio-entrada-notas"></tfoot>
-                    </table>
-                    <p class="msg" id="msg-relatorio-entrada-notas"></p>
-                </div>
-
-                <div class="card">
                     <h2>Notas de entrada</h2>
                     <table>
                         <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data entrada</th><th>Valor total</th><th>Status</th><th></th></tr></thead>
@@ -1564,6 +1537,36 @@
                     </table>
                     <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-relatorio-cortesia"></p>
                     <p class="msg" id="msg-relatorio-cortesia"></p>
+                </div>
+            </section>
+
+            <section id="secao-relatorio-entrada-notas" class="secao">
+                <h1>Relatório de Entrada de Notas</h1>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="ren-inicio"></div>
+                        <div><label>Até</label><input type="date" id="ren-fim"></div>
+                        <div style="flex:1; min-width:200px">
+                            <label>Fornecedor</label>
+                            <select id="ren-fornecedor"><option value="">Todos</option></select>
+                        </div>
+                        <div>
+                            <label>Status</label>
+                            <select id="ren-status">
+                                <option value="">Todos</option>
+                                <option value="pendente">Pendente</option>
+                                <option value="confirmada">Confirmada</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" onclick="carregarRelatorioEntradaNotas()">Consultar</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioEntradaNotas()">Exportar CSV</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data emissão</th><th>Data entrada</th><th>Itens</th><th>Produtos</th><th>Frete</th><th>Desconto</th><th>Total</th><th>Status</th></tr></thead>
+                        <tbody id="tbody-relatorio-entrada-notas"></tbody>
+                        <tfoot id="tfoot-relatorio-entrada-notas"></tfoot>
+                    </table>
+                    <p class="msg" id="msg-relatorio-entrada-notas"></p>
                 </div>
             </section>
 
@@ -2208,6 +2211,7 @@
             'relatorios-vendas': carregarRelatoriosVendas,
             'relatorio-visitas': carregarRelatorioVisitas,
             'relatorio-cortesia': carregarRelatorioCortesia,
+            'relatorio-entrada-notas': carregarRelatorioEntradaNotas,
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
