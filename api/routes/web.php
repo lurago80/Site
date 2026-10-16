@@ -161,6 +161,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::get('/vendedores-itens-relatorio', [DashboardController::class, 'relatorioItensPorVendedor']);
     Route::get('/indicacoes-relatorio', [DashboardController::class, 'relatorioIndicacoes']);
     Route::get('/visitas-relatorio', [DashboardController::class, 'relatorioVisitas']);
+    Route::get('/cortesia-consumo-interno-relatorio', [DashboardController::class, 'relatorioCortesiaConsumoInterno']);
 
     Route::get('/atendentes', [DashboardController::class, 'atendentes']);
     Route::post('/atendentes', [DashboardController::class, 'criarAtendente']);
@@ -204,6 +205,10 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::put('/plano-contas/{planoContaId}', [DashboardController::class, 'atualizarPlanoContas']);
     Route::get('/plano-contas-relatorio', [DashboardController::class, 'relatorioPlanoContas']);
     Route::get('/resultado-relatorio', [DashboardController::class, 'relatorioResultado']);
+
+    // Cancelamento de pedidos pela retaguarda - reaproveita o mesmo serviço do PDV
+    // (valida perfil, motivo, estorna estoque/caixa/NFC-e); só não tem rota aqui ainda.
+    Route::post('/vendas/{vendaId}/cancelar', [PdvController::class, 'cancelarVenda']);
 
     Route::get('/vendas-relatorio', [DashboardController::class, 'relatorioVendas']);
     Route::get('/itens-vendidos-relatorio', [DashboardController::class, 'relatorioItensVendidos']);

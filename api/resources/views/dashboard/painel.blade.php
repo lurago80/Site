@@ -172,6 +172,7 @@
                 </div>
                 <button onclick="mostrarSecao('relatorios-vendas', this)">Vendas / Produtos / ABC</button>
                 <button onclick="mostrarSecao('relatorio-visitas', this)">Relatório de Visitas</button>
+                <button onclick="mostrarSecao('relatorio-cortesia', this)">Cortesia / Consumo Interno</button>
 
                 <div class="grupo-label">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
@@ -1457,6 +1458,42 @@
                 </div>
             </section>
 
+            <section id="secao-relatorio-cortesia" class="secao">
+                <h1>Cortesia / Consumo Interno</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Vendas sem receita (produto/serviço saiu de graça - cortesia, ou foi usado pela própria empresa -
+                    consumo interno). Já ficam fora dos totais dos relatórios de vendas; aqui dá pra conferir cada registro em detalhe.
+                </p>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="rcc-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rcc-fim"></div>
+                        <div><label>Canal</label><select id="rcc-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
+                        <div><label>Tipo</label>
+                            <select id="rcc-tipo">
+                                <option value="todos">Cortesia + Consumo interno</option>
+                                <option value="cortesia">Só cortesia</option>
+                                <option value="consumo_interno">Só consumo interno</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" onclick="carregarRelatorioCortesia()">Consultar</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioCortesiaA4()">Imprimir A4</button></div>
+                        <div><button class="secundario" onclick="imprimirRelatorioCortesiaCupom()">Imprimir cupom (80 col.)</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioCortesiaExcel()">Exportar Excel</button></div>
+                    </div>
+                    <table>
+                        <thead><tr>
+                            <th>Pedido</th><th>Data/hora</th><th>Tipo</th><th>Produto/Serviço</th><th>Variação</th>
+                            <th>Qtd</th><th>Unit.</th><th>Valor de tabela</th><th>Custo</th><th>Cliente</th>
+                            <th>Atendente</th><th>Vendedor</th><th>Canal</th><th>Forma pgto.</th><th>Motivo</th><th>Indicação</th>
+                        </tr></thead>
+                        <tbody id="tbody-relatorio-cortesia"></tbody>
+                    </table>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin:8px 0 0;" id="totais-relatorio-cortesia"></p>
+                    <p class="msg" id="msg-relatorio-cortesia"></p>
+                </div>
+            </section>
+
             <section id="secao-bancos" class="secao">
                 <h1>Bancos</h1>
                 <div class="card">
@@ -2097,6 +2134,7 @@
             'plano-contas': () => { carregarPlanoContas(); carregarResultadoPeriodo(); },
             'relatorios-vendas': carregarRelatoriosVendas,
             'relatorio-visitas': carregarRelatorioVisitas,
+            'relatorio-cortesia': carregarRelatorioCortesia,
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
@@ -4718,6 +4756,122 @@
             ]]);
             const periodo = `${ultimoRelatorioVisitas.inicio || 'inicio'}_a_${ultimoRelatorioVisitas.fim || 'hoje'}`;
             baixarCsv(`relatorio-visitas_${periodo}.csv`, linhas);
+        }
+
+        // ---- Relatório de Cortesia / Consumo Interno ----
+
+        let ultimoRelatorioCortesia = null;
+
+        async function carregarRelatorioCortesia() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('rcc-inicio').value;
+            const fim = document.getElementById('rcc-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('rcc-canal').value);
+            params.set('tipo', document.getElementById('rcc-tipo').value);
+
+            const msg = document.getElementById('msg-relatorio-cortesia');
+            msg.className = 'msg'; msg.textContent = 'Carregando...';
+
+            const resp = await fetch(`${base}/cortesia-consumo-interno-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const r = await resp.json();
+            ultimoRelatorioCortesia = { r, inicio, fim };
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+            document.getElementById('tbody-relatorio-cortesia').innerHTML = r.linhas.map(v => `
+                <tr>
+                    <td>${v.pedido}</td><td>${v.data_hora}</td>
+                    <td><span class="selo info">${esc(v.tipo)}</span></td>
+                    <td>${esc(v.produto)}</td><td>${esc(v.variacao ?? '-')}</td>
+                    <td>${v.quantidade}</td><td>${brl(v.valor_unitario)}</td>
+                    <td>${brl(v.valor_tabela)}</td><td>${brl(v.custo)}</td>
+                    <td>${esc(v.cliente ?? '-')}${v.telefone ? ' - ' + esc(v.telefone) : ''}</td>
+                    <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
+                    <td>${esc(v.canal)}</td><td>${esc(v.forma_pagamento ?? '-')}</td>
+                    <td>${esc(v.motivo ?? '-')}</td><td>${esc(v.indicacao ?? '-')}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="16">Nenhum registro no período.</td></tr>';
+
+            document.getElementById('totais-relatorio-cortesia').textContent =
+                `${r.totais.registros} registro(s) - ${r.totais.quantidade} unidade(s) - valor de tabela ${brl(r.totais.valor_tabela)} - custo ${brl(r.totais.custo)}` +
+                ` | Cortesias: ${r.totais.cortesias} | Consumo interno: ${r.totais.consumo_interno}`;
+        }
+
+        function corpoRelatorioCortesia() {
+            if (!ultimoRelatorioCortesia) return null;
+            const { r, inicio, fim } = ultimoRelatorioCortesia;
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            return { titulo: `Cortesia / Consumo Interno - ${tituloPeriodo(inicio, fim)}`, linhas: r.linhas, totais: r.totais, brl };
+        }
+
+        function imprimirRelatorioCortesiaA4() {
+            const d = corpoRelatorioCortesia();
+            if (!d) { alert('Consulte o relatório antes de imprimir.'); return; }
+            const corpo = `
+                <h2>${d.titulo}</h2>
+                <table>
+                    <thead><tr>
+                        <th>Pedido</th><th>Data/hora</th><th>Tipo</th><th>Produto/Serviço</th><th>Cliente</th>
+                        <th>Atendente</th><th>Vendedor</th><th class="n">Qtd</th><th class="n">Valor de tabela</th><th class="n">Custo</th>
+                    </tr></thead>
+                    <tbody>${d.linhas.map(v => `
+                        <tr>
+                            <td>${v.pedido}</td><td>${v.data_hora}</td><td>${esc(v.tipo)}</td>
+                            <td>${esc(v.produto)}</td><td>${esc(v.cliente ?? '-')}</td>
+                            <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
+                            <td class="n">${v.quantidade}</td><td class="n">${d.brl(v.valor_tabela)}</td><td class="n">${d.brl(v.custo)}</td>
+                        </tr>
+                    `).join('')}</tbody>
+                    <tfoot><tr>
+                        <td colspan="7">Total - ${d.totais.registros} registro(s) (${d.totais.cortesias} cortesia, ${d.totais.consumo_interno} consumo interno)</td>
+                        <td class="n">${d.totais.quantidade}</td><td class="n">${d.brl(d.totais.valor_tabela)}</td><td class="n">${d.brl(d.totais.custo)}</td>
+                    </tr></tfoot>
+                </table>`;
+            abrirJanelaImpressao('Cortesia / Consumo Interno', corpo, false);
+        }
+
+        function imprimirRelatorioCortesiaCupom() {
+            const d = corpoRelatorioCortesia();
+            if (!d) { alert('Consulte o relatório antes de imprimir.'); return; }
+            const corpo = `
+                <h2>${d.titulo}</h2>
+                <div class="sep"></div>
+                ${d.linhas.map(v => `
+                    <div>#${v.pedido} - ${esc(v.tipo)} - ${v.data_hora}</div>
+                    <div>${esc(v.produto)} ${v.quantidade}x</div>
+                    <div>${esc(v.cliente ?? 'Sem cliente')}</div>
+                    <table><tr><td>Valor de tabela</td><td style="text-align:right;">${d.brl(v.valor_tabela)}</td></tr>
+                    <tr><td>Custo</td><td style="text-align:right;">${d.brl(v.custo)}</td></tr></table>
+                    <div class="sep"></div>
+                `).join('')}
+                <div>Total: ${d.totais.registros} registro(s), ${d.totais.quantidade} unidade(s)</div>
+                <table><tr><td><strong>Valor de tabela</strong></td><td style="text-align:right;"><strong>${d.brl(d.totais.valor_tabela)}</strong></td></tr>
+                <tr><td><strong>Custo total</strong></td><td style="text-align:right;"><strong>${d.brl(d.totais.custo)}</strong></td></tr></table>`;
+            abrirJanelaImpressao('Cortesia / Consumo Interno', corpo, true);
+        }
+
+        function exportarRelatorioCortesiaExcel() {
+            const d = corpoRelatorioCortesia();
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const linhas = [[
+                'Pedido', 'Data/hora', 'Tipo', 'Produto/Serviço', 'Variação', 'Quantidade', 'Valor unitário',
+                'Valor de tabela', 'Custo', 'Cliente', 'Telefone', 'Atendente', 'Vendedor', 'Canal',
+                'Forma de pagamento', 'Motivo', 'Indicação',
+            ]].concat(d.linhas.map(v => [
+                v.pedido, v.data_hora, csvTxt(v.tipo), csvTxt(v.produto), csvTxt(v.variacao ?? ''), v.quantidade,
+                csvNum(v.valor_unitario), csvNum(v.valor_tabela), csvNum(v.custo), csvTxt(v.cliente ?? ''),
+                csvTxt(v.telefone ?? ''), csvTxt(v.atendente ?? ''), csvTxt(v.vendedor ?? ''), csvTxt(v.canal),
+                csvTxt(v.forma_pagamento ?? ''), csvTxt(v.motivo ?? ''), csvTxt(v.indicacao ?? ''),
+            ])).concat([[
+                'Total', '', '', '', '', d.totais.quantidade, '', csvNum(d.totais.valor_tabela), csvNum(d.totais.custo),
+                '', '', '', '', '', '', '', '',
+            ]]);
+            const periodo = `${ultimoRelatorioCortesia.inicio || 'inicio'}_a_${ultimoRelatorioCortesia.fim || 'hoje'}`;
+            baixarCsv(`relatorio-cortesia-consumo-interno_${periodo}.csv`, linhas);
         }
 
         // ---- Bancos ----

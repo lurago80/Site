@@ -1208,6 +1208,92 @@ class DashboardController extends Controller
     }
 
     /**
+     * Relatório de cortesia e consumo interno: uma linha por item de uma venda
+     * sem receita (Venda::semReceita()), com o máximo de informação possível -
+     * pedido, data/hora, tipo, produto/serviço, cliente, atendente/vendedor,
+     * valor de tabela e custo. Serve para o administrador conferir o que saiu
+     * de graça ou foi consumo da própria empresa, e quanto isso custou.
+     */
+    public function relatorioCortesiaConsumoInterno(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
+            'tipo' => ['nullable', 'in:todos,cortesia,consumo_interno'],
+        ]);
+        $dados['data_inicio'] = $this->inicioEfetivo($dados['data_inicio'] ?? null);
+
+        $fuso = 'America/Sao_Paulo';
+        $canal = $this->canalFiltro($dados);
+        $tipoFiltro = $dados['tipo'] ?? 'todos';
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $vendas = Venda::where('empresa_id', $empresaAtual->id)
+            ->where('status_pagamento', '!=', 'cancelado')
+            ->whereNull('cancelada_em')
+            // Mesma definição de "sem receita" do resto do sistema (Venda::semReceita()):
+            // cortesia OU forma de pagamento "CONSUMO INTERNO" - filtro no banco só por
+            // performance, a classificação final usa o método do model (fonte única da verdade).
+            ->where(fn ($q) => $q->where('cortesia', true)
+                ->orWhereHas('formaPagamento', fn ($f) => $f->whereRaw("upper(trim(descricao)) = 'CONSUMO INTERNO'")))
+            ->when($canal, fn ($q, $c) => $q->where('canal', $c))
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
+            ->with([
+                'itens.produto:id,nome',
+                'itens.produtoVariacao:id,tamanho',
+                'itens.agendaVisitacao.produto:id,nome',
+                'cliente:id,nome,telefone',
+                'atendente:id,nome',
+                'vendedor:id,nome',
+                'formaPagamento:id,descricao',
+                'indicacao:id,nome',
+            ])
+            ->orderByDesc('data_venda')
+            ->get()
+            ->filter(fn (Venda $v) => $v->semReceita() && ($tipoFiltro === 'todos' || ($v->cortesia ? 'cortesia' : 'consumo_interno') === $tipoFiltro));
+
+        $linhas = $vendas->flatMap(function (Venda $venda) use ($fuso) {
+            $tipo = $venda->cortesia ? 'Cortesia' : 'Consumo interno';
+
+            return $venda->itens->map(fn (ItemVenda $item) => [
+                'pedido' => $venda->id,
+                'data_hora' => $venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+                'tipo' => $tipo,
+                'produto' => $item->agenda_visitacao_id !== null
+                    ? ($item->agendaVisitacao?->produto?->nome ?? 'Visita/visitação')
+                    : ($item->produto?->nome ?? '(produto removido)'),
+                'variacao' => $item->produtoVariacao?->tamanho,
+                'quantidade' => (int) $item->quantidade,
+                'valor_unitario' => round((float) $item->valor_unitario, 2),
+                'valor_tabela' => round((float) $item->valor_total, 2),
+                'custo' => round((float) $item->custo_total, 2),
+                'cliente' => $venda->cliente?->nome,
+                'telefone' => $venda->cliente?->telefone,
+                'atendente' => $venda->atendente?->nome,
+                'vendedor' => $venda->vendedor?->nome,
+                'canal' => $venda->canal,
+                'forma_pagamento' => $venda->formaPagamento?->descricao,
+                'motivo' => $venda->motivo_desconto,
+                'indicacao' => $venda->indicacao?->nome,
+            ]);
+        })->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'registros' => $linhas->count(),
+                'quantidade' => (int) $linhas->sum('quantidade'),
+                'valor_tabela' => round((float) $linhas->sum('valor_tabela'), 2),
+                'custo' => round((float) $linhas->sum('custo'), 2),
+                'cortesias' => $linhas->where('tipo', 'Cortesia')->count(),
+                'consumo_interno' => $linhas->where('tipo', 'Consumo interno')->count(),
+            ],
+        ]);
+    }
+
+    /**
      * Relatório de visitas: uma linha por visita vendida (item de venda com
      * agenda_visitacao_id), com o máximo de informação possível - data/hora da
      * visita, pedido, agenda, cliente, atendente/vendedor, valores e se teve
