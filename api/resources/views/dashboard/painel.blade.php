@@ -1446,10 +1446,17 @@
 
                 <div class="card">
                     <h2 style="font-size:14px; margin-top:0;">Produtos mais vendidos</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Use o filtro "Produtos" acima (campo Tipo) para excluir visitas/serviços - ex.: levantamento de
+                        só o que foi vendido em garrafa/produto físico num período.
+                    </p>
                     <table>
                         <thead><tr><th>Produto</th><th>Qtd</th><th>Valor vendido</th></tr></thead>
                         <tbody id="tbody-rv-mais-vendidos"></tbody>
                     </table>
+                    <div class="linha-form" style="margin-top:8px;">
+                        <div><button class="secundario" onclick="exportarRelatorioMaisVendidosExcel()">Exportar Excel</button></div>
+                    </div>
                 </div>
 
                 <div class="card">
@@ -4870,6 +4877,7 @@
                 msg.textContent = '';
 
                 ultimosRelatorios.vendas = { vendas, inicio, fim };
+                ultimosRelatorios['mais-vendidos'] = { linhas: maisVendidos.linhas, totais: maisVendidos.totais, inicio, fim };
                 document.getElementById('tbody-rv-vendas').innerHTML = vendas.linhas.map(v => `
                     <tr${v.sem_receita ? ' style="color:var(--cor-texto-suave); font-style:italic;"' : ''}>
                         <td>${v.id}${v.sem_receita ? ` <span class="selo info">${esc(v.tipo_venda)}</span>` : ''}</td><td>${v.data} ${v.hora}</td><td>${esc(v.canal)}</td>
@@ -4929,6 +4937,19 @@
                 msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar os relatórios.';
                 console.error(erro);
             }
+        }
+
+        function exportarRelatorioMaisVendidosExcel() {
+            const d = ultimosRelatorios['mais-vendidos'];
+            if (!d || !d.linhas.length) { alert('Consulte o relatório antes de exportar.'); return; }
+            const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
+            const tipo = document.getElementById('rv-tipo').value;
+            const sufixoTipo = tipo === 'todos' ? '' : `_${tipo}`;
+            const linhas = [['Produto', 'Quantidade', 'Valor vendido']]
+                .concat(d.linhas.map(p => [csvTxt(p.produto), p.quantidade, csvNum(p.valor_total)]))
+                .concat([['Total', d.totais.quantidade, csvNum(d.totais.valor_total)]]);
+
+            baixarCsv(`produtos-mais-vendidos${sufixoTipo}_${periodo}.csv`, linhas);
         }
 
         // ---- Relatório de Visitas ----
