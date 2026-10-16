@@ -865,6 +865,34 @@
                     <p class="msg" id="msg-compras"></p>
                 </div>
 
+                <div class="card">
+                    <h2>Relatório de Entrada de Notas</h2>
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="ren-inicio"></div>
+                        <div><label>Até</label><input type="date" id="ren-fim"></div>
+                        <div style="flex:1; min-width:200px">
+                            <label>Fornecedor</label>
+                            <select id="ren-fornecedor"><option value="">Todos</option></select>
+                        </div>
+                        <div>
+                            <label>Status</label>
+                            <select id="ren-status">
+                                <option value="">Todos</option>
+                                <option value="pendente">Pendente</option>
+                                <option value="confirmada">Confirmada</option>
+                            </select>
+                        </div>
+                        <div><button class="acao" onclick="carregarRelatorioEntradaNotas()">Consultar</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioEntradaNotas()">Exportar CSV</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data emissão</th><th>Data entrada</th><th>Itens</th><th>Produtos</th><th>Frete</th><th>Desconto</th><th>Total</th><th>Status</th></tr></thead>
+                        <tbody id="tbody-relatorio-entrada-notas"></tbody>
+                        <tfoot id="tfoot-relatorio-entrada-notas"></tfoot>
+                    </table>
+                    <p class="msg" id="msg-relatorio-entrada-notas"></p>
+                </div>
+
                 <div class="card" id="compra-conferencia-card" style="display:none;">
                     <h2>Conferência de itens importados (Nota #<span id="compra-conf-id"></span>)</h2>
                     <p style="font-size:12px; color:var(--cor-texto-suave);">
@@ -3113,6 +3141,70 @@
                     </td>
                 </tr>
             `).join('') || '<tr><td colspan="6">Nenhuma nota de entrada registrada.</td></tr>';
+        }
+
+        async function carregarRelatorioEntradaNotas() {
+            await carregarFornecedoresParaSelect();
+            const selFornecedor = document.getElementById('ren-fornecedor');
+            const selecionado = selFornecedor.value;
+            selFornecedor.innerHTML = '<option value="">Todos</option>' + fornecedoresCache.map(f => `<option value="${f.id}">${esc(f.razao_social)}</option>`).join('');
+            selFornecedor.value = selecionado;
+
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('ren-inicio').value;
+            const fim = document.getElementById('ren-fim').value;
+            const fornecedorId = selFornecedor.value;
+            const status = document.getElementById('ren-status').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            if (fornecedorId) params.set('fornecedor_id', fornecedorId);
+            if (status) params.set('status', status);
+
+            const msg = document.getElementById('msg-relatorio-entrada-notas');
+            const resp = await fetch(`${base}/entrada-notas-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const { linhas, totais } = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            ultimosRelatorios['entrada-notas'] = { linhas, totais, inicio, fim };
+
+            document.getElementById('tbody-relatorio-entrada-notas').innerHTML = linhas.map(r => `
+                <tr>
+                    <td>${esc(r.numero_nota ?? '-')}</td>
+                    <td>${esc(r.fornecedor)}</td>
+                    <td>${r.data_emissao ?? '-'}</td>
+                    <td>${r.data_entrada ?? '-'}</td>
+                    <td>${r.itens}</td>
+                    <td>${brl(r.valor_produtos)}</td>
+                    <td>${brl(r.valor_frete)}</td>
+                    <td>${brl(r.valor_desconto)}</td>
+                    <td>${brl(r.valor_total)}</td>
+                    <td>${esc(r.status)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="10">Nenhuma nota de entrada no período.</td></tr>';
+
+            document.getElementById('tfoot-relatorio-entrada-notas').innerHTML = linhas.length ? `
+                <tr style="font-weight:700;">
+                    <td colspan="4">Total (${totais.notas} nota(s))</td>
+                    <td>${totais.itens}</td>
+                    <td>${brl(totais.valor_produtos)}</td>
+                    <td>${brl(totais.valor_frete)}</td>
+                    <td>${brl(totais.valor_desconto)}</td>
+                    <td>${brl(totais.valor_total)}</td>
+                    <td></td>
+                </tr>` : '';
+        }
+
+        function exportarRelatorioEntradaNotas() {
+            const d = ultimosRelatorios['entrada-notas'];
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
+            const linhas = [['Nº nota', 'Fornecedor', 'Data emissão', 'Data entrada', 'Itens', 'Produtos', 'Frete', 'Desconto', 'Total', 'Status']]
+                .concat(d.linhas.map(r => [csvTxt(r.numero_nota), csvTxt(r.fornecedor), r.data_emissao, r.data_entrada, r.itens, csvNum(r.valor_produtos), csvNum(r.valor_frete), csvNum(r.valor_desconto), csvNum(r.valor_total), csvTxt(r.status)]))
+                .concat([['Total', d.totais.notas + ' nota(s)', '', '', d.totais.itens, csvNum(d.totais.valor_produtos), csvNum(d.totais.valor_frete), csvNum(d.totais.valor_desconto), csvNum(d.totais.valor_total), '']]);
+
+            baixarCsv(`relatorio-entrada-notas-${periodo}.csv`, linhas);
         }
 
         async function carregarProdutosParaSelectCompra() {

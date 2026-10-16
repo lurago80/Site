@@ -11,6 +11,7 @@ use App\Models\Cliente;
 use App\Models\ConfigFiscal;
 use App\Models\ConfigPagamento;
 use App\Models\ConfigWhatsapp;
+use App\Models\Compra;
 use App\Models\ContaPagar;
 use App\Models\ContaReceber;
 use App\Models\Cupom;
@@ -2256,6 +2257,64 @@ class DashboardController extends Controller
                 'margem' => $margemTotal,
                 'margem_percentual' => $valorTotal > 0 ? round($margemTotal / $valorTotal * 100, 2) : 0,
             ],
+        ]);
+    }
+
+    /** Notas de entrada (compras de fornecedores) recebidas no período, com itens e totais. */
+    public function relatorioEntradaNotas(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'fornecedor_id' => ['nullable', 'integer'],
+            'status' => ['nullable', 'string'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $fuso = 'America/Sao_Paulo';
+
+        $compras = Compra::where('empresa_id', $empresaAtual->id)
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data_entrada', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_entrada', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()))
+            ->when($dados['fornecedor_id'] ?? null, fn ($q, $f) => $q->where('fornecedor_id', $f))
+            ->when($dados['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
+            ->with(['fornecedor:id,razao_social'])
+            ->withCount('itens')
+            ->orderBy('data_entrada')
+            ->orderBy('id')
+            ->get();
+
+        $linhas = $compras->map(fn (Compra $c) => [
+            'id' => $c->id,
+            'numero_nota' => $c->numero_nota,
+            'serie_nota' => $c->serie_nota,
+            'data_emissao' => $c->data_emissao?->format('d/m/Y'),
+            'data_entrada' => $c->data_entrada?->format('d/m/Y'),
+            'fornecedor' => $c->fornecedor?->razao_social ?? '(fornecedor removido)',
+            'tipo_entrada' => $c->tipo_entrada,
+            'status' => $c->status,
+            'itens' => $c->itens_count,
+            'valor_produtos' => round((float) $c->valor_produtos, 2),
+            'valor_frete' => round((float) $c->valor_frete, 2),
+            'valor_desconto' => round((float) $c->valor_desconto, 2),
+            'valor_total' => round((float) $c->valor_total, 2),
+        ])->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'notas' => $linhas->count(),
+                'itens' => (int) $linhas->sum('itens'),
+                'valor_produtos' => round((float) $linhas->sum('valor_produtos'), 2),
+                'valor_frete' => round((float) $linhas->sum('valor_frete'), 2),
+                'valor_desconto' => round((float) $linhas->sum('valor_desconto'), 2),
+                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+            ],
+            // Por fornecedor: ajuda a ver concentração de compras.
+            'por_fornecedor' => $linhas->groupBy('fornecedor')->map(fn (Collection $grupo) => [
+                'notas' => $grupo->count(),
+                'valor_total' => round((float) $grupo->sum('valor_total'), 2),
+            ])->sortDesc(),
         ]);
     }
 
