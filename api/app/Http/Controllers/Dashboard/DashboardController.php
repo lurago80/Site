@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgendaVisitacao;
+use App\Models\AjusteEstoque;
 use App\Models\Atendente;
 use App\Models\Banco;
 use App\Models\CertificadoDigital;
@@ -327,6 +328,95 @@ class DashboardController extends Controller
         return response()->json(
             $produto->variacoes()->with('produtoVinculado:id,nome,estoque_atual')->orderBy('tamanho')->get()
         );
+    }
+
+    /**
+     * Corrige o estoque de um produto (ou de uma variação) quando a contagem
+     * física não bate com o sistema. Fica registrado quem corrigiu, quando,
+     * o estoque antes/depois e o motivo - para auditoria e para o relatório.
+     */
+    public function criarAjusteEstoque(Request $request, string $empresa, int $produtoId)
+    {
+        $this->exigirGerente($request);
+
+        $dados = $request->validate([
+            'produto_variacao_id' => ['nullable', 'integer'],
+            'estoque_novo' => ['required', 'integer', 'min:0'],
+            'motivo' => ['required', 'string', 'max:500'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $ajuste = DB::transaction(function () use ($dados, $empresaAtual, $produtoId, $request) {
+            $produto = Produto::where('empresa_id', $empresaAtual->id)->lockForUpdate()->findOrFail($produtoId);
+            $variacao = null;
+
+            if ($dados['produto_variacao_id'] ?? null) {
+                $variacao = $produto->variacoes()->lockForUpdate()->findOrFail($dados['produto_variacao_id']);
+                abort_if($variacao->produto_vinculado_id !== null, 422, 'Esta variação usa o estoque do produto vinculado - ajuste o estoque do produto vinculado.');
+
+                $anterior = (int) $variacao->estoque_atual;
+                $variacao->update(['estoque_atual' => $dados['estoque_novo']]);
+            } else {
+                abort_if($produto->estoque_atual === null, 422, 'Este produto não controla estoque.');
+
+                $anterior = (int) $produto->estoque_atual;
+                $produto->update(['estoque_atual' => $dados['estoque_novo']]);
+            }
+
+            return AjusteEstoque::create([
+                'empresa_id' => $empresaAtual->id,
+                'produto_id' => $produto->id,
+                'produto_variacao_id' => $variacao?->id,
+                'usuario_id' => $request->user()->id,
+                'estoque_anterior' => $anterior,
+                'estoque_novo' => $dados['estoque_novo'],
+                'diferenca' => $dados['estoque_novo'] - $anterior,
+                'motivo' => $dados['motivo'],
+            ]);
+        });
+
+        return response()->json($ajuste->load(['produto:id,nome', 'produtoVariacao:id,tamanho', 'usuario:id,name']), 201);
+    }
+
+    /** Histórico de correções de estoque no período, com filtro por produto. */
+    public function relatorioAjustesEstoque(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'produto_id' => ['nullable', 'integer'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $fuso = 'America/Sao_Paulo';
+
+        $ajustes = AjusteEstoque::where('empresa_id', $empresaAtual->id)
+            ->when($dados['produto_id'] ?? null, fn ($q, $p) => $q->where('produto_id', $p))
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('created_at', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('created_at', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()))
+            ->with(['produto:id,nome', 'produtoVariacao:id,tamanho', 'usuario:id,name'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $linhas = $ajustes->map(fn (AjusteEstoque $a) => [
+            'id' => $a->id,
+            'data_hora' => $a->created_at->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+            'produto' => $a->produtoVariacao ? "{$a->produto?->nome} ({$a->produtoVariacao->tamanho})" : ($a->produto?->nome ?? '(produto removido)'),
+            'quantidade_atual' => $a->estoque_anterior,
+            'quantidade_correta' => $a->estoque_novo,
+            'itens_corrigidos' => $a->diferenca,
+            'usuario' => $a->usuario?->name ?? '(usuário removido)',
+            'motivo' => $a->motivo,
+        ])->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'totais' => [
+                'ajustes' => $linhas->count(),
+                'itens_corrigidos' => (int) $linhas->sum(fn ($l) => abs($l['itens_corrigidos'])),
+            ],
+        ]);
     }
 
     public function criarVariacaoProduto(Request $request, string $empresa, int $produtoId)

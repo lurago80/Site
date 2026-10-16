@@ -147,6 +147,8 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::delete('/produtos/{produtoId}', [DashboardController::class, 'excluirProduto']);
     Route::get('/produtos/{produtoId}/kit', [DashboardController::class, 'kitProduto']);
     Route::put('/produtos/{produtoId}/kit', [DashboardController::class, 'atualizarKitProduto']);
+    Route::post('/produtos/{produtoId}/ajuste-estoque', [DashboardController::class, 'criarAjusteEstoque']);
+    Route::get('/ajustes-estoque-relatorio', [DashboardController::class, 'relatorioAjustesEstoque']);
     Route::get('/tab-cclasstrib', [DashboardController::class, 'tabClassTrib']);
     Route::get('/tab-ccredpres', [DashboardController::class, 'tabCredPres']);
 

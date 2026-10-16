@@ -674,6 +674,51 @@
                         <div><button class="secundario" onclick="exportarInventarioHistoricoExcel()">Exportar Excel</button></div>
                     </div>
                 </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Correção de estoque</h2>
+                    <p style="font-size:12px; color:var(--cor-texto-suave); margin-top:0;">
+                        Use quando a contagem física não bater com o sistema. Toda correção fica registrada (quem fez,
+                        quando, estoque antes/depois e o motivo) no relatório abaixo.
+                    </p>
+                    <div class="linha-form">
+                        <div style="flex:1; min-width:200px">
+                            <label>Produto</label>
+                            <select id="aje-produto" onchange="aoSelecionarProdutoAjusteEstoque()"></select>
+                        </div>
+                        <div id="aje-variacao-wrap" style="display:none;">
+                            <label>Tamanho/variação</label>
+                            <select id="aje-variacao" onchange="aoSelecionarVariacaoAjusteEstoque()"></select>
+                        </div>
+                        <div><label>Estoque atual</label><input type="text" id="aje-estoque-atual" style="width:110px" readonly></div>
+                        <div><label>Estoque correto</label><input type="number" id="aje-estoque-novo" style="width:110px" disabled></div>
+                    </div>
+                    <div class="linha-form">
+                        <div style="flex:1; min-width:280px"><label>Motivo</label><input type="text" id="aje-motivo" placeholder="Ex.: contagem física, avaria, extravio..."></div>
+                        <div><label>&nbsp;</label><button type="button" class="acao" onclick="salvarAjusteEstoque()">Registrar correção</button></div>
+                    </div>
+                    <p class="msg" id="msg-ajuste-estoque"></p>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Relatório de correções de estoque</h2>
+                    <div class="linha-form">
+                        <div style="flex:1; min-width:200px">
+                            <label>Produto</label>
+                            <select id="rae-produto"><option value="">Todos</option></select>
+                        </div>
+                        <div><label>De</label><input type="date" id="rae-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rae-fim"></div>
+                        <div><button class="acao" onclick="carregarRelatorioAjustesEstoque()">Consultar</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioAjustesEstoque()">Exportar CSV</button></div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Data/hora</th><th>Produto</th><th>Qtd. atual</th><th>Qtd. correta</th><th>Itens corrigidos</th><th>Usuário</th><th>Motivo</th></tr></thead>
+                        <tbody id="tbody-relatorio-ajustes-estoque"></tbody>
+                        <tfoot id="tfoot-relatorio-ajustes-estoque"></tfoot>
+                    </table>
+                    <p class="msg" id="msg-relatorio-ajustes-estoque"></p>
+                </div>
             </section>
 
             <section id="secao-pedidos-loja" class="secao">
@@ -2416,6 +2461,8 @@
                     </td>
                 </tr>
             `).join('') || '<tr><td colspan="11">Nenhum produto cadastrado.</td></tr>';
+
+            preencherSelectsAjusteEstoque();
         }
 
         // ---- Inventário para contagem de estoque ----
@@ -2544,6 +2591,163 @@
             const d = inventarioHistoricoAtual;
             const csv = [['Produto', 'Estoque gravado']].concat(d.linhas.map(l => [csvTxt(l.produto), csvNum(l.estoque)]));
             baixarCsv(`inventario-historico_${d.data}.csv`, csv);
+        }
+
+        // ---- Correção de estoque e relatório de ajustes ----
+
+        function preencherSelectsAjusteEstoque() {
+            const produtosComEstoque = produtosCache.filter(p => !p.eh_kit);
+            const opcoes = produtosComEstoque.map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
+
+            const selAje = document.getElementById('aje-produto');
+            selAje.innerHTML = '<option value="">Selecione...</option>' + opcoes;
+
+            const selRae = document.getElementById('rae-produto');
+            const selecionadoRae = selRae.value;
+            selRae.innerHTML = '<option value="">Todos</option>' + opcoes;
+            selRae.value = selecionadoRae;
+        }
+
+        function aoSelecionarProdutoAjusteEstoque() {
+            const produtoId = Number(document.getElementById('aje-produto').value);
+            const produto = produtosCache.find(p => p.id === produtoId);
+            const wrapVariacao = document.getElementById('aje-variacao-wrap');
+            const selVariacao = document.getElementById('aje-variacao');
+            const estoqueAtual = document.getElementById('aje-estoque-atual');
+            const estoqueNovo = document.getElementById('aje-estoque-novo');
+
+            if (!produto) {
+                wrapVariacao.style.display = 'none';
+                estoqueAtual.value = '';
+                estoqueNovo.disabled = true;
+                return;
+            }
+
+            if (produto.variacoes && produto.variacoes.length > 0) {
+                wrapVariacao.style.display = '';
+                selVariacao.innerHTML = '<option value="">Selecione...</option>' +
+                    produto.variacoes.map(v => `<option value="${v.id}">${esc(v.tamanho)}</option>`).join('');
+                estoqueAtual.value = '';
+                estoqueNovo.value = '';
+                estoqueNovo.disabled = true;
+            } else {
+                wrapVariacao.style.display = 'none';
+                estoqueNovo.disabled = produto.estoque_atual === null;
+                estoqueAtual.value = produto.estoque_atual === null ? 'Sem controle de estoque' : produto.estoque_atual;
+                estoqueNovo.value = '';
+            }
+        }
+
+        function aoSelecionarVariacaoAjusteEstoque() {
+            const produtoId = Number(document.getElementById('aje-produto').value);
+            const produto = produtosCache.find(p => p.id === produtoId);
+            const variacaoId = Number(document.getElementById('aje-variacao').value);
+            const variacao = produto?.variacoes.find(v => v.id === variacaoId);
+            const estoqueAtual = document.getElementById('aje-estoque-atual');
+            const estoqueNovo = document.getElementById('aje-estoque-novo');
+
+            if (!variacao) {
+                estoqueAtual.value = '';
+                estoqueNovo.disabled = true;
+                return;
+            }
+
+            if (variacao.produto_vinculado_id) {
+                estoqueAtual.value = 'Usa o estoque do produto vinculado - ajuste o estoque dele diretamente.';
+                estoqueNovo.disabled = true;
+                return;
+            }
+
+            estoqueAtual.value = variacao.estoque_atual;
+            estoqueNovo.disabled = false;
+            estoqueNovo.value = '';
+        }
+
+        async function salvarAjusteEstoque() {
+            const msg = document.getElementById('msg-ajuste-estoque');
+            const produtoId = Number(document.getElementById('aje-produto').value);
+            const variacaoId = document.getElementById('aje-variacao-wrap').style.display !== 'none'
+                ? Number(document.getElementById('aje-variacao').value) || null
+                : null;
+            const estoqueNovo = document.getElementById('aje-estoque-novo').value;
+            const motivo = document.getElementById('aje-motivo').value.trim();
+
+            if (!produtoId || estoqueNovo === '' || !motivo) {
+                msg.className = 'msg erro';
+                msg.textContent = 'Escolha o produto, informe o estoque correto e o motivo.';
+                return;
+            }
+
+            const resp = await fetch(`${base}/produtos/${produtoId}/ajuste-estoque`, {
+                method: 'POST',
+                headers: headersJson,
+                body: JSON.stringify({ produto_variacao_id: variacaoId, estoque_novo: Number(estoqueNovo), motivo }),
+            });
+
+            if (!resp.ok) {
+                const erro = await resp.json().catch(() => null);
+                msg.className = 'msg erro';
+                msg.textContent = erro?.message || 'Não foi possível registrar a correção.';
+                return;
+            }
+
+            msg.className = 'msg sucesso';
+            msg.textContent = 'Correção registrada.';
+            document.getElementById('aje-produto').value = '';
+            document.getElementById('aje-variacao-wrap').style.display = 'none';
+            document.getElementById('aje-estoque-atual').value = '';
+            document.getElementById('aje-estoque-novo').value = '';
+            document.getElementById('aje-motivo').value = '';
+            await carregarProdutos();
+            carregarRelatorioAjustesEstoque();
+        }
+
+        async function carregarRelatorioAjustesEstoque() {
+            const params = new URLSearchParams();
+            const produtoId = document.getElementById('rae-produto').value;
+            const inicio = document.getElementById('rae-inicio').value;
+            const fim = document.getElementById('rae-fim').value;
+            if (produtoId) params.set('produto_id', produtoId);
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+
+            const msg = document.getElementById('msg-relatorio-ajustes-estoque');
+            const resp = await fetch(`${base}/ajustes-estoque-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const { linhas, totais } = await resp.json();
+            ultimosRelatorios['ajustes-estoque'] = { linhas, totais, inicio, fim };
+
+            document.getElementById('tbody-relatorio-ajustes-estoque').innerHTML = linhas.map(r => `
+                <tr>
+                    <td>${r.data_hora}</td>
+                    <td>${esc(r.produto)}</td>
+                    <td>${r.quantidade_atual}</td>
+                    <td>${r.quantidade_correta}</td>
+                    <td>${r.itens_corrigidos > 0 ? '+' : ''}${r.itens_corrigidos}</td>
+                    <td>${esc(r.usuario)}</td>
+                    <td>${esc(r.motivo)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="7">Nenhuma correção de estoque no período.</td></tr>';
+
+            document.getElementById('tfoot-relatorio-ajustes-estoque').innerHTML = linhas.length ? `
+                <tr style="font-weight:700;">
+                    <td colspan="4">Total (${totais.ajustes} correção/ões)</td>
+                    <td>${totais.itens_corrigidos}</td>
+                    <td colspan="2"></td>
+                </tr>` : '';
+        }
+
+        function exportarRelatorioAjustesEstoque() {
+            const d = ultimosRelatorios['ajustes-estoque'];
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
+            const linhas = [['Data/hora', 'Produto', 'Qtd. atual', 'Qtd. correta', 'Itens corrigidos', 'Usuário', 'Motivo']]
+                .concat(d.linhas.map(r => [r.data_hora, csvTxt(r.produto), r.quantidade_atual, r.quantidade_correta, r.itens_corrigidos, csvTxt(r.usuario), csvTxt(r.motivo)]))
+                .concat([['Total', d.totais.ajustes + ' correção/ões', '', '', d.totais.itens_corrigidos, '', '']]);
+
+            baixarCsv(`relatorio-ajustes-estoque-${periodo}.csv`, linhas);
         }
 
         // Sem movimento: exclui. Com movimento (vendas, compras, notas, agenda, kit): desativa.
