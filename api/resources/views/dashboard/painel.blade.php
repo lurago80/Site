@@ -3923,11 +3923,11 @@
                         ['Memo - 001.015 descontos concedidos (informativa)', csvNum(r.memo.descontos_concedidos)]]);
             } else if (chave === 'vendas') {
                 const v = d.vendas;
-                linhas = [['Venda', 'Data', 'Hora', 'Canal', 'Atendente', 'Vendedor', 'Forma de pagamento', 'Itens', 'Desconto', 'Total', 'Observação']]
-                    .concat(v.linhas.map(x => [x.id, x.data, x.hora, csvTxt(x.canal), csvTxt(x.atendente), csvTxt(x.vendedor), csvTxt(x.forma_pagamento), x.itens, csvNum(x.valor_desconto), csvNum(x.valor_total),
+                linhas = [['Venda', 'Data', 'Hora', 'Canal', 'Atendente', 'Vendedor', 'Forma de pagamento', 'Itens', 'Brindes', 'Desconto', 'Total', 'Observação']]
+                    .concat(v.linhas.map(x => [x.id, x.data, x.hora, csvTxt(x.canal), csvTxt(x.atendente), csvTxt(x.vendedor), csvTxt(x.forma_pagamento), x.itens, x.brindes || 0, csvNum(x.valor_desconto), csvNum(x.valor_total),
                         x.sem_receita ? csvTxt(x.tipo_venda + ' (fora do total)') : '']))
-                    .concat([['Total', '', '', '', '', '', '', v.totais.itens, csvNum(v.totais.valor_desconto), csvNum(v.totais.valor_total), v.totais.vendas + ' venda(s)'],
-                        ['Fora do total (consumo interno / cortesia)', '', '', '', '', '', '', '', '', csvNum(v.fora_do_total.valor_total), v.fora_do_total.vendas + ' venda(s)']]);
+                    .concat([['Total', '', '', '', '', '', '', v.totais.itens, v.totais.brindes || 0, csvNum(v.totais.valor_desconto), csvNum(v.totais.valor_total), v.totais.vendas + ' venda(s)'],
+                        ['Fora do total (consumo interno / cortesia)', '', '', '', '', '', '', '', '', '', csvNum(v.fora_do_total.valor_total), v.fora_do_total.vendas + ' venda(s)']]);
             }
 
             baixarCsv(`relatorio-${chave}-${periodo}${sufixoCanal}.csv`, linhas);
@@ -4874,7 +4874,7 @@
                     <tr${v.sem_receita ? ' style="color:var(--cor-texto-suave); font-style:italic;"' : ''}>
                         <td>${v.id}${v.sem_receita ? ` <span class="selo info">${esc(v.tipo_venda)}</span>` : ''}</td><td>${v.data} ${v.hora}</td><td>${esc(v.canal)}</td>
                         <td>${esc(v.atendente ?? '-')}</td><td>${esc(v.vendedor ?? '-')}</td>
-                        <td>${esc(v.forma_pagamento ?? '-')}</td><td>${v.itens}</td>
+                        <td>${esc(v.forma_pagamento ?? '-')}</td><td>${v.itens}${v.brindes ? ` <span class="selo info">+${v.brindes} brinde(s)</span>` : ''}</td>
                         <td>${brl(v.valor_desconto)}</td><td>${brl(v.valor_total)}</td>
                         <td>${v.status_pagamento === 'cancelado'
                             ? '<span class="selo info">Cancelada</span>'
@@ -4882,7 +4882,7 @@
                     </tr>
                 `).join('') || '<tr><td colspan="10">Nenhuma venda no período.</td></tr>';
                 document.getElementById('totais-rv-vendas').textContent =
-                    `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns) - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}` +
+                    `${vendas.totais.vendas} venda(s) - ${vendas.totais.itens} item(ns)${vendas.totais.brindes ? ` + ${vendas.totais.brindes} brinde(s)` : ''} - desconto total ${brl(vendas.totais.valor_desconto)} - total ${brl(vendas.totais.valor_total)}` +
                     (vendas.fora_do_total.vendas ? ` | Fora do total (consumo interno / cortesia): ${vendas.fora_do_total.vendas} venda(s), ${brl(vendas.fora_do_total.valor_total)}` : '');
                 document.getElementById('totais-rv-vendas').textContent +=
                     ` | PDV: ${vendas.por_canal.pdv.vendas} venda(s), ${brl(vendas.por_canal.pdv.valor_total)} | Loja online: ${vendas.por_canal.site.vendas} venda(s), ${brl(vendas.por_canal.site.valor_total)}` +

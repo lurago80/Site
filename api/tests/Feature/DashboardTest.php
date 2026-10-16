@@ -1063,4 +1063,49 @@ class DashboardTest extends TestCase
         $lucratividade->assertJsonPath('linhas.0.margem', 40);
         $lucratividade->assertJsonPath('totais.margem', 43);
     }
+
+    /**
+     * O brinde de visita (ex.: caneca - ver BrindeVisitaService) grava um
+     * ItemVenda à parte com a MESMA quantidade da visita (1 por visitante).
+     * A coluna "Itens" do relatório de vendas precisa contar só os
+     * visitantes, mostrando o brinde separado (não somado junto).
+     */
+    public function test_relatorio_de_vendas_mostra_brinde_de_visita_separado_dos_itens(): void
+    {
+        $brinde = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Caneca de chopp',
+            'tipo' => 'fisico', 'preco_venda' => 0, 'preco_custo' => 5, 'estoque_atual' => 100,
+        ]);
+        $this->empresa->update(['produto_brinde_visita_id' => $brinde->id]);
+
+        $produtoVisita = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Visita guiada',
+            'tipo' => 'agendamento', 'preco_venda' => 50, 'preco_custo' => 0,
+        ]);
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'produto_id' => $produtoVisita->id,
+            'data_hora' => now(), 'vagas_total' => 20, 'vagas_reservadas' => 3, 'status' => 'aberta',
+            'valor_visita' => 50,
+        ]);
+
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 150, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda->id, 'agenda_visitacao_id' => $agenda->id,
+            'quantidade' => 3, 'valor_unitario' => 50, 'valor_total' => 150,
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda->id, 'produto_id' => $brinde->id,
+            'quantidade' => 3, 'valor_unitario' => 0, 'valor_total' => 0,
+        ]);
+
+        $resp = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/vendas-relatorio")->assertOk();
+        $linha = collect($resp->json('linhas'))->firstWhere('id', $venda->id);
+
+        $this->assertSame(3, $linha['itens']);
+        $this->assertSame(3, $linha['brindes']);
+        $resp->assertJsonPath('totais.brindes', 3);
+    }
 }

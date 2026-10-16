@@ -2097,10 +2097,20 @@ class DashboardController extends Controller
         ]);
 
         $fuso = 'America/Sao_Paulo';
+        $empresaAtual = $request->attributes->get('empresaAtual');
+        $produtoBrindeId = $empresaAtual->produto_brinde_visita_id;
 
         $vendas = $this->vendasNoPeriodo($dados, incluirSemReceita: true)
             ->with(['atendente:id,nome', 'vendedor:id,nome', 'formaPagamento:id,descricao'])
-            ->withSum('itens', 'quantidade')
+            // O brinde de visita (ex.: caneca, 1 por visitante - ver BrindeVisitaService) é um
+            // ItemVenda à parte com a mesma quantidade da visita - somado junto, dobraria a
+            // contagem (visita + brinde). Por isso vem separado em "brindes", informativo.
+            ->withSum(['itens as itens_sum_quantidade' => fn ($q) => $q
+                ->when($produtoBrindeId, fn ($q2) => $q2->where(fn ($q3) => $q3
+                    ->whereNull('produto_id')
+                    ->orWhere('produto_id', '!=', $produtoBrindeId)))], 'quantidade')
+            ->withSum(['itens as brindes_sum_quantidade' => fn ($q) => $q
+                ->when($produtoBrindeId, fn ($q2) => $q2->where('produto_id', $produtoBrindeId), fn ($q2) => $q2->whereRaw('1 = 0'))], 'quantidade')
             ->orderBy('data_venda')
             ->orderBy('id')
             ->get();
@@ -2121,6 +2131,7 @@ class DashboardController extends Controller
                 // Soma das quantidades (ex.: 3 visitas numa venda com 2 linhas de item),
                 // não o número de linhas - mais claro para o cliente conferir no relatório.
                 'itens' => (int) ($v->itens_sum_quantidade ?? 0),
+                'brindes' => (int) ($v->brindes_sum_quantidade ?? 0),
                 // Consumo interno / cortesia: aparece com o valor cheio, mas fica fora dos totais.
                 'tipo_venda' => $v->tipoSemReceita(),
                 'sem_receita' => $v->semReceita(),
@@ -2137,6 +2148,7 @@ class DashboardController extends Controller
             'totais' => [
                 'vendas' => $normais->count(),
                 'itens' => (int) $normais->sum('itens'),
+                'brindes' => (int) $normais->sum('brindes'),
                 'valor_desconto' => round((float) $normais->sum('valor_desconto'), 2),
                 'valor_total' => round((float) $normais->sum('valor_total'), 2),
             ],
