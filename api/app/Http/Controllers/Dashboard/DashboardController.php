@@ -2100,7 +2100,7 @@ class DashboardController extends Controller
 
         $vendas = $this->vendasNoPeriodo($dados, incluirSemReceita: true)
             ->with(['atendente:id,nome', 'vendedor:id,nome', 'formaPagamento:id,descricao'])
-            ->withCount('itens')
+            ->withSum('itens', 'quantidade')
             ->orderBy('data_venda')
             ->orderBy('id')
             ->get();
@@ -2118,7 +2118,9 @@ class DashboardController extends Controller
                 'atendente' => $v->atendente?->nome,
                 'vendedor' => $v->vendedor?->nome,
                 'forma_pagamento' => $v->formaPagamento?->descricao,
-                'itens' => $v->itens_count,
+                // Soma das quantidades (ex.: 3 visitas numa venda com 2 linhas de item),
+                // não o número de linhas - mais claro para o cliente conferir no relatório.
+                'itens' => (int) ($v->itens_sum_quantidade ?? 0),
                 // Consumo interno / cortesia: aparece com o valor cheio, mas fica fora dos totais.
                 'tipo_venda' => $v->tipoSemReceita(),
                 'sem_receita' => $v->semReceita(),
