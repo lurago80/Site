@@ -12,6 +12,10 @@ final class ResultadoCobranca
     public function __construct(
         public readonly string $status, // pendente | aprovado | recusado
         public readonly ?string $referenciaExterna,
+        // Referência gerada por NÓS antes de chamar o gateway (ex.: orderReference
+        // da DeltaPag) - só preenchido por gateways cujo webhook não identifica a
+        // cobrança sozinho, para o controller de webhook conseguir correlacionar.
+        public readonly ?string $referenciaPedido = null,
         public readonly ?string $qrCode = null,
         public readonly ?string $qrCodeBase64 = null,
         public readonly ?string $linkPagamento = null,

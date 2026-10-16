@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
-    'empresa_id', 'venda_id', 'gateway', 'metodo', 'referencia_externa', 'status',
+    'empresa_id', 'venda_id', 'gateway', 'metodo', 'referencia_externa', 'referencia_pedido', 'status',
     'valor', 'qr_code', 'qr_code_base64', 'link_pagamento', 'payload_retorno', 'expira_em',
 ])]
 class Cobranca extends Model

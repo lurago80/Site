@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\ConfigPagamento;
 use App\Services\Pagamento\CieloPagamentoGateway;
+use App\Services\Pagamento\DeltaPagPagamentoGateway;
 use App\Services\Pagamento\MercadoPagoPagamentoGateway;
 use App\Services\Pagamento\PagamentoGatewayFactory;
 use App\Services\Pagamento\PagSeguroPagamentoGateway;
@@ -49,6 +50,7 @@ class PagamentoGatewayFactoryTest extends TestCase
             'pagseguro' => ['pagseguro', PagSeguroPagamentoGateway::class],
             'cielo' => ['cielo', CieloPagamentoGateway::class],
             'stone' => ['stone', StonePagamentoGateway::class],
+            'deltapag' => ['deltapag', DeltaPagPagamentoGateway::class],
         ];
     }
 }

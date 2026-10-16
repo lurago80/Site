@@ -2108,11 +2108,12 @@
                     <p id="pg-status" style="font-size:13px;">Carregando...</p>
                     <div class="linha-form">
                         <div><label>Gateway</label>
-                            <select id="pg-gateway">
+                            <select id="pg-gateway" onchange="alternarCamposGatewayPagamento()">
                                 <option value="mercadopago">Mercado Pago</option>
                                 <option value="pagseguro">PagSeguro</option>
                                 <option value="cielo">Cielo</option>
                                 <option value="stone">Stone</option>
+                                <option value="deltapag">DeltaPag</option>
                             </select>
                         </div>
                         <div><label>Ambiente</label>
@@ -2124,8 +2125,11 @@
                         <div><label><input type="checkbox" id="pg-ativo"> Ativo</label></div>
                     </div>
                     <div class="linha-form">
-                        <div style="flex:1"><label>Access Token / Client Secret</label><input type="password" id="pg-token" placeholder="Deixe em branco para manter o atual"></div>
-                        <div><label>Public Key / Client ID</label><input type="text" id="pg-public-key"></div>
+                        <div style="flex:1" id="pg-token-wrap"><label id="pg-token-label">Access Token / Client Secret</label><input type="password" id="pg-token" placeholder="Deixe em branco para manter o atual"></div>
+                        <div id="pg-public-key-wrap"><label id="pg-public-key-label">Public Key / Client ID</label><input type="text" id="pg-public-key"></div>
+                        <div id="pg-deltapag-wrap" style="display:none;"><label>Seller ID</label><input type="text" id="pg-client-id" placeholder="Identificador do vendedor na DeltaPag"></div>
+                    </div>
+                    <div class="linha-form">
                         <div><button class="acao" onclick="salvarConfigPagamento()">Salvar</button></div>
                     </div>
                     <p class="msg" id="msg-config-pagamento"></p>
@@ -6257,6 +6261,19 @@
             carregarFormasPagamento();
         }
 
+        /**
+         * A DeltaPag autentica com um único Bearer token (gerado no painel
+         * dela), mas cada chamada também exige um "seller id" na URL - por
+         * isso ela usa só Access Token + Seller ID (guardado em client_id),
+         * sem Public Key nem Client Secret (que os outros gateways usam).
+         */
+        function alternarCamposGatewayPagamento() {
+            const ehDeltaPag = document.getElementById('pg-gateway').value === 'deltapag';
+            document.getElementById('pg-public-key-wrap').style.display = ehDeltaPag ? 'none' : '';
+            document.getElementById('pg-deltapag-wrap').style.display = ehDeltaPag ? '' : 'none';
+            document.getElementById('pg-token-label').textContent = ehDeltaPag ? 'Access Token' : 'Access Token / Client Secret';
+        }
+
         async function carregarConfigPagamento() {
             const resp = await fetch(`${base}/config-pagamento`);
             if (resp.status === 403) { return; }
@@ -6266,22 +6283,30 @@
             document.getElementById('pg-gateway').value = dados.gateway;
             document.getElementById('pg-ambiente').value = dados.ambiente;
             document.getElementById('pg-ativo').checked = dados.ativo;
-            document.getElementById('pg-public-key').value = dados.public_key ?? dados.client_id ?? '';
+            document.getElementById('pg-public-key').value = dados.public_key ?? '';
+            document.getElementById('pg-client-id').value = dados.client_id ?? '';
+            alternarCamposGatewayPagamento();
             status.textContent = dados.tem_credenciais
                 ? `Gateway ${dados.gateway} configurado (${dados.ambiente}) - ${dados.ativo ? 'ativo' : 'inativo'}.`
                 : `Gateway ${dados.gateway} selecionado, mas sem credenciais salvas ainda.`;
         }
 
         async function salvarConfigPagamento() {
+            const gateway = document.getElementById('pg-gateway').value;
+            const ehDeltaPag = gateway === 'deltapag';
+            const token = document.getElementById('pg-token').value;
+
             const dados = {
-                gateway: document.getElementById('pg-gateway').value,
+                gateway,
                 ambiente: document.getElementById('pg-ambiente').value,
                 ativo: document.getElementById('pg-ativo').checked,
-                public_key: document.getElementById('pg-public-key').value || null,
-                client_id: document.getElementById('pg-public-key').value || null,
+                public_key: ehDeltaPag ? null : (document.getElementById('pg-public-key').value || null),
+                client_id: ehDeltaPag ? (document.getElementById('pg-client-id').value || null) : (document.getElementById('pg-public-key').value || null),
             };
-            const token = document.getElementById('pg-token').value;
-            if (token) { dados.access_token = token; dados.client_secret = token; }
+            if (token) {
+                dados.access_token = token;
+                if (!ehDeltaPag) { dados.client_secret = token; }
+            }
 
             const resp = await fetch(`${base}/config-pagamento`, { method: 'PUT', headers: headersJson, body: JSON.stringify(dados) });
             const resposta = await resp.json();

@@ -87,4 +87,40 @@ class WebhookPagamentoController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
+    /**
+     * Webhook da DeltaPag - ao contrário dos outros gateways, o corpo não
+     * traz NENHUM dado identificador (é só um POST com texto fixo
+     * "Bempaggo"); a cobrança é achada pela nossa própria referência, que
+     * embutimos na query string da notificationUrl ao criar a cobrança
+     * (ver DeltaPagPagamentoGateway::notificationUrl). A DeltaPag
+     * acrescenta `orderStatus`/`lastChargeStatus` por cima, mas, como o
+     * próprio fornecedor recomenda, não confiamos nesses valores - sempre
+     * reconsultamos a API antes de marcar como pago.
+     */
+    public function deltaPag(Request $request)
+    {
+        $referenciaPedido = (string) $request->query('ref', '');
+
+        if ($referenciaPedido === '') {
+            return response()->json(['ignorado' => true]);
+        }
+
+        DB::statement("SELECT set_config('app.is_super_admin', 'true', false)");
+
+        $cobranca = Cobranca::where('gateway', 'deltapag')
+            ->where('referencia_pedido', $referenciaPedido)
+            ->first();
+
+        if ($cobranca === null) {
+            return response()->json(['encontrado' => false]);
+        }
+
+        DB::statement("SELECT set_config('app.current_empresa_id', ?, false)", [(string) $cobranca->empresa_id]);
+        DB::statement("SELECT set_config('app.is_super_admin', 'false', false)");
+
+        $this->pagamentoService->consultarEAtualizarStatus($cobranca);
+
+        return response()->json(['ok' => true]);
+    }
 }

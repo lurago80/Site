@@ -24,6 +24,7 @@ class PagamentoGatewayFactory
             'pagseguro' => new PagSeguroPagamentoGateway(),
             'cielo' => new CieloPagamentoGateway(),
             'stone' => new StonePagamentoGateway(),
+            'deltapag' => new DeltaPagPagamentoGateway(),
             default => new SimuladoPagamentoGateway(),
         };
     }

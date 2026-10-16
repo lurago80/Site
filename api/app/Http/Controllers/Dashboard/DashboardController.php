@@ -3183,7 +3183,7 @@ class DashboardController extends Controller
         $this->exigirAdmin($request);
 
         $dados = $request->validate([
-            'gateway' => ['required', 'in:mercadopago,pagseguro,cielo,stone'],
+            'gateway' => ['required', 'in:mercadopago,pagseguro,cielo,stone,deltapag'],
             'ambiente' => ['required', 'in:sandbox,producao'],
             'access_token' => ['nullable', 'string'],
             'public_key' => ['nullable', 'string', 'max:255'],
