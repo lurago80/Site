@@ -1108,4 +1108,72 @@ class DashboardTest extends TestCase
         $this->assertSame(3, $linha['brindes']);
         $resp->assertJsonPath('totais.brindes', 3);
     }
+
+    /**
+     * Relatório que "abre" os kits nos componentes reais: uma cerveja vendida
+     * avulsa e também dentro de um kit precisa somar no mesmo produto, com o
+     * valor do kit rateado proporcionalmente ao preço de tabela de cada
+     * componente (mesmo princípio usado na NFe para kits).
+     */
+    public function test_relatorio_produtos_com_kits_abertos_soma_avulso_e_componentes_do_kit(): void
+    {
+        $ipa = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja IPA',
+            'tipo' => 'fisico', 'preco_venda' => 20, 'preco_custo' => 8,
+        ]);
+        $pilsen = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja Pilsen',
+            'tipo' => 'fisico', 'preco_venda' => 10, 'preco_custo' => 4,
+        ]);
+        $kit = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Kit Degustação',
+            'tipo' => 'fisico', 'preco_venda' => 25, 'preco_custo' => 0, 'eh_kit' => true,
+        ]);
+
+        // Venda avulsa: 2 IPA
+        $venda1 = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 40, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda1->id, 'produto_id' => $ipa->id,
+            'quantidade' => 2, 'valor_unitario' => 20, 'valor_total' => 40,
+        ]);
+
+        // Venda do kit: 1 IPA + 1 Pilsen dentro, kit vendido por R$ 25
+        // (peso: IPA 20*1=20, Pilsen 10*1=10 -> rateio 2/3 e 1/3 de 25 = 16,67 e 8,33)
+        $venda2 = Venda::create([
+            'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
+            'status_pagamento' => 'pago', 'valor_total' => 25, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda2->id, 'produto_id' => $kit->id,
+            'quantidade' => 1, 'valor_unitario' => 25, 'valor_total' => 25,
+            'composicao' => [
+                ['produto_id' => $ipa->id, 'nome' => 'Cerveja IPA', 'variacao_id' => null, 'tamanho' => null, 'quantidade' => 1],
+                ['produto_id' => $pilsen->id, 'nome' => 'Cerveja Pilsen', 'variacao_id' => null, 'tamanho' => null, 'quantidade' => 1],
+            ],
+        ]);
+
+        $resp = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/produtos-com-kits-abertos-relatorio")->assertOk();
+
+        $resp->assertJsonCount(3, 'linhas'); // 1 avulsa + 2 componentes do kit
+
+        $resumo = collect($resp->json('resumo'))->keyBy('produto');
+
+        $this->assertEquals(2, $resumo['Cerveja IPA']['quantidade_direta']);
+        $this->assertEquals(1, $resumo['Cerveja IPA']['quantidade_em_kit']);
+        $this->assertEquals(3, $resumo['Cerveja IPA']['quantidade_total']);
+        $this->assertEqualsWithDelta(56.67, $resumo['Cerveja IPA']['valor_total'], 0.01); // 40 + 16,67
+
+        $this->assertEquals(0, $resumo['Cerveja Pilsen']['quantidade_direta']);
+        $this->assertEquals(1, $resumo['Cerveja Pilsen']['quantidade_em_kit']);
+        $this->assertEqualsWithDelta(8.33, $resumo['Cerveja Pilsen']['valor_total'], 0.01);
+
+        // O kit em si não aparece como produto - só os componentes.
+        $this->assertArrayNotHasKey('Kit Degustação', $resumo->all());
+
+        // Soma das linhas fecha exatamente com o valor dos itens originais (40 + 25).
+        $resp->assertJsonPath('totais.valor_total', 65);
+    }
 }

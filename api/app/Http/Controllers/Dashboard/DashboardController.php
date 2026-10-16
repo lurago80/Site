@@ -2259,6 +2259,130 @@ class DashboardController extends Controller
             ->values();
     }
 
+    /**
+     * Linhas de um ItemVenda já "abertas": item comum vira 1 linha; item de
+     * kit vira 1 linha por componente de `composicao`, com o valor do kit
+     * rateado pela proporção do preço de tabela de cada componente (mesmo
+     * princípio de EmissaoFiscalService::linhasDoItemDoPedido, usado para a
+     * NFe) - a soma das linhas sempre fecha com o valor do item original.
+     *
+     * @return array<int, array{produto_id: ?int, produto: string, quantidade: float, valor_unitario: float, valor_total: float, kit: ?string}>
+     */
+    private function linhasDoItemVenda(ItemVenda $item): array
+    {
+        if (empty($item->composicao)) {
+            return [[
+                'produto_id' => $item->produto_id,
+                'produto' => $item->produto?->nome ?? '(produto removido)',
+                'quantidade' => (float) $item->quantidade,
+                'valor_unitario' => (float) $item->valor_unitario,
+                'valor_total' => (float) $item->valor_total,
+                'kit' => null,
+            ]];
+        }
+
+        $componentes = collect($item->composicao);
+        $produtos = Produto::whereIn('id', $componentes->pluck('produto_id'))->pluck('preco_venda', 'id');
+
+        $pesos = $componentes->map(fn (array $c) => (float) ($produtos[$c['produto_id']] ?? 0) * $c['quantidade'])->all();
+        if (array_sum($pesos) <= 0) {
+            $pesos = $componentes->map(fn (array $c) => (float) $c['quantidade'])->all();
+        }
+        $valores = $this->ratear($pesos, round((float) $item->valor_total, 2));
+
+        $nomeKit = $item->produto?->nome ?? '(kit removido)';
+
+        return $componentes->values()->map(function (array $c, int $i) use ($valores, $nomeKit) {
+            $quantidade = (float) ($c['quantidade'] ?? 0);
+
+            return [
+                'produto_id' => $c['produto_id'] ?? null,
+                'produto' => ! empty($c['tamanho']) ? "{$c['nome']} ({$c['tamanho']})" : $c['nome'],
+                'quantidade' => $quantidade,
+                'valor_unitario' => $quantidade > 0 ? round($valores[$i] / $quantidade, 2) : 0.0,
+                'valor_total' => $valores[$i],
+                'kit' => $nomeKit,
+            ];
+        })->all();
+    }
+
+    /** Rateia um valor entre pesos proporcionalmente, garantindo que a soma feche exatamente (arredondamento na última parte). */
+    private function ratear(array $pesos, float $valor): array
+    {
+        $total = array_sum($pesos);
+        $partes = [];
+        $acumulado = 0.0;
+        $ultimo = count($pesos) - 1;
+
+        foreach (array_values($pesos) as $i => $peso) {
+            $parte = ($i === $ultimo || $total <= 0)
+                ? round($valor - $acumulado, 2)
+                : round($valor * $peso / $total, 2);
+
+            if ($total <= 0 && $i !== $ultimo) {
+                $parte = 0.0;
+            }
+
+            $partes[$i] = $parte;
+            $acumulado += $parte;
+        }
+
+        return $partes;
+    }
+
+    /**
+     * Vendas de produtos "abrindo" os kits nos componentes reais (cada cerveja
+     * vendida dentro de um kit conta para o próprio produto, não para o kit) -
+     * diferente de "Produtos mais vendidos"/Curva ABC/Lucratividade, que
+     * contam o kit como um produto à parte. Útil para saber o quanto de um
+     * produto específico saiu no total, incluindo o que foi vendido dentro
+     * de kits/combos.
+     */
+    public function relatorioProdutosComKitsAbertos(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+            'canal' => ['nullable', 'in:todos,pdv,site'],
+        ]);
+
+        $fuso = 'America/Sao_Paulo';
+
+        $itens = ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
+            ->whereNotNull('produto_id')
+            ->with(['produto:id,nome', 'venda:id,data_venda,canal'])
+            ->orderBy('venda_id')
+            ->get();
+
+        $linhas = $itens->flatMap(function (ItemVenda $item) use ($fuso) {
+            return collect($this->linhasDoItemVenda($item))->map(fn (array $l) => $l + [
+                'venda_id' => $item->venda_id,
+                'data' => $item->venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
+                'canal' => $item->venda->canal,
+            ]);
+        })->values();
+
+        $resumo = $linhas->groupBy('produto')
+            ->map(fn (Collection $grupo) => [
+                'produto' => $grupo->first()['produto'],
+                'quantidade_direta' => (float) $grupo->whereNull('kit')->sum('quantidade'),
+                'quantidade_em_kit' => (float) $grupo->whereNotNull('kit')->sum('quantidade'),
+                'quantidade_total' => (float) $grupo->sum('quantidade'),
+                'valor_total' => round((float) $grupo->sum('valor_total'), 2),
+            ])
+            ->sortByDesc('quantidade_total')
+            ->values();
+
+        return response()->json([
+            'linhas' => $linhas,
+            'resumo' => $resumo,
+            'totais' => [
+                'quantidade' => (float) $linhas->sum('quantidade'),
+                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+            ],
+        ]);
+    }
+
     /** Ranking de produtos por quantidade vendida no período. */
     public function relatorioProdutosMaisVendidos(Request $request, string $empresa)
     {

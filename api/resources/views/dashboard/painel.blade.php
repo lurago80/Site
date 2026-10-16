@@ -174,6 +174,7 @@
                 <button onclick="mostrarSecao('relatorio-visitas', this)">Relatório de Visitas</button>
                 <button onclick="mostrarSecao('relatorio-cortesia', this)">Cortesia / Consumo Interno</button>
                 <button onclick="mostrarSecao('relatorio-entrada-notas', this)">Relatório de Entrada de Notas</button>
+                <button onclick="mostrarSecao('relatorio-produtos-kits-abertos', this)">Produtos (com kits abertos)</button>
 
                 <div class="grupo-label">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
@@ -1574,6 +1575,38 @@
                         <tfoot id="tfoot-relatorio-entrada-notas"></tfoot>
                     </table>
                     <p class="msg" id="msg-relatorio-entrada-notas"></p>
+                </div>
+            </section>
+
+            <section id="secao-relatorio-produtos-kits-abertos" class="secao">
+                <h1>Produtos vendidos (kits abertos)</h1>
+                <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    Diferente de "Vendas / Produtos / ABC", aqui um kit vendido não aparece como um produto à parte -
+                    as cervejas/itens de dentro dele são contados no próprio produto (avulso + dentro de kits
+                    somados). O valor do kit é rateado proporcionalmente ao preço de tabela de cada componente.
+                </p>
+                <div class="card">
+                    <div class="linha-form">
+                        <div><label>De</label><input type="date" id="rpk-inicio"></div>
+                        <div><label>Até</label><input type="date" id="rpk-fim"></div>
+                        <div><label>Canal</label><select id="rpk-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
+                        <div><button class="acao" onclick="carregarRelatorioProdutosKitsAbertos()">Consultar</button></div>
+                        <div><button class="secundario" onclick="exportarRelatorioProdutosKitsAbertosExcel()">Exportar Excel</button></div>
+                    </div>
+
+                    <h2 style="font-size:14px;">Resumo por produto</h2>
+                    <table>
+                        <thead><tr><th>Produto</th><th>Qtd. avulsa</th><th>Qtd. em kit</th><th>Qtd. total</th><th>Valor vendido</th></tr></thead>
+                        <tbody id="tbody-rpk-resumo"></tbody>
+                        <tfoot id="tfoot-rpk-resumo"></tfoot>
+                    </table>
+
+                    <h2 style="font-size:14px; margin-top:16px;">Detalhe (venda a venda)</h2>
+                    <table>
+                        <thead><tr><th>Venda</th><th>Data/hora</th><th>Canal</th><th>Produto</th><th>Veio de kit</th><th>Qtd.</th><th>Valor unit.</th><th>Valor total</th></tr></thead>
+                        <tbody id="tbody-rpk-detalhe"></tbody>
+                    </table>
+                    <p class="msg" id="msg-rpk"></p>
                 </div>
             </section>
 
@@ -3424,6 +3457,67 @@
                 .concat([['Total', d.totais.notas + ' nota(s)', '', '', d.totais.itens, csvNum(d.totais.valor_produtos), csvNum(d.totais.valor_frete), csvNum(d.totais.valor_desconto), csvNum(d.totais.valor_total), '']]);
 
             baixarCsv(`relatorio-entrada-notas-${periodo}.csv`, linhas);
+        }
+
+        async function carregarRelatorioProdutosKitsAbertos() {
+            const params = new URLSearchParams();
+            const inicio = document.getElementById('rpk-inicio').value;
+            const fim = document.getElementById('rpk-fim').value;
+            if (inicio) params.set('data_inicio', inicio);
+            if (fim) params.set('data_fim', fim);
+            params.set('canal', document.getElementById('rpk-canal').value);
+
+            const msg = document.getElementById('msg-rpk');
+            const resp = await fetch(`${base}/produtos-com-kits-abertos-relatorio?${params}`);
+            if (!resp.ok) { msg.className = 'msg erro'; msg.textContent = 'Não foi possível carregar o relatório.'; return; }
+            msg.textContent = '';
+
+            const { linhas, resumo, totais } = await resp.json();
+            const brl = v => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+            ultimosRelatorios['produtos-kits-abertos'] = { linhas, resumo, totais, inicio, fim };
+
+            document.getElementById('tbody-rpk-resumo').innerHTML = resumo.map(r => `
+                <tr>
+                    <td>${esc(r.produto)}</td>
+                    <td>${r.quantidade_direta}</td>
+                    <td>${r.quantidade_em_kit}</td>
+                    <td><strong>${r.quantidade_total}</strong></td>
+                    <td>${brl(r.valor_total)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="5">Nenhum produto vendido no período.</td></tr>';
+
+            document.getElementById('tfoot-rpk-resumo').innerHTML = resumo.length ? `
+                <tr style="font-weight:700;">
+                    <td>Total</td><td></td><td></td><td>${totais.quantidade}</td><td>${brl(totais.valor_total)}</td>
+                </tr>` : '';
+
+            document.getElementById('tbody-rpk-detalhe').innerHTML = linhas.map(l => `
+                <tr>
+                    <td>${l.venda_id}</td><td>${l.data}</td><td>${esc(l.canal)}</td>
+                    <td>${esc(l.produto)}</td>
+                    <td>${l.kit ? esc(l.kit) : '-'}</td>
+                    <td>${l.quantidade}</td>
+                    <td>${brl(l.valor_unitario)}</td>
+                    <td>${brl(l.valor_total)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8">Nenhuma venda no período.</td></tr>';
+        }
+
+        function exportarRelatorioProdutosKitsAbertosExcel() {
+            const d = ultimosRelatorios['produtos-kits-abertos'];
+            if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
+            const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
+
+            const linhas = [['--- Resumo por produto ---']]
+                .concat([['Produto', 'Qtd. avulsa', 'Qtd. em kit', 'Qtd. total', 'Valor vendido']])
+                .concat(d.resumo.map(r => [csvTxt(r.produto), r.quantidade_direta, r.quantidade_em_kit, r.quantidade_total, csvNum(r.valor_total)]))
+                .concat([['Total', '', '', d.totais.quantidade, csvNum(d.totais.valor_total)]])
+                .concat([[]])
+                .concat([['--- Detalhe (venda a venda) ---']])
+                .concat([['Venda', 'Data/hora', 'Canal', 'Produto', 'Veio de kit', 'Quantidade', 'Valor unitário', 'Valor total']])
+                .concat(d.linhas.map(l => [l.venda_id, l.data, csvTxt(l.canal), csvTxt(l.produto), csvTxt(l.kit || ''), l.quantidade, csvNum(l.valor_unitario), csvNum(l.valor_total)]));
+
+            baixarCsv(`produtos-kits-abertos_${periodo}.csv`, linhas);
         }
 
         async function carregarProdutosParaSelectCompra() {
