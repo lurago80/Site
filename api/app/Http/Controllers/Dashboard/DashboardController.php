@@ -2344,6 +2344,7 @@ class DashboardController extends Controller
             'data_inicio' => ['nullable', 'date'],
             'data_fim' => ['nullable', 'date'],
             'canal' => ['nullable', 'in:todos,pdv,site'],
+            'produto_id' => ['nullable', 'integer'],
         ]);
 
         $fuso = 'America/Sao_Paulo';
@@ -2360,7 +2361,11 @@ class DashboardController extends Controller
                 'data' => $item->venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
                 'canal' => $item->venda->canal,
             ]);
-        })->values();
+        })
+            // Filtra DEPOIS de abrir os kits - o produto escolhido pode só existir
+            // dentro de um kit (produto_id do item original seria o do kit, não o dele).
+            ->when($dados['produto_id'] ?? null, fn ($c, $produtoId) => $c->where('produto_id', (int) $produtoId))
+            ->values();
 
         $resumo = $linhas->groupBy('produto')
             ->map(fn (Collection $grupo) => [

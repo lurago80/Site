@@ -1590,6 +1590,10 @@
                         <div><label>De</label><input type="date" id="rpk-inicio"></div>
                         <div><label>Até</label><input type="date" id="rpk-fim"></div>
                         <div><label>Canal</label><select id="rpk-canal"><option value="todos">PDV + Loja online</option><option value="pdv">Só PDV</option><option value="site">Só Loja online</option></select></div>
+                        <div style="flex:1; min-width:200px">
+                            <label>Produto</label>
+                            <select id="rpk-produto"><option value="">Todos os produtos</option></select>
+                        </div>
                         <div><button class="acao" onclick="carregarRelatorioProdutosKitsAbertos()">Consultar</button></div>
                         <div><button class="secundario" onclick="exportarRelatorioProdutosKitsAbertosExcel()">Exportar Excel</button></div>
                     </div>
@@ -2256,6 +2260,7 @@
             'relatorio-visitas': carregarRelatorioVisitas,
             'relatorio-cortesia': carregarRelatorioCortesia,
             'relatorio-entrada-notas': carregarRelatorioEntradaNotas,
+            'relatorio-produtos-kits-abertos': preencherSelectProdutoKitsAbertos,
             bancos: carregarBancos,
             usuarios: carregarUsuarios,
             parametros: carregarConfigOperacional,
@@ -3459,12 +3464,27 @@
             baixarCsv(`relatorio-entrada-notas-${periodo}.csv`, linhas);
         }
 
+        async function preencherSelectProdutoKitsAbertos() {
+            const sel = document.getElementById('rpk-produto');
+            if (sel.dataset.preenchido) return;
+
+            const resp = await fetch(`${base}/produtos`);
+            const produtos = await resp.json();
+            sel.innerHTML = '<option value="">Todos os produtos</option>' +
+                produtos.filter(p => !p.eh_kit).map(p => `<option value="${p.id}">${esc(p.nome)}</option>`).join('');
+            sel.dataset.preenchido = '1';
+        }
+
         async function carregarRelatorioProdutosKitsAbertos() {
+            await preencherSelectProdutoKitsAbertos();
+
             const params = new URLSearchParams();
             const inicio = document.getElementById('rpk-inicio').value;
             const fim = document.getElementById('rpk-fim').value;
+            const produtoId = document.getElementById('rpk-produto').value;
             if (inicio) params.set('data_inicio', inicio);
             if (fim) params.set('data_fim', fim);
+            if (produtoId) params.set('produto_id', produtoId);
             params.set('canal', document.getElementById('rpk-canal').value);
 
             const msg = document.getElementById('msg-rpk');

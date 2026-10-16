@@ -1175,5 +1175,14 @@ class DashboardTest extends TestCase
 
         // Soma das linhas fecha exatamente com o valor dos itens originais (40 + 25).
         $resp->assertJsonPath('totais.valor_total', 65);
+
+        // Filtro por produto: Pilsen só existe dentro do kit (produto_id do item
+        // original seria o do kit) - o filtro precisa achar mesmo assim.
+        $filtrado = $this->actingAs($this->admin)
+            ->getJson("/dashboard/{$this->empresa->slug}/produtos-com-kits-abertos-relatorio?produto_id={$pilsen->id}")
+            ->assertOk();
+        $filtrado->assertJsonCount(1, 'linhas');
+        $filtrado->assertJsonPath('linhas.0.produto', 'Cerveja Pilsen');
+        $filtrado->assertJsonPath('totais.quantidade', 1);
     }
 }
