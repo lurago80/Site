@@ -1175,6 +1175,8 @@ class DashboardTest extends TestCase
 
         // Soma das linhas fecha exatamente com o valor dos itens originais (40 + 25).
         $resp->assertJsonPath('totais.valor_total', 65);
+        $resp->assertJsonPath('totais.vendas', 2);
+        $resp->assertJsonPath('totais.ticket_medio', 32.5); // 65 / 2 vendas
 
         // Filtro por produto: Pilsen só existe dentro do kit (produto_id do item
         // original seria o do kit) - o filtro precisa achar mesmo assim.

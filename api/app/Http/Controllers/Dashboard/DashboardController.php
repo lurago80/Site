@@ -2378,12 +2378,19 @@ class DashboardController extends Controller
             ->sortByDesc('quantidade_total')
             ->values();
 
+        $valorTotal = round((float) $linhas->sum('valor_total'), 2);
+        $vendasDistintas = $linhas->pluck('venda_id')->unique()->count();
+
         return response()->json([
             'linhas' => $linhas,
             'resumo' => $resumo,
             'totais' => [
                 'quantidade' => (float) $linhas->sum('quantidade'),
-                'valor_total' => round((float) $linhas->sum('valor_total'), 2),
+                'valor_total' => $valorTotal,
+                'vendas' => $vendasDistintas,
+                // Ticket médio das vendas que aparecem aqui - com filtro de produto,
+                // é o ticket médio só das vendas que incluíram esse produto.
+                'ticket_medio' => $vendasDistintas > 0 ? round($valorTotal / $vendasDistintas, 2) : 0.0,
             ],
         ]);
     }

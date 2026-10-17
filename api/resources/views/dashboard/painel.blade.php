@@ -3509,6 +3509,11 @@
             document.getElementById('tfoot-rpk-resumo').innerHTML = resumo.length ? `
                 <tr style="font-weight:700;">
                     <td>Total</td><td></td><td></td><td>${totais.quantidade}</td><td>${brl(totais.valor_total)}</td>
+                </tr>
+                <tr>
+                    <td colspan="5" style="font-size:12px; color:var(--cor-texto-suave);">
+                        Ticket médio: ${brl(totais.ticket_medio)} (${totais.vendas} venda(s))
+                    </td>
                 </tr>` : '';
 
             document.getElementById('tbody-rpk-detalhe').innerHTML = linhas.map(l => `
@@ -3532,6 +3537,7 @@
                 .concat([['Produto', 'Qtd. avulsa', 'Qtd. em kit', 'Qtd. total', 'Valor vendido']])
                 .concat(d.resumo.map(r => [csvTxt(r.produto), r.quantidade_direta, r.quantidade_em_kit, r.quantidade_total, csvNum(r.valor_total)]))
                 .concat([['Total', '', '', d.totais.quantidade, csvNum(d.totais.valor_total)]])
+                .concat([['Ticket médio', '', '', d.totais.vendas + ' venda(s)', csvNum(d.totais.ticket_medio)]])
                 .concat([[]])
                 .concat([['--- Detalhe (venda a venda) ---']])
                 .concat([['Venda', 'Data/hora', 'Canal', 'Produto', 'Veio de kit', 'Quantidade', 'Valor unitário', 'Valor total']])
