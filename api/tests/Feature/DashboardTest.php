@@ -1186,5 +1186,6 @@ class DashboardTest extends TestCase
         $filtrado->assertJsonCount(1, 'linhas');
         $filtrado->assertJsonPath('linhas.0.produto', 'Cerveja Pilsen');
         $filtrado->assertJsonPath('totais.quantidade', 1);
+        $filtrado->assertJsonPath('linhas.0.valor_pedido', 25); // valor total do pedido do kit, não só a fatia do Pilsen
     }
 }

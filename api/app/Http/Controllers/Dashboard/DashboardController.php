@@ -2351,7 +2351,7 @@ class DashboardController extends Controller
 
         $itens = ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
             ->whereNotNull('produto_id')
-            ->with(['produto:id,nome', 'venda:id,data_venda,canal'])
+            ->with(['produto:id,nome', 'venda:id,data_venda,canal,valor_total'])
             ->orderBy('venda_id')
             ->get();
 
@@ -2360,6 +2360,9 @@ class DashboardController extends Controller
                 'venda_id' => $item->venda_id,
                 'data' => $item->venda->data_venda->copy()->setTimezone($fuso)->format('d/m/Y H:i'),
                 'canal' => $item->venda->canal,
+                // Valor total do pedido inteiro (não só a parte deste produto/kit) -
+                // dá contexto de quanto foi a venda, ao lado de cada linha dela.
+                'valor_pedido' => round((float) $item->venda->valor_total, 2),
             ]);
         })
             // Filtra DEPOIS de abrir os kits - o produto escolhido pode só existir

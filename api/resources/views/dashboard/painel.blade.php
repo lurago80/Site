@@ -1607,7 +1607,7 @@
 
                     <h2 style="font-size:14px; margin-top:16px;">Detalhe (venda a venda)</h2>
                     <table>
-                        <thead><tr><th>Venda</th><th>Data/hora</th><th>Canal</th><th>Produto</th><th>Veio de kit</th><th>Qtd.</th><th>Valor unit.</th><th>Valor total</th></tr></thead>
+                        <thead><tr><th>Venda</th><th>Data/hora</th><th>Canal</th><th>Produto</th><th>Veio de kit</th><th>Qtd.</th><th>Valor unit.</th><th>Valor total</th><th>Valor do pedido</th></tr></thead>
                         <tbody id="tbody-rpk-detalhe"></tbody>
                     </table>
                     <p class="msg" id="msg-rpk"></p>
@@ -3524,8 +3524,9 @@
                     <td>${l.quantidade}</td>
                     <td>${brl(l.valor_unitario)}</td>
                     <td>${brl(l.valor_total)}</td>
+                    <td>${brl(l.valor_pedido)}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="8">Nenhuma venda no período.</td></tr>';
+            `).join('') || '<tr><td colspan="9">Nenhuma venda no período.</td></tr>';
         }
 
         function exportarRelatorioProdutosKitsAbertosExcel() {
@@ -3540,8 +3541,8 @@
                 .concat([['Ticket médio', '', '', d.totais.vendas + ' venda(s)', csvNum(d.totais.ticket_medio)]])
                 .concat([[]])
                 .concat([['--- Detalhe (venda a venda) ---']])
-                .concat([['Venda', 'Data/hora', 'Canal', 'Produto', 'Veio de kit', 'Quantidade', 'Valor unitário', 'Valor total']])
-                .concat(d.linhas.map(l => [l.venda_id, l.data, csvTxt(l.canal), csvTxt(l.produto), csvTxt(l.kit || ''), l.quantidade, csvNum(l.valor_unitario), csvNum(l.valor_total)]));
+                .concat([['Venda', 'Data/hora', 'Canal', 'Produto', 'Veio de kit', 'Quantidade', 'Valor unitário', 'Valor total', 'Valor do pedido']])
+                .concat(d.linhas.map(l => [l.venda_id, l.data, csvTxt(l.canal), csvTxt(l.produto), csvTxt(l.kit || ''), l.quantidade, csvNum(l.valor_unitario), csvNum(l.valor_total), csvNum(l.valor_pedido)]));
 
             baixarCsv(`produtos-kits-abertos_${periodo}.csv`, linhas);
         }
