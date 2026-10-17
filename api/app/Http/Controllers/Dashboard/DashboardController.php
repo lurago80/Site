@@ -2266,7 +2266,7 @@ class DashboardController extends Controller
      * princípio de EmissaoFiscalService::linhasDoItemDoPedido, usado para a
      * NFe) - a soma das linhas sempre fecha com o valor do item original.
      *
-     * @return array<int, array{produto_id: ?int, produto: string, quantidade: float, valor_unitario: float, valor_total: float, kit: ?string}>
+     * @return array<int, array{produto_id: ?int, produto: string, quantidade: float, valor_unitario: float, valor_total: float, custo_total: float, kit: ?string}>
      */
     private function linhasDoItemVenda(ItemVenda $item): array
     {
@@ -2277,14 +2277,15 @@ class DashboardController extends Controller
                 'quantidade' => (float) $item->quantidade,
                 'valor_unitario' => (float) $item->valor_unitario,
                 'valor_total' => (float) $item->valor_total,
+                'custo_total' => (float) $item->custo_total,
                 'kit' => null,
             ]];
         }
 
         $componentes = collect($item->composicao);
-        $produtos = Produto::whereIn('id', $componentes->pluck('produto_id'))->pluck('preco_venda', 'id');
+        $produtos = Produto::whereIn('id', $componentes->pluck('produto_id'))->get(['id', 'preco_venda', 'preco_custo'])->keyBy('id');
 
-        $pesos = $componentes->map(fn (array $c) => (float) ($produtos[$c['produto_id']] ?? 0) * $c['quantidade'])->all();
+        $pesos = $componentes->map(fn (array $c) => (float) ($produtos[$c['produto_id']]->preco_venda ?? 0) * $c['quantidade'])->all();
         if (array_sum($pesos) <= 0) {
             $pesos = $componentes->map(fn (array $c) => (float) $c['quantidade'])->all();
         }
@@ -2292,8 +2293,11 @@ class DashboardController extends Controller
 
         $nomeKit = $item->produto?->nome ?? '(kit removido)';
 
-        return $componentes->values()->map(function (array $c, int $i) use ($valores, $nomeKit) {
+        return $componentes->values()->map(function (array $c, int $i) use ($valores, $nomeKit, $produtos) {
             $quantidade = (float) ($c['quantidade'] ?? 0);
+            // Custo real do componente (não rateado) - o preço de tabela atual é a melhor
+            // aproximação disponível, já que o custo por componente não fica gravado na venda.
+            $custoTotal = round($quantidade * (float) ($produtos[$c['produto_id']]->preco_custo ?? 0), 2);
 
             return [
                 'produto_id' => $c['produto_id'] ?? null,
@@ -2301,6 +2305,7 @@ class DashboardController extends Controller
                 'quantidade' => $quantidade,
                 'valor_unitario' => $quantidade > 0 ? round($valores[$i] / $quantidade, 2) : 0.0,
                 'valor_total' => $valores[$i],
+                'custo_total' => $custoTotal,
                 'kit' => $nomeKit,
             ];
         })->all();
@@ -2351,7 +2356,7 @@ class DashboardController extends Controller
 
         $itens = ItemVenda::whereIn('venda_id', $this->vendasNoPeriodo($dados)->select('id'))
             ->whereNotNull('produto_id')
-            ->with(['produto:id,nome', 'venda:id,data_venda,canal,valor_total'])
+            ->with(['produto:id,nome', 'venda:id,data_venda,canal,valor_total,valor_desconto'])
             ->orderBy('venda_id')
             ->get();
 
@@ -2363,6 +2368,7 @@ class DashboardController extends Controller
                 // Valor total do pedido inteiro (não só a parte deste produto/kit) -
                 // dá contexto de quanto foi a venda, ao lado de cada linha dela.
                 'valor_pedido' => round((float) $item->venda->valor_total, 2),
+                'desconto_pedido' => round((float) $item->venda->valor_desconto, 2),
             ]);
         })
             // Filtra DEPOIS de abrir os kits - o produto escolhido pode só existir
@@ -2371,17 +2377,28 @@ class DashboardController extends Controller
             ->values();
 
         $resumo = $linhas->groupBy('produto')
-            ->map(fn (Collection $grupo) => [
-                'produto' => $grupo->first()['produto'],
-                'quantidade_direta' => (float) $grupo->whereNull('kit')->sum('quantidade'),
-                'quantidade_em_kit' => (float) $grupo->whereNotNull('kit')->sum('quantidade'),
-                'quantidade_total' => (float) $grupo->sum('quantidade'),
-                'valor_total' => round((float) $grupo->sum('valor_total'), 2),
-            ])
+            ->map(function (Collection $grupo) {
+                $valorTotal = round((float) $grupo->sum('valor_total'), 2);
+                $custoTotal = round((float) $grupo->sum('custo_total'), 2);
+                $margem = round($valorTotal - $custoTotal, 2);
+
+                return [
+                    'produto' => $grupo->first()['produto'],
+                    'quantidade_direta' => (float) $grupo->whereNull('kit')->sum('quantidade'),
+                    'quantidade_em_kit' => (float) $grupo->whereNotNull('kit')->sum('quantidade'),
+                    'quantidade_total' => (float) $grupo->sum('quantidade'),
+                    'valor_total' => $valorTotal,
+                    'custo_total' => $custoTotal,
+                    'margem' => $margem,
+                    'margem_percentual' => $valorTotal > 0 ? round($margem / $valorTotal * 100, 2) : 0.0,
+                ];
+            })
             ->sortByDesc('quantidade_total')
             ->values();
 
         $valorTotal = round((float) $linhas->sum('valor_total'), 2);
+        $custoTotal = round((float) $linhas->sum('custo_total'), 2);
+        $margem = round($valorTotal - $custoTotal, 2);
         $vendasDistintas = $linhas->pluck('venda_id')->unique()->count();
 
         return response()->json([
@@ -2390,6 +2407,9 @@ class DashboardController extends Controller
             'totais' => [
                 'quantidade' => (float) $linhas->sum('quantidade'),
                 'valor_total' => $valorTotal,
+                'custo_total' => $custoTotal,
+                'margem' => $margem,
+                'margem_percentual' => $valorTotal > 0 ? round($margem / $valorTotal * 100, 2) : 0.0,
                 'vendas' => $vendasDistintas,
                 // Ticket médio das vendas que aparecem aqui - com filtro de produto,
                 // é o ticket médio só das vendas que incluíram esse produto.

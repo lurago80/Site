@@ -1137,14 +1137,14 @@ class DashboardTest extends TestCase
         ]);
         ItemVenda::create([
             'empresa_id' => $this->empresa->id, 'venda_id' => $venda1->id, 'produto_id' => $ipa->id,
-            'quantidade' => 2, 'valor_unitario' => 20, 'valor_total' => 40,
+            'quantidade' => 2, 'valor_unitario' => 20, 'valor_total' => 40, 'custo_total' => 16,
         ]);
 
-        // Venda do kit: 1 IPA + 1 Pilsen dentro, kit vendido por R$ 25
+        // Venda do kit: 1 IPA + 1 Pilsen dentro, kit vendido por R$ 25 com R$ 5 de desconto
         // (peso: IPA 20*1=20, Pilsen 10*1=10 -> rateio 2/3 e 1/3 de 25 = 16,67 e 8,33)
         $venda2 = Venda::create([
             'empresa_id' => $this->empresa->id, 'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal',
-            'status_pagamento' => 'pago', 'valor_total' => 25, 'data_venda' => now(),
+            'status_pagamento' => 'pago', 'valor_total' => 25, 'valor_desconto' => 5, 'data_venda' => now(),
         ]);
         ItemVenda::create([
             'empresa_id' => $this->empresa->id, 'venda_id' => $venda2->id, 'produto_id' => $kit->id,
@@ -1165,10 +1165,14 @@ class DashboardTest extends TestCase
         $this->assertEquals(1, $resumo['Cerveja IPA']['quantidade_em_kit']);
         $this->assertEquals(3, $resumo['Cerveja IPA']['quantidade_total']);
         $this->assertEqualsWithDelta(56.67, $resumo['Cerveja IPA']['valor_total'], 0.01); // 40 + 16,67
+        // Custo: 16 (venda avulsa, gravado na hora da venda) + 1 x preço de custo atual (8) do componente do kit.
+        $this->assertEqualsWithDelta(24.0, $resumo['Cerveja IPA']['custo_total'], 0.01);
+        $this->assertEqualsWithDelta(32.67, $resumo['Cerveja IPA']['margem'], 0.01);
 
         $this->assertEquals(0, $resumo['Cerveja Pilsen']['quantidade_direta']);
         $this->assertEquals(1, $resumo['Cerveja Pilsen']['quantidade_em_kit']);
         $this->assertEqualsWithDelta(8.33, $resumo['Cerveja Pilsen']['valor_total'], 0.01);
+        $this->assertEqualsWithDelta(4.0, $resumo['Cerveja Pilsen']['custo_total'], 0.01);
 
         // O kit em si não aparece como produto - só os componentes.
         $this->assertArrayNotHasKey('Kit Degustação', $resumo->all());
@@ -1177,6 +1181,13 @@ class DashboardTest extends TestCase
         $resp->assertJsonPath('totais.valor_total', 65);
         $resp->assertJsonPath('totais.vendas', 2);
         $resp->assertJsonPath('totais.ticket_medio', 32.5); // 65 / 2 vendas
+        $resp->assertJsonPath('totais.custo_total', 28); // 16 + 8 + 4
+
+        // Desconto do pedido aparece em cada linha daquela venda (venda2 teve R$ 5 de desconto).
+        $linhaVenda1 = collect($resp->json('linhas'))->firstWhere('venda_id', $venda1->id);
+        $linhaVenda2 = collect($resp->json('linhas'))->firstWhere('venda_id', $venda2->id);
+        $this->assertEquals(0, $linhaVenda1['desconto_pedido']);
+        $this->assertEquals(5, $linhaVenda2['desconto_pedido']);
 
         // Filtro por produto: Pilsen só existe dentro do kit (produto_id do item
         // original seria o do kit) - o filtro precisa achar mesmo assim.

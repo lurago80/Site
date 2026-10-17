@@ -1600,14 +1600,14 @@
 
                     <h2 style="font-size:14px;">Resumo por produto</h2>
                     <table>
-                        <thead><tr><th>Produto</th><th>Qtd. avulsa</th><th>Qtd. em kit</th><th>Qtd. total</th><th>Valor vendido</th></tr></thead>
+                        <thead><tr><th>Produto</th><th>Qtd. avulsa</th><th>Qtd. em kit</th><th>Qtd. total</th><th>Valor vendido</th><th>Custo</th><th>Lucro</th><th>Lucro %</th></tr></thead>
                         <tbody id="tbody-rpk-resumo"></tbody>
                         <tfoot id="tfoot-rpk-resumo"></tfoot>
                     </table>
 
                     <h2 style="font-size:14px; margin-top:16px;">Detalhe (venda a venda)</h2>
                     <table>
-                        <thead><tr><th>Venda</th><th>Data/hora</th><th>Canal</th><th>Produto</th><th>Veio de kit</th><th>Qtd.</th><th>Valor unit.</th><th>Valor total</th><th>Valor do pedido</th></tr></thead>
+                        <thead><tr><th>Venda</th><th>Data/hora</th><th>Canal</th><th>Produto</th><th>Veio de kit</th><th>Qtd.</th><th>Valor unit.</th><th>Valor total</th><th>Valor do pedido</th><th>Desconto no pedido</th></tr></thead>
                         <tbody id="tbody-rpk-detalhe"></tbody>
                     </table>
                     <p class="msg" id="msg-rpk"></p>
@@ -3503,15 +3503,19 @@
                     <td>${r.quantidade_em_kit}</td>
                     <td><strong>${r.quantidade_total}</strong></td>
                     <td>${brl(r.valor_total)}</td>
+                    <td>${brl(r.custo_total)}</td>
+                    <td>${brl(r.margem)}</td>
+                    <td>${r.margem_percentual}%</td>
                 </tr>
-            `).join('') || '<tr><td colspan="5">Nenhum produto vendido no período.</td></tr>';
+            `).join('') || '<tr><td colspan="8">Nenhum produto vendido no período.</td></tr>';
 
             document.getElementById('tfoot-rpk-resumo').innerHTML = resumo.length ? `
                 <tr style="font-weight:700;">
                     <td>Total</td><td></td><td></td><td>${totais.quantidade}</td><td>${brl(totais.valor_total)}</td>
+                    <td>${brl(totais.custo_total)}</td><td>${brl(totais.margem)}</td><td>${totais.margem_percentual}%</td>
                 </tr>
                 <tr>
-                    <td colspan="5" style="font-size:12px; color:var(--cor-texto-suave);">
+                    <td colspan="8" style="font-size:12px; color:var(--cor-texto-suave);">
                         Ticket médio: ${brl(totais.ticket_medio)} (${totais.vendas} venda(s))
                     </td>
                 </tr>` : '';
@@ -3525,8 +3529,9 @@
                     <td>${brl(l.valor_unitario)}</td>
                     <td>${brl(l.valor_total)}</td>
                     <td>${brl(l.valor_pedido)}</td>
+                    <td>${l.desconto_pedido > 0 ? '<span class="selo info">' + brl(l.desconto_pedido) + '</span>' : '-'}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="9">Nenhuma venda no período.</td></tr>';
+            `).join('') || '<tr><td colspan="10">Nenhuma venda no período.</td></tr>';
         }
 
         function exportarRelatorioProdutosKitsAbertosExcel() {
@@ -3535,14 +3540,14 @@
             const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
 
             const linhas = [['--- Resumo por produto ---']]
-                .concat([['Produto', 'Qtd. avulsa', 'Qtd. em kit', 'Qtd. total', 'Valor vendido']])
-                .concat(d.resumo.map(r => [csvTxt(r.produto), r.quantidade_direta, r.quantidade_em_kit, r.quantidade_total, csvNum(r.valor_total)]))
-                .concat([['Total', '', '', d.totais.quantidade, csvNum(d.totais.valor_total)]])
+                .concat([['Produto', 'Qtd. avulsa', 'Qtd. em kit', 'Qtd. total', 'Valor vendido', 'Custo', 'Lucro', 'Lucro %']])
+                .concat(d.resumo.map(r => [csvTxt(r.produto), r.quantidade_direta, r.quantidade_em_kit, r.quantidade_total, csvNum(r.valor_total), csvNum(r.custo_total), csvNum(r.margem), r.margem_percentual]))
+                .concat([['Total', '', '', d.totais.quantidade, csvNum(d.totais.valor_total), csvNum(d.totais.custo_total), csvNum(d.totais.margem), d.totais.margem_percentual]])
                 .concat([['Ticket médio', '', '', d.totais.vendas + ' venda(s)', csvNum(d.totais.ticket_medio)]])
                 .concat([[]])
                 .concat([['--- Detalhe (venda a venda) ---']])
-                .concat([['Venda', 'Data/hora', 'Canal', 'Produto', 'Veio de kit', 'Quantidade', 'Valor unitário', 'Valor total', 'Valor do pedido']])
-                .concat(d.linhas.map(l => [l.venda_id, l.data, csvTxt(l.canal), csvTxt(l.produto), csvTxt(l.kit || ''), l.quantidade, csvNum(l.valor_unitario), csvNum(l.valor_total), csvNum(l.valor_pedido)]));
+                .concat([['Venda', 'Data/hora', 'Canal', 'Produto', 'Veio de kit', 'Quantidade', 'Valor unitário', 'Valor total', 'Valor do pedido', 'Desconto no pedido']])
+                .concat(d.linhas.map(l => [l.venda_id, l.data, csvTxt(l.canal), csvTxt(l.produto), csvTxt(l.kit || ''), l.quantidade, csvNum(l.valor_unitario), csvNum(l.valor_total), csvNum(l.valor_pedido), csvNum(l.desconto_pedido)]));
 
             baixarCsv(`produtos-kits-abertos_${periodo}.csv`, linhas);
         }
