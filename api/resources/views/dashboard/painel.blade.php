@@ -1388,6 +1388,14 @@
                         (002.001 / 002.002), então ela não deve ser somada de novo como despesa.
                     </p>
                 </div>
+                <div class="card">
+                    <h2 style="font-size:14px; margin-top:0;">Balancete</h2>
+                    <p class="msg">Balancete de receitas e despesas por conta do plano de contas, pronto para impressão.</p>
+                    <a class="secundario" style="display:inline-block; text-decoration:none; padding:8px 14px;"
+                       href="{{ url("/dashboard/{$empresaSlug}/balancete-impressao") }}" target="_blank" rel="noopener">
+                        Abrir balancete (imprimir)
+                    </a>
+                </div>
                 <div class="card" id="area-resultado">
                     <h2 style="font-size:14px; margin-top:0;">Resultado do período</h2>
                     <div class="linha-form">
