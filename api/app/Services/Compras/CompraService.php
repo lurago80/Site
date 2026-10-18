@@ -19,6 +19,10 @@ use Illuminate\Validation\ValidationException;
  */
 class CompraService
 {
+    public function __construct(private readonly LancamentoCompraService $lancamentoCompraService)
+    {
+    }
+
     public function registrarManual(Empresa $empresa, array $dados): Compra
     {
         return DB::transaction(function () use ($empresa, $dados) {
@@ -206,6 +210,8 @@ class CompraService
                 'status' => 'em_aberto',
             ]);
 
+            $this->lancamentoCompraService->registrar($compra);
+
             return $compra->fresh(['itens.produto', 'fornecedor']);
         });
     }
@@ -225,6 +231,8 @@ class CompraService
             }
 
             $compra->update(['status' => 'cancelada']);
+
+            $this->lancamentoCompraService->estornar($compra);
 
             return $compra->fresh('itens.produto');
         });

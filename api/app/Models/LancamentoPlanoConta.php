@@ -6,8 +6,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** Lançamento no plano de contas gerado automaticamente por uma venda (ver LancamentoVendaService). */
-#[Fillable(['empresa_id', 'venda_id', 'plano_conta_id', 'origem', 'valor', 'data', 'historico'])]
+/**
+ * Lançamento no plano de contas gerado automaticamente por uma venda (ver
+ * LancamentoVendaService) ou por uma compra/entrada de nota (ver LancamentoCompraService).
+ */
+#[Fillable(['empresa_id', 'venda_id', 'compra_id', 'plano_conta_id', 'origem', 'valor', 'data', 'historico'])]
 class LancamentoPlanoConta extends Model
 {
     protected $table = 'lancamentos_plano_contas';
@@ -23,6 +26,11 @@ class LancamentoPlanoConta extends Model
     public function venda(): BelongsTo
     {
         return $this->belongsTo(Venda::class);
+    }
+
+    public function compra(): BelongsTo
+    {
+        return $this->belongsTo(Compra::class);
     }
 
     public function planoContas(): BelongsTo

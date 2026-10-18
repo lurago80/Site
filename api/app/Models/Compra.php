@@ -45,4 +45,9 @@ class Compra extends Model
     {
         return $this->hasMany(DocumentoFiscal::class)->where('tipo_operacao', 'devolucao');
     }
+
+    public function lancamentosPlanoContas(): HasMany
+    {
+        return $this->hasMany(LancamentoPlanoConta::class);
+    }
 }

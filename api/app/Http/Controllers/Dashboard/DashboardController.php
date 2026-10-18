@@ -2053,6 +2053,64 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * Balancete do plano de contas: total lançado em cada conta (receitas e despesas,
+     * incluindo a entrada de notas na 001.018 - ver LancamentoCompraService) dentro de
+     * um período opcional, com o resultado (receitas - despesas). Tela de impressão.
+     */
+    public function balanceteImpressao(Request $request, string $empresa)
+    {
+        $dados = $request->validate([
+            'data_inicio' => ['nullable', 'date'],
+            'data_fim' => ['nullable', 'date'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $periodo = fn ($query) => $query
+            ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('vencimento', '>=', $d))
+            ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('vencimento', '<=', $d));
+
+        $planos = PlanoContas::where('empresa_id', $empresaAtual->id)->orderBy('codigo')->get();
+
+        $linhas = $planos->map(function (PlanoContas $plano) use ($periodo, $dados) {
+            $query = $plano->tipo === 'despesa'
+                ? ContaPagar::where('plano_conta_id', $plano->id)
+                : ContaReceber::where('plano_conta_id', $plano->id);
+
+            $lancado = \App\Models\LancamentoPlanoConta::where('plano_conta_id', $plano->id)
+                ->when($dados['data_inicio'] ?? null, fn ($q, $d) => $q->where('data', '>=', $d))
+                ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data', '<=', $d))
+                ->sum('valor');
+
+            $total = round((float) $periodo($query)->sum('valor') + (float) $lancado, 2);
+
+            return [
+                'codigo' => $plano->codigo,
+                'nome' => $plano->nome,
+                'tipo' => $plano->tipo,
+                'total' => $total,
+            ];
+        })->filter(fn (array $linha) => $linha['total'] != 0)->values();
+
+        $receitas = $linhas->where('tipo', 'receita')->values();
+        $despesas = $linhas->where('tipo', 'despesa')->values();
+        $totalReceitas = round((float) $receitas->sum('total'), 2);
+        $totalDespesas = round((float) $despesas->sum('total'), 2);
+
+        return view('dashboard.balancete', [
+            'empresaNome' => $empresaAtual?->nome_fantasia ?? $empresaAtual?->razao_social ?? $empresa,
+            'geradoEm' => now('America/Sao_Paulo'),
+            'dataInicio' => $dados['data_inicio'] ?? null,
+            'dataFim' => $dados['data_fim'] ?? null,
+            'receitas' => $receitas,
+            'despesas' => $despesas,
+            'totalReceitas' => $totalReceitas,
+            'totalDespesas' => $totalDespesas,
+            'resultado' => round($totalReceitas - $totalDespesas, 2),
+        ]);
+    }
+
     // ---- Relatórios de vendas ----
 
     /**

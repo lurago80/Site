@@ -207,6 +207,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::put('/plano-contas/{planoContaId}', [DashboardController::class, 'atualizarPlanoContas']);
     Route::get('/plano-contas-relatorio', [DashboardController::class, 'relatorioPlanoContas']);
     Route::get('/resultado-relatorio', [DashboardController::class, 'relatorioResultado']);
+    Route::get('/balancete-impressao', [DashboardController::class, 'balanceteImpressao']);
 
     // Cancelamento de pedidos pela retaguarda - reaproveita o mesmo serviço do PDV
     // (valida perfil, motivo, estorna estoque/caixa/NFC-e); só não tem rota aqui ainda.
