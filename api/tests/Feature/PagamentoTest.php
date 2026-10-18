@@ -358,7 +358,7 @@ class PagamentoTest extends TestCase
 
         $response = $this->actingAs($caixa)->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
-            'forma_pagamento_id' => $forma->id,
+            'pagamentos' => [['forma_pagamento_id' => $forma->id]],
             'atendente_id' => $atendente->id,
             'itens' => [['produto_id' => $produto->id, 'quantidade' => 1]],
         ]);

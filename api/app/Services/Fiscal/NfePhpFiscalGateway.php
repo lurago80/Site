@@ -905,24 +905,50 @@ class NfePhpFiscalGateway implements FiscalGatewayInterface
             $nfe->tagtransporta($std);
         }
 
+        // Pagamento misto (PDV): uma venda pode ter sido paga em mais de uma forma (ex.:
+        // metade dinheiro, metade cartão) - cada uma vira o seu próprio grupo <detPag>,
+        // como a SEFAZ espera. vTroco é único por nota (não por forma), somando o troco
+        // de todas as linhas em dinheiro.
+        $pagamentos = $documento->venda?->pagamentos ?? collect();
+
+        $vTroco = round($pagamentos
+            ->filter(fn ($p) => $p->formaPagamento?->tipo === 'dinheiro')
+            ->sum(fn ($p) => max(0, (float) ($p->valor_recebido ?? $p->valor) - (float) $p->valor)), 2);
+
         $std = new \stdClass();
-        $std->vTroco = 0;
+        $std->vTroco = $vTroco;
         $nfe->tagpag($std);
 
-        $tpag = $documento->tpag ?? $documento->venda?->formaPagamento?->codigo_tpag ?? '99'; // 99 = outros, quando não informado
-        $std = new \stdClass();
-        $std->tPag = $tpag;
-        // 90 = sem pagamento (remessa, transferência, bonificação): vPag precisa ser zero
-        $std->vPag = $tpag === '90' ? 0 : $valorNota;
-        if ($tpag === '99') {
-            $std->xPag = 'Outros';
+        if ($pagamentos->count() > 1) {
+            foreach ($pagamentos as $pagamento) {
+                $tpag = $pagamento->formaPagamento?->codigo_tpag ?? '99';
+                $std = new \stdClass();
+                $std->tPag = $tpag;
+                $std->vPag = $tpag === '90' ? 0 : round((float) $pagamento->valor, 2);
+                if ($tpag === '99') {
+                    $std->xPag = 'Outros';
+                }
+                if (in_array($tpag, ['03', '04', '17', '18'], true)) {
+                    $std->tpIntegra = 2;
+                }
+                $nfe->tagdetPag($std);
+            }
+        } else {
+            $tpag = $documento->tpag ?? $documento->venda?->formaPagamento?->codigo_tpag ?? '99'; // 99 = outros, quando não informado
+            $std = new \stdClass();
+            $std->tPag = $tpag;
+            // 90 = sem pagamento (remessa, transferência, bonificação): vPag precisa ser zero
+            $std->vPag = $tpag === '90' ? 0 : $valorNota;
+            if ($tpag === '99') {
+                $std->xPag = 'Outros';
+            }
+            // Cartão (03/04) e Pix (17/18) exigem o grupo card (rejeição 391). 2 = não integrado
+            // (maquininha sem TEF): CNPJ da credenciadora, bandeira e autorização ficam opcionais.
+            if (in_array($tpag, ['03', '04', '17', '18'], true)) {
+                $std->tpIntegra = 2;
+            }
+            $nfe->tagdetPag($std);
         }
-        // Cartão (03/04) e Pix (17/18) exigem o grupo card (rejeição 391). 2 = não integrado
-        // (maquininha sem TEF): CNPJ da credenciadora, bandeira e autorização ficam opcionais.
-        if (in_array($tpag, ['03', '04', '17', '18'], true)) {
-            $std->tpIntegra = 2;
-        }
-        $nfe->tagdetPag($std);
 
         if (! empty($documento->informacoes_adicionais)) {
             $std = new \stdClass();

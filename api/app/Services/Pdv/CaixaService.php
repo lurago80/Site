@@ -184,21 +184,58 @@ class CaixaService
             ->orderBy('id')
             ->get();
 
-        $vendas = Venda::with('formaPagamento')
+        $vendas = Venda::with(['formaPagamento', 'pagamentos.formaPagamento'])
             ->where('empresa_id', $empresaId)
             ->where('canal', 'pdv')
             ->where('status_pagamento', 'pago')
             ->whereBetween('data_venda', [$abertura->data_hora, $fim])
             ->get();
 
-        $porEspecie = $vendas
-            ->groupBy(fn (Venda $v) => $v->formaPagamento?->descricao ?? ($v->cortesia ? 'Cortesia' : 'Não informada'))
+        // Cortesia e consumo interno zeram o valor da venda (sem pagamento nenhum) -
+        // continuam num bucket informativo à parte, por descrição.
+        $semReceita = $vendas->filter(fn (Venda $v) => $v->cortesia || $v->ehConsumoInterno());
+
+        // Pagamento misto: cada forma usada numa venda vira uma linha em
+        // `venda_pagamentos` - uma venda dividida (ex.: metade dinheiro, metade
+        // cartão) aparece fatiada nos grupos certos, em vez de inteira num só.
+        // Vendas antigas (de antes desse recurso existir) não têm linha nenhuma
+        // aqui - caem no fallback abaixo, usando a forma única de sempre.
+        $comPagamento = $vendas->reject(fn (Venda $v) => $v->cortesia || $v->ehConsumoInterno() || $v->pagamentos->isEmpty());
+        $semPagamentoRegistrado = $vendas->reject(fn (Venda $v) => $v->cortesia || $v->ehConsumoInterno() || $v->pagamentos->isNotEmpty());
+
+        // Monta uma "linha" por ocorrência (pagamento ou venda) com descrição/tipo/valor
+        // normalizados, pra depois somar tudo junto por descrição - um merge direto de
+        // mapas já agregados substituiria em vez de somar quando a mesma espécie
+        // aparece em mais de uma origem (ex.: dinheiro em venda antiga + venda nova).
+        $linhas = $comPagamento
+            ->flatMap(fn (Venda $v) => $v->pagamentos)
+            ->map(fn ($p) => [
+                'descricao' => $p->formaPagamento?->descricao ?? 'Não informada',
+                'dinheiro' => $p->formaPagamento?->tipo === 'dinheiro',
+                'informativa' => false,
+                'valor' => (float) $p->valor,
+            ])
+            ->concat($semPagamentoRegistrado->map(fn (Venda $v) => [
+                'descricao' => $v->formaPagamento?->descricao ?? 'Não informada',
+                'dinheiro' => $v->formaPagamento?->tipo === 'dinheiro',
+                'informativa' => false,
+                'valor' => (float) $v->valor_total,
+            ]))
+            ->concat($semReceita->map(fn (Venda $v) => [
+                'descricao' => $v->cortesia ? 'Cortesia' : ($v->formaPagamento?->descricao ?? 'Consumo interno'),
+                'dinheiro' => false,
+                'informativa' => true,
+                'valor' => (float) $v->valor_total,
+            ]));
+
+        $porEspecie = $linhas
+            ->groupBy('descricao')
             ->map(fn ($grupo, $descricao) => [
                 'descricao' => $descricao,
-                'dinheiro' => $grupo->first()->formaPagamento?->tipo === 'dinheiro',
-                'informativa' => $grupo->first()->ehConsumoInterno(),
+                'dinheiro' => $grupo->first()['dinheiro'],
+                'informativa' => $grupo->first()['informativa'],
                 'quantidade' => $grupo->count(),
-                'valor' => round($grupo->sum(fn (Venda $v) => (float) $v->valor_total), 2),
+                'valor' => round($grupo->sum('valor'), 2),
             ])
             ->sortByDesc('valor')
             ->values();

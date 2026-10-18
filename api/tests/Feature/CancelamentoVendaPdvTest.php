@@ -84,7 +84,7 @@ class CancelamentoVendaPdvTest extends TestCase
         $resposta = $this->postJson("{$this->base}/vendas", [
             'tipo_doc' => $tipoDoc,
             'atendente_id' => $this->atendente->id,
-            'forma_pagamento_id' => $forma->id,
+            'pagamentos' => [['forma_pagamento_id' => $forma->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => $quantidade]],
         ]);
         $resposta->assertCreated();

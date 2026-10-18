@@ -12,6 +12,7 @@ use App\Models\FormaPagamento;
 use App\Models\Produto;
 use App\Models\ProdutoVariacao;
 use App\Models\Venda;
+use App\Models\VendaPagamento;
 use App\Models\Vendedor;
 use App\Services\Agendamento\BrindeVisitaService;
 use App\Services\Agendamento\ReservaVagaService;
@@ -43,11 +44,6 @@ class VendaPdvService
     public function finalizar(Empresa $empresa, array $dados, int $usuarioId): Venda
     {
         return DB::transaction(function () use ($empresa, $dados, $usuarioId) {
-            // Cortesia não é cobrada: a venda fica sem forma de pagamento.
-            if (! empty($dados['cortesia'])) {
-                $dados['forma_pagamento_id'] = null;
-            }
-
             $vendedor = ! empty($dados['vendedor_id'])
                 ? Vendedor::findOrFail($dados['vendedor_id'])
                 : null;
@@ -65,7 +61,9 @@ class VendaPdvService
                 'cliente_id' => $cliente?->id,
                 'vendedor_id' => $vendedor?->id,
                 'atendente_id' => $atendente?->id,
-                'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
+                // Preenchido depois de processar os pagamentos (null se cortesia ou se
+                // a venda tiver mais de uma forma - ver bloco de pagamento misto abaixo).
+                'forma_pagamento_id' => null,
                 'indicacao_id' => $dados['indicacao_id'] ?? null,
                 'canal' => 'pdv',
                 'tipo_doc' => $dados['tipo_doc'],
@@ -159,19 +157,18 @@ class VendaPdvService
                 'motivo_desconto' => ($cortesia || $descontoPdvId) ? ($dados['motivo_desconto'] ?? null) : null,
             ]);
 
+            // Cortesia não é cobrada: sem pagamento nenhum, mesmo que o operador tenha
+            // mandado algo (o controller já valida isso antes de chegar aqui). Precisa
+            // rodar ANTES do lançamento no plano de contas: ehConsumoInterno() olha
+            // formaPagamento, que só fica definitivo depois de processar os pagamentos.
+            $this->processarPagamentos($venda, $empresa, $usuarioId, $cortesia ? [] : ($dados['pagamentos'] ?? []), $valorTotal - $valorDesconto);
+
             // Plano de contas: receita de produtos/serviços e descontos concedidos.
+            // (recarrega a venda por dentro, já pegando a forma de pagamento definida acima)
             $this->lancamentoVendaService->registrar($venda);
 
             // Cortesia e desconto alto avisam o administrador.
             $this->alertaService->vendaComDesconto($venda, $empresa, auth()->user()?->name);
-
-            $formaPagamento = ! empty($dados['forma_pagamento_id'])
-                ? FormaPagamento::find($dados['forma_pagamento_id'])
-                : null;
-
-            if ($formaPagamento?->tipo === 'dinheiro' && $valorTotal - $valorDesconto > 0) {
-                $this->caixaService->registrarVenda($empresa, $usuarioId, $valorTotal - $valorDesconto, "Venda #{$venda->id}");
-            }
 
             if ($dados['tipo_doc'] === 'fiscal') {
                 $this->emissaoFiscalService->emitir($venda->fresh('itens'), 65);
@@ -179,9 +176,74 @@ class VendaPdvService
 
             return $venda->fresh([
                 'itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'vendedor',
-                'atendente', 'formaPagamento', 'descontoPdv', 'empresa', 'documentoFiscal',
+                'atendente', 'formaPagamento', 'pagamentos.formaPagamento', 'descontoPdv', 'empresa', 'documentoFiscal',
             ]);
         });
+    }
+
+    /**
+     * Pagamento misto: grava uma linha em `venda_pagamentos` por forma usada
+     * (dinheiro, cartão, Pix...), confere que a soma bate com o total da
+     * venda e lança no caixa físico só a parcela em dinheiro (nunca mais de
+     * uma linha de caixa por venda, mesmo com várias formas).
+     *
+     * @param  array<int, array{forma_pagamento_id: int, valor: float, valor_recebido?: ?float}>  $pagamentos
+     */
+    private function processarPagamentos(Venda $venda, Empresa $empresa, int $usuarioId, array $pagamentos, float $valorAPagar): void
+    {
+        if (empty($pagamentos)) {
+            return;
+        }
+
+        // Com 1 forma só, o valor é opcional - cobre o total inteiro (o operador não
+        // precisa digitar um valor óbvio). Com 2+, cada linha precisa do seu valor.
+        if (count($pagamentos) === 1 && ! isset($pagamentos[0]['valor'])) {
+            $pagamentos[0]['valor'] = $valorAPagar;
+        }
+
+        abort_if(
+            count($pagamentos) > 1 && collect($pagamentos)->contains(fn ($p) => ! isset($p['valor'])),
+            422,
+            'Informe o valor de cada forma de pagamento quando usar mais de uma.'
+        );
+
+        $somaPagamentos = round(array_sum(array_column($pagamentos, 'valor')), 2);
+        abort_if(
+            abs($somaPagamentos - round($valorAPagar, 2)) > 0.01,
+            422,
+            "A soma das formas de pagamento (R$ {$somaPagamentos}) não bate com o total da venda (R$ {$valorAPagar})."
+        );
+
+        $formasPagamento = FormaPagamento::whereIn('id', array_column($pagamentos, 'forma_pagamento_id'))->get()->keyBy('id');
+        $valorDinheiro = 0.0;
+
+        foreach ($pagamentos as $pagamento) {
+            $forma = $formasPagamento->get($pagamento['forma_pagamento_id']);
+            abort_if($forma === null, 422, 'Forma de pagamento inválida.');
+
+            VendaPagamento::create([
+                'empresa_id' => $venda->empresa_id,
+                'venda_id' => $venda->id,
+                'forma_pagamento_id' => $forma->id,
+                'valor' => $pagamento['valor'],
+                'valor_recebido' => $forma->tipo === 'dinheiro' ? ($pagamento['valor_recebido'] ?? $pagamento['valor']) : null,
+            ]);
+
+            if ($forma->tipo === 'dinheiro') {
+                $valorDinheiro += (float) $pagamento['valor'];
+            }
+        }
+
+        // Forma única (caso mais comum) continua preenchendo vendas.forma_pagamento_id,
+        // para quem ainda lê essa coluna direto (recibo, fallback fiscal). Com 2+
+        // formas, fica null - o detalhe mora em venda_pagamentos.
+        if (count($pagamentos) === 1) {
+            $venda->update(['forma_pagamento_id' => $pagamentos[0]['forma_pagamento_id']]);
+        }
+
+        if ($valorDinheiro > 0) {
+            $this->caixaService->registrarVenda($empresa, $usuarioId, $valorDinheiro, "Venda #{$venda->id}");
+        }
     }
 
     /**

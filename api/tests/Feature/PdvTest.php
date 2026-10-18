@@ -131,7 +131,7 @@ class PdvTest extends TestCase
         return $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => $tipoDoc,
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $kit->id, 'quantidade' => 1, 'escolhas' => $escolhas]],
         ]);
     }
@@ -378,7 +378,7 @@ class PdvTest extends TestCase
         $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $produto->id, 'quantidade' => 1]],
         ])->assertStatus(422);
 
@@ -394,7 +394,7 @@ class PdvTest extends TestCase
         $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ])->assertStatus(422);
 
@@ -406,7 +406,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [
                 ['produto_id' => $this->produto->id, 'quantidade' => 3],
             ],
@@ -453,7 +453,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'vendedor_id' => $vendedor->id,
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [
                 ['produto_id' => $this->produto->id, 'quantidade' => 2],
             ],
@@ -477,7 +477,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'vendedor_id' => $vendedor->id,
             'atendente_id' => $atendente->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ]);
 
@@ -548,7 +548,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 2,
         ]);
@@ -606,7 +606,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 2,
         ]);
@@ -682,7 +682,7 @@ class PdvTest extends TestCase
     {
         $semAtendente = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ]);
         $semAtendente->assertStatus(422)->assertJsonValidationErrors('atendente_id');
@@ -692,7 +692,7 @@ class PdvTest extends TestCase
             'atendente_id' => $this->atendentePadrao->id,
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ]);
-        $semFormaPagamento->assertStatus(422)->assertJsonValidationErrors('forma_pagamento_id');
+        $semFormaPagamento->assertStatus(422)->assertJsonValidationErrors('pagamentos');
     }
 
     public function test_cupom_de_desconto_aplica_so_no_valor_da_visita(): void
@@ -710,7 +710,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // R$18, sem desconto
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // R$100, com 10% de desconto = R$90
@@ -740,7 +740,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // 15% de R$100 seria R$15, mas o teto (1 ticket) é R$12
             'cupom_codigo' => 'DESC15',
@@ -776,7 +776,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]], // 2 x 18 = 36
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // 100, sem desconto
@@ -800,7 +800,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // 18, sem desconto
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 3, // 300; 50% só de 2 tickets = 100
@@ -822,7 +822,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1,
             'desconto_pdv_id' => $desconto->id,
@@ -844,7 +844,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1,
             'cupom_codigo' => 'DESC10',
@@ -869,7 +869,7 @@ class PdvTest extends TestCase
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // 18 -> 1,80
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // 100 -> cupom 10
@@ -892,7 +892,7 @@ class PdvTest extends TestCase
         $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'agenda_visitacao_id' => $agenda->id,
             'agenda_quantidade' => 1, // só visita
             'desconto_pdv_id' => $soProdutos->id,
@@ -902,7 +902,7 @@ class PdvTest extends TestCase
         $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // só produto
             'desconto_pdv_id' => $soVisitas->id,
             'motivo_desconto' => 'Motivo de teste',
@@ -922,7 +922,7 @@ class PdvTest extends TestCase
         $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
             'desconto_pdv_id' => $inativo->id,
             'motivo_desconto' => 'Motivo de teste',
@@ -939,7 +939,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
             'cupom_codigo' => 'SOVISITA',
         ]);
@@ -960,7 +960,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [
                 ['produto_id' => $this->produto->id, 'quantidade' => 1],
             ],
@@ -1007,7 +1007,7 @@ class PdvTest extends TestCase
         $venda = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ])->json('id');
 
@@ -1061,7 +1061,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [
                 ['produto_id' => $cerveja->id, 'variacao_id' => $sabor1->id, 'quantidade' => 2],
                 ['produto_id' => $cerveja->id, 'variacao_id' => $sabor2->id, 'quantidade' => 3],
@@ -1092,7 +1092,7 @@ class PdvTest extends TestCase
         $response = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal',
             'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [
                 ['produto_id' => $cerveja->id, 'variacao_id' => $sabor1->id, 'quantidade' => 4],
                 ['produto_id' => $cerveja->id, 'variacao_id' => $sabor2->id, 'quantidade' => 2],
@@ -1117,12 +1117,12 @@ class PdvTest extends TestCase
         // 2 x R$ 18,00 em dinheiro = 36,00 ; 1 x R$ 18,00 no PIX
         $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
         ])->assertCreated();
         $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $pix->id,
+            'pagamentos' => [['forma_pagamento_id' => $pix->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ])->assertCreated();
 
@@ -1151,7 +1151,7 @@ class PdvTest extends TestCase
         $base = "/pdv/{$this->empresa->slug}";
         $venda = [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
         ];
 
@@ -1204,7 +1204,7 @@ class PdvTest extends TestCase
         $venda = $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
             'vendedor_id' => $this->vendedorPadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
             'agenda_visitacao_id' => $agenda->id, 'agenda_quantidade' => 2,
             'desconto_pdv_id' => $descontoVisitas->id, 'motivo_desconto' => 'Teste',
@@ -1247,12 +1247,12 @@ class PdvTest extends TestCase
         ]);
         $venda = fn (array $extra = []) => $this->postJson("$base/vendas", array_merge([
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
         ], $extra))->assertCreated()->json('id');
 
         $normal = $venda();                                                            // 2 x 18 = 36
-        $interno = $venda(['forma_pagamento_id' => $consumo->id]);                      // consumo interno
+        $interno = $venda(['pagamentos' => [['forma_pagamento_id' => $consumo->id]]]);   // consumo interno
         $cortesia = $venda(['cortesia' => true, 'motivo_desconto' => 'Parceria']);      // cortesia
 
         $lancado = fn (int $vendaId, string $codigo) => (float) \App\Models\LancamentoPlanoConta::query()
@@ -1333,7 +1333,7 @@ class PdvTest extends TestCase
         $this->postJson("$base/caixa-abrir", ['valor' => 100])->assertCreated();
         $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
         ])->assertCreated();
         $this->postJson("$base/caixa-sangria", ['valor' => 30])->assertCreated();
@@ -1388,7 +1388,7 @@ class PdvTest extends TestCase
         $base = "/pdv/{$this->empresa->slug}";
         $venda = fn () => $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ])->assertCreated()->json('id');
 
@@ -1423,7 +1423,7 @@ class PdvTest extends TestCase
         $dash = "/dashboard/{$this->empresa->slug}";
         $venda = fn (array $extra = []) => $this->postJson("$base/vendas", array_merge([
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
         ], $extra))->assertCreated()->json('id');
 
@@ -1474,7 +1474,7 @@ class PdvTest extends TestCase
         // Venda do balcão (PDV) e venda da loja online, as duas pagas e lançadas no plano de contas.
         $pdv = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
         ])->assertCreated()->json('id');
 
@@ -1526,7 +1526,7 @@ class PdvTest extends TestCase
         $dash = "/dashboard/{$this->empresa->slug}";
         $cortesia = fn () => $this->postJson("$base/vendas", [
             'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
-            'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
             'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
             'cortesia' => true, 'motivo_desconto' => 'Brinde',
         ])->assertCreated();
@@ -1572,7 +1572,7 @@ class PdvTest extends TestCase
         ];
 
         // Venda comum sem forma de pagamento: recusada.
-        $this->postJson("$base/vendas", $corpo)->assertStatus(422)->assertJsonValidationErrors('forma_pagamento_id');
+        $this->postJson("$base/vendas", $corpo)->assertStatus(422)->assertJsonValidationErrors('pagamentos');
 
         // Cortesia sem forma de pagamento: vale, fica R$ 0,00 e sem forma gravada (mesmo que venha uma).
         $semForma = $this->postJson("$base/vendas", $corpo + ['cortesia' => true, 'motivo_desconto' => 'Brinde'])->assertCreated();
@@ -1580,7 +1580,7 @@ class PdvTest extends TestCase
         $this->assertNull(\App\Models\Venda::find($semForma->json('id'))->forma_pagamento_id);
 
         $comForma = $this->postJson("$base/vendas", $corpo + [
-            'cortesia' => true, 'motivo_desconto' => 'Brinde', 'forma_pagamento_id' => $this->formaPagamentoPadrao->id,
+            'cortesia' => true, 'motivo_desconto' => 'Brinde', 'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
         ])->assertCreated();
         $this->assertNull(\App\Models\Venda::find($comForma->json('id'))->forma_pagamento_id);
 
@@ -1626,5 +1626,66 @@ class PdvTest extends TestCase
             ->assertDontSee('Cliente Pendente');
 
         $this->assertNotNull($paga->id);
+    }
+
+    /**
+     * Pagamento misto: a mesma venda paga metade em dinheiro, metade no cartão.
+     * Só a parcela em dinheiro pode entrar no caixa físico; a venda fica sem
+     * forma_pagamento_id única (2+ formas usadas) mas com 2 linhas em
+     * venda_pagamentos, e o resumo do turno mostra cada forma separada.
+     */
+    public function test_pagamento_misto_divide_entre_formas_e_so_lanca_a_parte_dinheiro_no_caixa(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $cartao = FormaPagamento::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => 'Cartão de Débito', 'tipo' => 'cartao_debito', 'codigo_tpag' => '04', 'ativo' => true,
+        ]);
+
+        $this->postJson("$base/caixa-abrir", ['valor' => 100])->assertCreated();
+
+        // 2 x R$ 18 = 36: metade dinheiro, metade cartão
+        $resp = $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'pagamentos' => [
+                ['forma_pagamento_id' => $this->formaPagamentoPadrao->id, 'valor' => 18, 'valor_recebido' => 20],
+                ['forma_pagamento_id' => $cartao->id, 'valor' => 18],
+            ],
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ])->assertCreated();
+
+        $vendaId = $resp->json('id');
+        $venda = \App\Models\Venda::find($vendaId);
+        $this->assertNull($venda->forma_pagamento_id);
+
+        $pagamentos = \App\Models\VendaPagamento::where('venda_id', $vendaId)->orderBy('forma_pagamento_id')->get();
+        $this->assertCount(2, $pagamentos);
+
+        // Só a parcela em dinheiro (18) entra no caixa, não os 36 inteiros.
+        $this->get("$base/caixa-extrato-impressao")
+            ->assertOk()
+            ->assertSee('Cartão de Débito')
+            ->assertSee('Dinheiro')
+            ->assertSee('R$ 118,00'); // esperado: 100 abertura + 18 dinheiro
+    }
+
+    public function test_pagamento_misto_recusa_quando_soma_nao_bate_com_o_total(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $cartao = FormaPagamento::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => 'Cartão de Crédito', 'tipo' => 'cartao_credito', 'codigo_tpag' => '03', 'ativo' => true,
+        ]);
+
+        // Total real é 36, mas a soma das formas é só 20.
+        $resp = $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'pagamentos' => [
+                ['forma_pagamento_id' => $this->formaPagamentoPadrao->id, 'valor' => 10],
+                ['forma_pagamento_id' => $cartao->id, 'valor' => 10],
+            ],
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 2]],
+        ]);
+
+        $resp->assertStatus(422);
+        $this->assertStringContainsString('não bate com o total', $resp->json('message'));
     }
 }

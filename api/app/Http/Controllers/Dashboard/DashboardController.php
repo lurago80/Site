@@ -2103,6 +2103,7 @@ class DashboardController extends Controller
 
         $vendas = $this->vendasNoPeriodo($dados, incluirSemReceita: true)
             ->with(['atendente:id,nome', 'vendedor:id,nome', 'formaPagamento:id,descricao'])
+            ->withCount('pagamentos')
             // O brinde de visita (ex.: caneca, 1 por visitante - ver BrindeVisitaService) é um
             // ItemVenda à parte com a mesma quantidade da visita - somado junto, dobraria a
             // contagem (visita + brinde). Por isso vem separado em "brindes", informativo.
@@ -2128,7 +2129,9 @@ class DashboardController extends Controller
                 'status_pagamento' => $v->status_pagamento,
                 'atendente' => $v->atendente?->nome,
                 'vendedor' => $v->vendedor?->nome,
-                'forma_pagamento' => $v->formaPagamento?->descricao,
+                // Pagamento misto (2+ formas numa só venda): mostra "Múltiplas formas" em
+                // vez da forma única, que não existe mais nesse caso (ver venda_pagamentos).
+                'forma_pagamento' => $v->pagamentos_count > 1 ? 'Múltiplas formas' : $v->formaPagamento?->descricao,
                 // Soma das quantidades (ex.: 3 visitas numa venda com 2 linhas de item),
                 // não o número de linhas - mais claro para o cliente conferir no relatório.
                 'itens' => (int) ($v->itens_sum_quantidade ?? 0),

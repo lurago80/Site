@@ -319,8 +319,14 @@ class PdvController extends Controller
             'tipo_doc' => ['required', 'in:fiscal,nao_fiscal'],
             'vendedor_id' => ['nullable', 'integer'],
             'atendente_id' => ['required', 'integer'],
-            // Cortesia não tem cobrança: não precisa de forma de pagamento.
-            'forma_pagamento_id' => [\Illuminate\Validation\Rule::requiredIf(fn () => ! $request->boolean('cortesia')), 'nullable', 'integer'],
+            // Cortesia não tem cobrança: não precisa de pagamento. Pagamento misto - uma
+            // linha por forma usada (ex.: parte dinheiro, parte cartão).
+            'pagamentos' => [\Illuminate\Validation\Rule::requiredIf(fn () => ! $request->boolean('cortesia')), 'nullable', 'array', 'min:1'],
+            'pagamentos.*.forma_pagamento_id' => ['required_with:pagamentos', 'integer'],
+            // Com 1 forma só, o valor pode vir em branco (cobre o total inteiro -
+            // o operador não precisa digitar um valor óbvio). Com 2+, é obrigatório.
+            'pagamentos.*.valor' => ['nullable', 'numeric', 'min:0.01'],
+            'pagamentos.*.valor_recebido' => ['nullable', 'numeric'],
             'cliente.nome' => ['nullable', 'string', 'max:255'],
             'cliente.cpf_cnpj' => ['nullable', 'string', 'max:18'],
             'cliente.telefone' => ['nullable', 'string', 'max:20'],
@@ -412,7 +418,7 @@ class PdvController extends Controller
             ->where('canal', 'pdv')
             ->with([
                 'itens.produto', 'itens.produtoVariacao', 'itens.agendaVisitacao', 'cliente', 'vendedor',
-                'atendente', 'formaPagamento', 'descontoPdv', 'empresa', 'documentoFiscal',
+                'atendente', 'formaPagamento', 'pagamentos.formaPagamento', 'descontoPdv', 'empresa', 'documentoFiscal',
             ])
             ->findOrFail($vendaId);
 
@@ -442,6 +448,7 @@ class PdvController extends Controller
             ->where('empresa_id', $request->attributes->get('empresaAtual')->id)
             ->where('canal', 'pdv')
             ->where('data_venda', '>=', now('America/Sao_Paulo')->startOfDay()->utc())
+            ->withCount('pagamentos')
             ->with(['formaPagamento:id,descricao,tipo', 'documentoFiscal', 'canceladaPor:id,name', 'itens.produto:id,nome', 'itens.agendaVisitacao:id,data_hora'])
             ->orderByDesc('id')
             ->limit(200)
@@ -451,7 +458,7 @@ class PdvController extends Controller
             'id' => $v->id,
             'data_venda' => $v->data_venda,
             'valor_total' => $v->valor_total,
-            'forma_pagamento' => $v->formaPagamento?->descricao,
+            'forma_pagamento' => $v->pagamentos_count > 1 ? 'Múltiplas formas' : $v->formaPagamento?->descricao,
             'itens' => $v->itens->map(fn (ItemVenda $i) => ($i->produto?->nome ?? 'Visita agendada').' x'.(int) $i->quantidade)->values(),
             'documento' => $v->documentoFiscal ? [
                 'modelo' => $v->documentoFiscal->modelo,

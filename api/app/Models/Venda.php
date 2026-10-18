@@ -101,6 +101,12 @@ class Venda extends Model
         return $this->belongsTo(FormaPagamento::class);
     }
 
+    /** Pagamento misto: cada forma usada na venda (dinheiro, cartão, Pix...), com o valor de cada uma. */
+    public function pagamentos(): HasMany
+    {
+        return $this->hasMany(VendaPagamento::class);
+    }
+
     public function lancamentosPlanoContas(): HasMany
     {
         return $this->hasMany(LancamentoPlanoConta::class);

@@ -351,11 +351,18 @@
                 </div>
             </div>
 
-            <div class="linha">
-                <div class="campo">
-                    <label for="forma-pagamento">Forma de pagamento *</label>
-                    <select id="forma-pagamento"><option value="">Selecione a forma de pagamento</option></select>
+            <div id="pagamentos-wrap">
+                <div class="campo" style="margin-bottom:6px;">
+                    <label>Pagamento *</label>
                 </div>
+                <div id="lista-pagamentos"></div>
+                <div class="linha" style="margin-bottom:6px;">
+                    <button type="button" class="secundario" onclick="adicionarLinhaPagamento()">+ Adicionar forma de pagamento</button>
+                </div>
+                <div class="totais" id="pagamentos-resumo" style="font-size:12px;"></div>
+            </div>
+
+            <div class="linha">
                 <div class="campo">
                     <label for="cupom-visita">Cupom (visitação)</label>
                     <input type="text" id="cupom-visita" placeholder="Opcional - só vale para a visita">
@@ -680,11 +687,90 @@
                 atendentesCache.map(a => `<option value="${a.id}">${a.nome}</option>`).join('');
         }
 
+        let formasPagamentoCache = [];
+        // Pagamento misto: uma linha por forma usada (ex.: parte dinheiro, parte
+        // cartão). Começa com 1 linha em branco - igual ao fluxo de hoje quando só
+        // se usa uma forma (o valor fica implícito como "o total inteiro").
+        let linhasPagamento = [{ formaId: '', valor: '', valorRecebido: '' }];
+
         async function carregarFormasPagamento() {
             const resp = await fetch(`${base}/formas-pagamento`);
-            const formas = await resp.json();
-            document.getElementById('forma-pagamento').innerHTML = '<option value="">Forma de pagamento (opcional)</option>' +
-                formas.map(f => `<option value="${f.id}">${f.descricao}</option>`).join('');
+            formasPagamentoCache = await resp.json();
+            renderizarLinhasPagamento();
+        }
+
+        function totalAPagarAtual() {
+            const total = carrinho.reduce((soma, item) => soma + item.quantidade * item.valorUnitario, 0);
+            const desconto = descontoSelecionado();
+            const valorDesconto = desconto ? calcularDescontoPdv(desconto) : 0;
+            return Math.round((total - valorDesconto) * 100) / 100;
+        }
+
+        function adicionarLinhaPagamento() {
+            linhasPagamento.push({ formaId: '', valor: '', valorRecebido: '' });
+            renderizarLinhasPagamento();
+        }
+
+        function removerLinhaPagamento(i) {
+            linhasPagamento.splice(i, 1);
+            if (!linhasPagamento.length) linhasPagamento.push({ formaId: '', valor: '', valorRecebido: '' });
+            renderizarLinhasPagamento();
+        }
+
+        function atualizarLinhaPagamento(i, campo, valor) {
+            linhasPagamento[i][campo] = valor;
+            renderizarLinhasPagamento();
+        }
+
+        function renderizarLinhasPagamento() {
+            const ehCortesia = !!descontoSelecionado()?.cortesia;
+            document.getElementById('pagamentos-wrap').style.display = ehCortesia ? 'none' : '';
+            if (ehCortesia) return;
+
+            const totalAPagar = totalAPagarAtual();
+            const umaLinhaSo = linhasPagamento.length === 1;
+
+            document.getElementById('lista-pagamentos').innerHTML = linhasPagamento.map((l, i) => {
+                const forma = formasPagamentoCache.find(f => f.id === Number(l.formaId));
+                const ehDinheiro = forma?.tipo === 'dinheiro';
+                const valorLinha = l.valor !== '' ? Number(l.valor) : (umaLinhaSo ? totalAPagar : 0);
+                const troco = ehDinheiro && l.valorRecebido !== '' ? Math.round((Number(l.valorRecebido) - valorLinha) * 100) / 100 : null;
+
+                return `
+                    <div class="linha" style="margin-bottom:6px; align-items:flex-end;">
+                        <div class="campo" style="flex:2;">
+                            <select onchange="atualizarLinhaPagamento(${i}, 'formaId', this.value)">
+                                <option value="">Selecione a forma...</option>
+                                ${formasPagamentoCache.map(f => `<option value="${f.id}" ${Number(l.formaId) === f.id ? 'selected' : ''}>${f.descricao}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="campo">
+                            <input type="number" step="0.01" min="0.01" placeholder="${umaLinhaSo ? 'Total: R$ ' + totalAPagar.toFixed(2) : 'Valor'}" value="${l.valor}" oninput="atualizarLinhaPagamento(${i}, 'valor', this.value)">
+                        </div>
+                        ${ehDinheiro ? `
+                        <div class="campo">
+                            <input type="number" step="0.01" min="0" placeholder="Valor recebido" value="${l.valorRecebido}" oninput="atualizarLinhaPagamento(${i}, 'valorRecebido', this.value)">
+                        </div>
+                        <div class="campo" style="font-size:11px; color:${troco === null ? 'var(--text-dim)' : (troco >= 0 ? 'var(--ok)' : 'var(--danger)')}; justify-content:center; min-width:110px;">
+                            ${troco === null ? '' : (troco >= 0 ? `Troco: R$ ${troco.toFixed(2)}` : 'Valor insuficiente')}
+                        </div>` : ''}
+                        ${linhasPagamento.length > 1 ? `<button type="button" class="rm" onclick="removerLinhaPagamento(${i})">✕</button>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            const alocado = linhasPagamento.reduce((s, l) => s + (l.valor !== '' ? Number(l.valor) : (umaLinhaSo ? totalAPagar : 0)), 0);
+            const falta = Math.round((totalAPagar - alocado) * 100) / 100;
+            const resumo = document.getElementById('pagamentos-resumo');
+            if (umaLinhaSo) {
+                resumo.innerHTML = '';
+            } else if (Math.abs(falta) < 0.005) {
+                resumo.innerHTML = `<span>Total alocado</span><span style="color:var(--ok);">R$ ${alocado.toFixed(2)}</span>`;
+            } else if (falta > 0) {
+                resumo.innerHTML = `<span>Falta alocar</span><span style="color:var(--warn);">R$ ${falta.toFixed(2)}</span>`;
+            } else {
+                resumo.innerHTML = `<span>Alocado a mais</span><span style="color:var(--danger);">R$ ${Math.abs(falta).toFixed(2)}</span>`;
+            }
         }
 
         function adicionarProduto(id, nome, preco, variacaoId = null, tamanho = null) {
@@ -737,11 +823,7 @@
             const desconto = descontoSelecionado();
             const valorDesconto = desconto ? calcularDescontoPdv(desconto) : 0;
             document.getElementById('linha-desconto').style.display = valorDesconto > 0 ? '' : 'none';
-            const formaPgto = document.getElementById('forma-pagamento');
-            const ehCortesia = !!desconto?.cortesia;
-            if (ehCortesia) formaPgto.value = '';
-            formaPgto.disabled = ehCortesia;
-            formaPgto.title = ehCortesia ? 'Cortesia não tem cobrança: forma de pagamento dispensada.' : '';
+            renderizarLinhasPagamento();
             document.getElementById('linha-motivo-desconto').style.display = desconto ? '' : 'none';
             document.getElementById('linha-total-final').style.display = valorDesconto > 0 ? '' : 'none';
             if (valorDesconto > 0) {
@@ -813,6 +895,45 @@
             return null;
         }
 
+        /**
+         * Monta o payload de pagamentos a partir das linhas preenchidas na tela, ou
+         * devolve uma mensagem de erro (string) se faltar algo. null = cortesia (sem
+         * pagamento nenhum).
+         */
+        function montarPagamentosOuErro() {
+            if (descontoSelecionado()?.cortesia) {
+                return [];
+            }
+
+            if (linhasPagamento.some(l => !l.formaId)) {
+                return 'Selecione a forma de pagamento de todas as linhas.';
+            }
+
+            const umaLinhaSo = linhasPagamento.length === 1;
+            const totalAPagar = totalAPagarAtual();
+
+            const pagamentos = linhasPagamento.map(l => {
+                const forma = formasPagamentoCache.find(f => f.id === Number(l.formaId));
+                const pagamento = { forma_pagamento_id: Number(l.formaId) };
+                if (!umaLinhaSo || l.valor !== '') {
+                    pagamento.valor = Number(l.valor) || 0;
+                }
+                if (forma?.tipo === 'dinheiro' && l.valorRecebido !== '') {
+                    pagamento.valor_recebido = Number(l.valorRecebido);
+                }
+                return pagamento;
+            });
+
+            if (!umaLinhaSo) {
+                const soma = Math.round(pagamentos.reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
+                if (Math.abs(soma - totalAPagar) > 0.01) {
+                    return `A soma das formas de pagamento (R$ ${soma.toFixed(2)}) precisa bater com o total a pagar (R$ ${totalAPagar.toFixed(2)}).`;
+                }
+            }
+
+            return pagamentos;
+        }
+
         async function finalizarVenda() {
             const msg = document.getElementById('msg-venda');
             const btn = document.querySelector('.btn-finalizar');
@@ -829,10 +950,12 @@
                 return;
             }
 
-            // Cortesia não é cobrada: dispensa a forma de pagamento.
-            if (!document.getElementById('forma-pagamento').value && !descontoSelecionado()?.cortesia) {
+            // Cortesia não é cobrada: dispensa o pagamento. Senão, valida as linhas
+            // de pagamento (forma selecionada em todas, soma batendo com o total).
+            const pagamentosOuErro = montarPagamentosOuErro();
+            if (typeof pagamentosOuErro === 'string') {
                 msg.className = 'msg erro';
-                msg.textContent = 'Selecione a forma de pagamento antes de finalizar.';
+                msg.textContent = pagamentosOuErro;
                 return;
             }
 
@@ -886,7 +1009,7 @@
                 tipo_doc: document.getElementById('tipo-doc').value,
                 vendedor_id: document.getElementById('vendedor').value || null,
                 atendente_id: document.getElementById('atendente').value,
-                forma_pagamento_id: descontoSelecionado()?.cortesia ? null : document.getElementById('forma-pagamento').value,
+                pagamentos: pagamentosOuErro,
                 cliente: {
                     nome: document.getElementById('cliente-nome').value || null,
                     cpf_cnpj: document.getElementById('cliente-cpf').value || null,
@@ -938,7 +1061,7 @@
             document.getElementById('linha-motivo-desconto').style.display = 'none';
             document.getElementById('vendedor').value = '';
             document.getElementById('atendente').value = '';
-            document.getElementById('forma-pagamento').value = '';
+            linhasPagamento = [{ formaId: '', valor: '', valorRecebido: '' }];
             document.getElementById('venda-indicacao').value = '';
             renderizarCarrinho();
             carregarAgenda();
@@ -1065,7 +1188,9 @@
                     <div class="sep"></div>
                     ${Number(venda.valor_desconto) > 0 ? `<div class="totais-cupom" style="font-weight:normal;"><span>${venda.cortesia ? 'Cortesia' : 'Desconto' + (venda.desconto_pdv ? ' - ' + venda.desconto_pdv.descricao : '')}</span><span>- R$ ${Number(venda.valor_desconto).toFixed(2)}</span></div>` : ''}
                     <div class="totais-cupom"><span>TOTAL</span><span>R$ ${Number(venda.valor_total).toFixed(2)}</span></div>
-                    ${venda.forma_pagamento ? `<div>Forma de pagamento: ${venda.forma_pagamento.descricao}</div>` : ''}
+                    ${venda.pagamentos && venda.pagamentos.length > 1
+                        ? venda.pagamentos.map(p => `<div>${p.forma_pagamento?.descricao ?? '-'}: R$ ${Number(p.valor).toFixed(2)}</div>`).join('')
+                        : (venda.forma_pagamento ? `<div>Forma de pagamento: ${venda.forma_pagamento.descricao}</div>` : '')}
                     ${blocoFiscal}
                     <div class="sep"></div>
                     <div class="centro" style="font-size:10px;">Obrigado pela preferência!</div>
