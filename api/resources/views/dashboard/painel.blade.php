@@ -3432,12 +3432,30 @@
                     <td>${esc(r.fornecedor)}</td>
                     <td>${r.data_emissao ?? '-'}</td>
                     <td>${r.data_entrada ?? '-'}</td>
-                    <td>${r.itens}</td>
+                    <td><button type="button" class="secundario" style="padding:2px 8px;" onclick="alternarItensEntradaNotas(${r.id})">${r.itens} <span id="seta-itens-${r.id}">▸</span></button></td>
                     <td>${brl(r.valor_produtos)}</td>
                     <td>${brl(r.valor_frete)}</td>
                     <td>${brl(r.valor_desconto)}</td>
                     <td>${brl(r.valor_total)}</td>
                     <td>${esc(r.status)}</td>
+                </tr>
+                <tr id="itens-compra-${r.id}" style="display:none;">
+                    <td colspan="10" style="background:var(--cor-fundo-suave, #f7f7f9);">
+                        <table style="margin:4px 0;">
+                            <thead><tr><th>Produto</th><th>Código fornecedor</th><th>Qtd.</th><th>Valor unit.</th><th>Valor total</th></tr></thead>
+                            <tbody>
+                                ${r.itens_detalhe.map(i => `
+                                    <tr>
+                                        <td>${esc(i.produto)}</td>
+                                        <td>${esc(i.codigo_produto_fornecedor ?? '-')}</td>
+                                        <td>${i.quantidade}</td>
+                                        <td>${brl(i.valor_unitario)}</td>
+                                        <td>${brl(i.valor_total)}</td>
+                                    </tr>
+                                `).join('') || '<tr><td colspan="5">Sem itens registrados.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </td>
                 </tr>
             `).join('') || '<tr><td colspan="10">Nenhuma nota de entrada no período.</td></tr>';
 
@@ -3453,13 +3471,28 @@
                 </tr>` : '';
         }
 
+        function alternarItensEntradaNotas(compraId) {
+            const linha = document.getElementById(`itens-compra-${compraId}`);
+            const seta = document.getElementById(`seta-itens-${compraId}`);
+            const aberto = linha.style.display !== 'none';
+            linha.style.display = aberto ? 'none' : '';
+            seta.textContent = aberto ? '▸' : '▾';
+        }
+
         function exportarRelatorioEntradaNotas() {
             const d = ultimosRelatorios['entrada-notas'];
             if (!d) { alert('Consulte o relatório antes de exportar.'); return; }
             const periodo = `${d.inicio || 'inicio'}_a_${d.fim || 'hoje'}`;
-            const linhas = [['Nº nota', 'Fornecedor', 'Data emissão', 'Data entrada', 'Itens', 'Produtos', 'Frete', 'Desconto', 'Total', 'Status']]
+            const linhas = [['--- Notas ---']]
+                .concat([['Nº nota', 'Fornecedor', 'Data emissão', 'Data entrada', 'Itens', 'Produtos', 'Frete', 'Desconto', 'Total', 'Status']])
                 .concat(d.linhas.map(r => [csvTxt(r.numero_nota), csvTxt(r.fornecedor), r.data_emissao, r.data_entrada, r.itens, csvNum(r.valor_produtos), csvNum(r.valor_frete), csvNum(r.valor_desconto), csvNum(r.valor_total), csvTxt(r.status)]))
-                .concat([['Total', d.totais.notas + ' nota(s)', '', '', d.totais.itens, csvNum(d.totais.valor_produtos), csvNum(d.totais.valor_frete), csvNum(d.totais.valor_desconto), csvNum(d.totais.valor_total), '']]);
+                .concat([['Total', d.totais.notas + ' nota(s)', '', '', d.totais.itens, csvNum(d.totais.valor_produtos), csvNum(d.totais.valor_frete), csvNum(d.totais.valor_desconto), csvNum(d.totais.valor_total), '']])
+                .concat([[]])
+                .concat([['--- Itens de cada nota ---']])
+                .concat([['Nº nota', 'Fornecedor', 'Produto', 'Código fornecedor', 'Quantidade', 'Valor unitário', 'Valor total']])
+                .concat(d.linhas.flatMap(r => r.itens_detalhe.map(i => [
+                    csvTxt(r.numero_nota), csvTxt(r.fornecedor), csvTxt(i.produto), csvTxt(i.codigo_produto_fornecedor || ''), i.quantidade, csvNum(i.valor_unitario), csvNum(i.valor_total),
+                ])));
 
             baixarCsv(`relatorio-entrada-notas-${periodo}.csv`, linhas);
         }

@@ -27,6 +27,7 @@ use App\Models\KitComponente;
 use App\Models\GravaBanco;
 use App\Models\Grupo;
 use App\Models\InventarioSnapshot;
+use App\Models\ItemCompra;
 use App\Models\ItemVenda;
 use App\Models\PlanoContas;
 use App\Models\Produto;
@@ -2541,7 +2542,7 @@ class DashboardController extends Controller
             ->when($dados['data_fim'] ?? null, fn ($q, $d) => $q->where('data_entrada', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()))
             ->when($dados['fornecedor_id'] ?? null, fn ($q, $f) => $q->where('fornecedor_id', $f))
             ->when($dados['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
-            ->with(['fornecedor:id,razao_social'])
+            ->with(['fornecedor:id,razao_social', 'itens.produto:id,nome'])
             ->withCount('itens')
             ->orderBy('data_entrada')
             ->orderBy('id')
@@ -2561,6 +2562,13 @@ class DashboardController extends Controller
             'valor_frete' => round((float) $c->valor_frete, 2),
             'valor_desconto' => round((float) $c->valor_desconto, 2),
             'valor_total' => round((float) $c->valor_total, 2),
+            'itens_detalhe' => $c->itens->map(fn (ItemCompra $i) => [
+                'produto' => $i->produto?->nome ?? $i->descricao_xml ?? '(produto removido)',
+                'codigo_produto_fornecedor' => $i->codigo_produto_fornecedor,
+                'quantidade' => (float) $i->quantidade,
+                'valor_unitario' => round((float) $i->valor_unitario, 2),
+                'valor_total' => round((float) $i->valor_total, 2),
+            ])->values(),
         ])->values();
 
         return response()->json([

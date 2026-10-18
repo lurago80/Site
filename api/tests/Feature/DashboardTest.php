@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\AgendaVisitacao;
 use App\Models\Cliente;
+use App\Models\Compra;
 use App\Models\Empresa;
+use App\Models\Fornecedor;
+use App\Models\ItemCompra;
 use App\Models\ItemVenda;
 use App\Models\KitComponente;
 use App\Models\Plano;
@@ -1198,5 +1201,33 @@ class DashboardTest extends TestCase
         $filtrado->assertJsonPath('linhas.0.produto', 'Cerveja Pilsen');
         $filtrado->assertJsonPath('totais.quantidade', 1);
         $filtrado->assertJsonPath('linhas.0.valor_pedido', 25); // valor total do pedido do kit, não só a fatia do Pilsen
+    }
+
+    /** O relatório de entrada de notas precisa listar os itens de cada nota, não só os totais. */
+    public function test_relatorio_de_entrada_notas_traz_os_itens_de_cada_nota(): void
+    {
+        $fornecedor = Fornecedor::create([
+            'empresa_id' => $this->empresa->id, 'razao_social' => 'Distribuidora Teste LTDA',
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Cerveja IPA', 'tipo' => 'fisico', 'preco_venda' => 20,
+        ]);
+        $compra = Compra::create([
+            'empresa_id' => $this->empresa->id, 'fornecedor_id' => $fornecedor->id,
+            'numero_nota' => '123', 'tipo_entrada' => 'manual', 'data_entrada' => now(),
+            'valor_produtos' => 100, 'valor_total' => 100, 'status' => 'confirmada',
+        ]);
+        ItemCompra::create([
+            'empresa_id' => $this->empresa->id, 'compra_id' => $compra->id, 'produto_id' => $produto->id,
+            'codigo_produto_fornecedor' => 'FORN-001', 'quantidade' => 10, 'valor_unitario' => 10, 'valor_total' => 100,
+        ]);
+
+        $resp = $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/entrada-notas-relatorio")->assertOk();
+
+        $resp->assertJsonCount(1, 'linhas.0.itens_detalhe');
+        $resp->assertJsonPath('linhas.0.itens_detalhe.0.produto', 'Cerveja IPA');
+        $resp->assertJsonPath('linhas.0.itens_detalhe.0.codigo_produto_fornecedor', 'FORN-001');
+        $resp->assertJsonPath('linhas.0.itens_detalhe.0.quantidade', 10);
+        $resp->assertJsonPath('linhas.0.itens_detalhe.0.valor_total', 100);
     }
 }
