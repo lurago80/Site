@@ -241,6 +241,7 @@
         .resultado-titulo.invalido { color: var(--danger); }
         .resultado-detalhe { font-size: 13px; color: var(--text-dim); margin: 0 0 10px; }
 
+        .modal-finalizar { max-width: 560px; }
         .card-venda { width: 100%; background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 6px; text-align: left; }
         .linha-item-v { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
         .linha-item-v:last-child { border-bottom: none; }
@@ -308,6 +309,22 @@
             </div>
 
             <div class="totais"><span>Total</span><span id="total">R$ 0,00</span></div>
+
+            <button class="primario btn-finalizar" onclick="abrirModalFinalizar()">Finalizar Venda (F10)</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-finalizar-overlay">
+        <div class="modal-verificar modal-finalizar">
+            <button type="button" class="modal-fechar" onclick="fecharModalFinalizar()">&times;</button>
+            <h2>Finalizar venda</h2>
+            <p class="modal-sub">Confira os itens e informe os dados do fechamento.</p>
+
+            <div class="card-venda" style="margin-bottom:16px;">
+                <div class="titulo-secao-v" style="margin-top:0;">Itens</div>
+                <div id="modal-finalizar-itens"></div>
+            </div>
+
             <div class="totais" id="linha-desconto" style="display:none; color:#2e7d32;"><span id="rotulo-desconto">Desconto</span><span id="valor-desconto">- R$ 0,00</span></div>
             <div class="totais" id="linha-total-final" style="display:none;"><span>Total a pagar</span><span id="total-final">R$ 0,00</span></div>
 
@@ -382,7 +399,7 @@
                 </div>
             </div>
 
-            <button class="primario btn-finalizar" onclick="finalizarVenda()">Finalizar Venda (F10)</button>
+            <button class="primario btn-finalizar btn-confirmar-venda" onclick="finalizarVenda()">Confirmar e finalizar venda (F10)</button>
             <p class="msg" id="msg-venda"></p>
         </div>
     </div>
@@ -934,9 +951,22 @@
             return pagamentos;
         }
 
+        function abrirModalFinalizar() {
+            const lista = document.getElementById('modal-finalizar-itens');
+            lista.innerHTML = carrinho.map(item => `
+                <div class="linha-item-v"><span>${escapeHtml(item.nome)} × ${item.quantidade}</span><span>R$ ${(item.quantidade * item.valorUnitario).toFixed(2)}</span></div>
+            `).join('') || '<p style="color:var(--text-dim); font-size:13px; margin:0;">Carrinho vazio.</p>';
+            renderizarCarrinho();
+            document.getElementById('modal-finalizar-overlay').classList.add('aberto');
+        }
+
+        function fecharModalFinalizar() {
+            document.getElementById('modal-finalizar-overlay').classList.remove('aberto');
+        }
+
         async function finalizarVenda() {
             const msg = document.getElementById('msg-venda');
-            const btn = document.querySelector('.btn-finalizar');
+            const btn = document.querySelector('.btn-confirmar-venda');
 
             if (!carrinho.length) {
                 msg.className = 'msg erro';
@@ -1051,6 +1081,7 @@
             msg.textContent = `Venda #${resposta.id} finalizada - total R$ ${Number(resposta.valor_total).toFixed(2)}.`;
 
             imprimirCupom(resposta);
+            setTimeout(fecharModalFinalizar, 1200);
 
             carrinho = [];
             document.getElementById('cliente-nome').value = '';
@@ -1624,8 +1655,16 @@
 
         document.getElementById('busca').addEventListener('input', (e) => carregarProdutos(e.target.value));
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'F10') { e.preventDefault(); finalizarVenda(); }
+            if (e.key === 'F10') {
+                e.preventDefault();
+                if (document.getElementById('modal-finalizar-overlay').classList.contains('aberto')) {
+                    finalizarVenda();
+                } else {
+                    abrirModalFinalizar();
+                }
+            }
             if (e.key === 'F2') { e.preventDefault(); abrirModalVerificar(); }
+            if (e.key === 'Escape' && document.getElementById('modal-finalizar-overlay').classList.contains('aberto')) { fecharModalFinalizar(); }
             if (e.key === 'Escape' && document.getElementById('modal-verificar-overlay').classList.contains('aberto')) { fecharModalVerificar(); }
             if (e.key === 'Escape' && document.getElementById('modal-vendedor-overlay').classList.contains('aberto')) { fecharModalVendedor(); }
             @if ($podeCancelarVenda)
