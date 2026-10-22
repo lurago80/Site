@@ -360,7 +360,7 @@
             <div class="linha">
                 <div class="campo">
                     <label for="cliente-nome">Cliente</label>
-                    <input type="text" id="cliente-nome" placeholder="Nome (opcional)">
+                    <input type="text" id="cliente-nome" placeholder="Nome (opcional)" oninput="renderizarLinhasPagamento()">
                 </div>
                 <div class="campo">
                     <label for="cliente-cpf">CPF/CNPJ</label>
@@ -750,6 +750,8 @@
             document.getElementById('lista-pagamentos').innerHTML = linhasPagamento.map((l, i) => {
                 const forma = formasPagamentoCache.find(f => f.id === Number(l.formaId));
                 const ehDinheiro = forma?.tipo === 'dinheiro';
+                const ehCarteira = forma?.tipo === 'carteira';
+                const semCliente = !document.getElementById('cliente-nome').value.trim();
                 const valorLinha = l.valor !== '' ? Number(l.valor) : (umaLinhaSo ? totalAPagar : 0);
                 const troco = ehDinheiro && l.valorRecebido !== '' ? Math.round((Number(l.valorRecebido) - valorLinha) * 100) / 100 : null;
 
@@ -770,6 +772,10 @@
                         </div>
                         <div class="campo" style="font-size:11px; color:${troco === null ? 'var(--text-dim)' : (troco >= 0 ? 'var(--ok)' : 'var(--danger)')}; justify-content:center; min-width:110px;">
                             ${troco === null ? '' : (troco >= 0 ? `Troco: R$ ${troco.toFixed(2)}` : 'Valor insuficiente')}
+                        </div>` : ''}
+                        ${ehCarteira && semCliente ? `
+                        <div class="campo" style="font-size:11px; color:var(--danger); justify-content:center; min-width:160px;">
+                            Informe o cliente para vender na carteira
                         </div>` : ''}
                         ${linhasPagamento.length > 1 ? `<button type="button" class="rm" onclick="removerLinhaPagamento(${i})">✕</button>` : ''}
                     </div>
@@ -924,6 +930,11 @@
 
             if (linhasPagamento.some(l => !l.formaId)) {
                 return 'Selecione a forma de pagamento de todas as linhas.';
+            }
+
+            const usaCarteira = linhasPagamento.some(l => formasPagamentoCache.find(f => f.id === Number(l.formaId))?.tipo === 'carteira');
+            if (usaCarteira && !document.getElementById('cliente-nome').value.trim()) {
+                return 'Informe o cliente para vender na carteira.';
             }
 
             const umaLinhaSo = linhasPagamento.length === 1;

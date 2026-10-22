@@ -1688,4 +1688,37 @@ class PdvTest extends TestCase
         $resp->assertStatus(422);
         $this->assertStringContainsString('não bate com o total', $resp->json('message'));
     }
+
+    public function test_venda_na_carteira_exige_cliente_e_gera_conta_a_receber_em_15_dias(): void
+    {
+        $base = "/pdv/{$this->empresa->slug}";
+        $carteira = FormaPagamento::create([
+            'empresa_id' => $this->empresa->id, 'descricao' => 'Carteira', 'tipo' => 'carteira', 'codigo_tpag' => '99', 'ativo' => true,
+        ]);
+
+        $semCliente = $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $carteira->id]],
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+        ]);
+        $semCliente->assertStatus(422);
+        $this->assertStringContainsString('Informe o cliente', $semCliente->json('message'));
+
+        $resp = $this->postJson("$base/vendas", [
+            'tipo_doc' => 'nao_fiscal', 'atendente_id' => $this->atendentePadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $carteira->id]],
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]],
+            'cliente' => ['nome' => 'Fabiano'],
+        ]);
+        $resp->assertStatus(201);
+
+        $venda = Venda::findOrFail($resp->json('id'));
+        $conta = \App\Models\ContaReceber::where('venda_id', $venda->id)->first();
+
+        $this->assertNotNull($conta);
+        $this->assertSame($venda->cliente_id, $conta->cliente_id);
+        $this->assertEquals(18.00, $conta->valor);
+        $this->assertSame('em_aberto', $conta->status);
+        $this->assertTrue($conta->vencimento->isSameDay(now()->addDays(15)));
+    }
 }

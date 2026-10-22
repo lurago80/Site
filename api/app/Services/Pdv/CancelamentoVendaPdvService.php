@@ -3,6 +3,7 @@
 namespace App\Services\Pdv;
 
 use App\Models\AgendaVisitacao;
+use App\Models\ContaReceber;
 use App\Models\Cupom;
 use App\Models\DocumentoFiscal;
 use App\Models\ItemVenda;
@@ -55,6 +56,14 @@ class CancelamentoVendaPdvService
             // Dinheiro: o estorno no caixa pode ser recusado (caixa fechado / outro turno),
             // então vem antes de qualquer alteração.
             $this->caixaService->estornarVenda($venda->empresa, $usuarioId, $venda);
+
+            // Carteira: remove o título gerado contra o cliente. Se já foi pago (cliente
+            // já acertou a conta), não cancela - teria que estornar o pagamento à parte.
+            $contasReceberAbertas = ContaReceber::where('venda_id', $venda->id)->get();
+            if ($contasReceberAbertas->contains(fn (ContaReceber $c) => $c->status !== 'em_aberto')) {
+                throw new \RuntimeException('Esta venda tem título na carteira já pago e não pode ser cancelada automaticamente.');
+            }
+            ContaReceber::where('venda_id', $venda->id)->where('status', 'em_aberto')->delete();
 
             foreach ($venda->itens as $item) {
                 $this->devolverItem($item);

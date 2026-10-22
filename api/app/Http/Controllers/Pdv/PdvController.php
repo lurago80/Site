@@ -393,6 +393,20 @@ class PdvController extends Controller
             );
         }
 
+        // Carteira é crédito direto ao cliente (gera contas a receber) - sem
+        // cliente identificado não há quem cobrar depois.
+        if (! $cortesia && ! empty($dados['pagamentos'])) {
+            $formaCarteiraUsada = FormaPagamento::whereIn('id', array_column($dados['pagamentos'], 'forma_pagamento_id'))
+                ->where('tipo', 'carteira')
+                ->exists();
+
+            abort_if(
+                $formaCarteiraUsada && empty($dados['cliente']['nome']),
+                422,
+                'Informe o cliente para vender na carteira.'
+            );
+        }
+
         $this->quantidadeMinimaVendaService->validar($dados['itens'] ?? []);
 
         $empresaAtual = $request->attributes->get('empresaAtual');

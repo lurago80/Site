@@ -5,6 +5,7 @@ namespace App\Services\Pdv;
 use App\Models\AgendaVisitacao;
 use App\Models\Atendente;
 use App\Models\Cliente;
+use App\Models\ContaReceber;
 use App\Models\Cupom;
 use App\Models\DescontoPdv;
 use App\Models\Empresa;
@@ -220,6 +221,7 @@ class VendaPdvService
         foreach ($pagamentos as $pagamento) {
             $forma = $formasPagamento->get($pagamento['forma_pagamento_id']);
             abort_if($forma === null, 422, 'Forma de pagamento inválida.');
+            abort_if($forma->tipo === 'carteira' && $venda->cliente_id === null, 422, 'Informe o cliente para vender na carteira.');
 
             VendaPagamento::create([
                 'empresa_id' => $venda->empresa_id,
@@ -231,6 +233,21 @@ class VendaPdvService
 
             if ($forma->tipo === 'dinheiro') {
                 $valorDinheiro += (float) $pagamento['valor'];
+            }
+
+            // Carteira não entra no caixa físico nem é recebida na hora - é crédito
+            // ao cliente, cobrado depois via contas a receber (vencimento padrão de
+            // 15 dias, igual prazo combinado com o cliente).
+            if ($forma->tipo === 'carteira') {
+                ContaReceber::create([
+                    'empresa_id' => $venda->empresa_id,
+                    'cliente_id' => $venda->cliente_id,
+                    'venda_id' => $venda->id,
+                    'historico' => "Venda PDV #{$venda->id} - carteira",
+                    'valor' => $pagamento['valor'],
+                    'vencimento' => now()->addDays(15),
+                    'status' => 'em_aberto',
+                ]);
             }
         }
 
