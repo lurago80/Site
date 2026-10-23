@@ -78,6 +78,41 @@ class ComprasTest extends TestCase
         $this->assertEquals('pendente', $response->json('status'));
     }
 
+    public function test_edita_vencimento_de_compra_pendente_e_usa_no_contas_a_pagar(): void
+    {
+        $compra = $this->registrarCompraManual();
+        $this->assertNull($compra->vencimento_conta_pagar);
+
+        $edicao = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}", [
+                'vencimento_conta_pagar' => '2026-11-22',
+            ]);
+        $edicao->assertOk();
+        $this->assertSame('2026-11-22', substr($edicao->json('vencimento_conta_pagar'), 0, 10));
+
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar")
+            ->assertOk();
+
+        $this->assertDatabaseHas('contas_pagar', [
+            'empresa_id' => $this->empresa->id,
+            'fornecedor_id' => $this->fornecedor->id,
+            'vencimento' => '2026-11-22',
+        ]);
+    }
+
+    public function test_nao_edita_compra_ja_confirmada(): void
+    {
+        $compra = $this->registrarCompraManual();
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar");
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}", [
+                'vencimento_conta_pagar' => '2026-11-22',
+            ]);
+
+        $response->assertStatus(422);
+    }
+
     public function test_confirmar_compra_manual_incrementa_estoque_e_gera_conta_a_pagar(): void
     {
         $compra = $this->registrarCompraManual();

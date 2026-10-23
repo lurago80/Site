@@ -183,6 +183,7 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::post('/compras', [ComprasController::class, 'store']);
     Route::post('/compras/importar-xml', [ComprasController::class, 'importarXml']);
     Route::get('/compras/{compraId}', [ComprasController::class, 'show']);
+    Route::put('/compras/{compraId}', [ComprasController::class, 'atualizar']);
     Route::put('/compras/{compraId}/itens/{itemId}/vincular', [ComprasController::class, 'vincularItem']);
     Route::put('/compras/{compraId}/confirmar', [ComprasController::class, 'confirmar']);
     Route::put('/compras/{compraId}/cancelar', [ComprasController::class, 'cancelar']);

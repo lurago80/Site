@@ -59,6 +59,27 @@ class ComprasController extends Controller
         return response()->json($compra, 201);
     }
 
+    public function atualizar(Request $request, string $empresa, int $compraId)
+    {
+        $dados = $request->validate([
+            'numero_nota' => ['nullable', 'string', 'max:255'],
+            'serie_nota' => ['nullable', 'string', 'max:255'],
+            'data_emissao' => ['nullable', 'date'],
+            'data_entrada' => ['nullable', 'date'],
+            'vencimento_conta_pagar' => ['nullable', 'date'],
+            'valor_frete' => ['nullable', 'numeric', 'min:0'],
+            'valor_desconto' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $empresaAtual = $request->attributes->get('empresaAtual');
+
+        $compra = Compra::where('empresa_id', $empresaAtual->id)->findOrFail($compraId);
+
+        $compra = $this->compraService->atualizar($compra, $dados);
+
+        return response()->json($compra);
+    }
+
     public function importarXml(Request $request, string $empresa)
     {
         $request->validate(['xml' => ['required', 'file', 'mimes:xml']]);

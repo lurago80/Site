@@ -64,6 +64,28 @@ class CompraService
         });
     }
 
+    /**
+     * Edita uma compra ainda pendente - ex.: corrigir o vencimento do contas a pagar
+     * antes de confirmar. Depois de confirmada, a compra já gerou o lançamento no
+     * plano de contas e o contas a pagar, então não pode mais ser editada (teria
+     * que cancelar e lançar de novo).
+     */
+    public function atualizar(Compra $compra, array $dados): Compra
+    {
+        abort_if($compra->status !== 'pendente', 422, 'Só é possível editar uma compra pendente (ainda não confirmada).');
+
+        $compra->update(array_intersect_key($dados, array_flip([
+            'numero_nota', 'serie_nota', 'data_emissao', 'data_entrada', 'vencimento_conta_pagar',
+            'valor_frete', 'valor_desconto',
+        ])));
+
+        if (array_key_exists('valor_frete', $dados) || array_key_exists('valor_desconto', $dados)) {
+            $this->atualizarTotais($compra, (float) $compra->valor_produtos);
+        }
+
+        return $compra->fresh('itens.produto');
+    }
+
     public function importarXml(Empresa $empresa, string $xmlConteudo): Compra
     {
         $xml = @simplexml_load_string($xmlConteudo);
