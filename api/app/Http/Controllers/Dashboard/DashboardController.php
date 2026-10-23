@@ -3008,7 +3008,7 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'descricao' => ['required', 'string', 'max:255'],
-            'tipo' => ['required', 'in:dinheiro,pix,cartao_credito,cartao_debito,outro'],
+            'tipo' => ['required', 'in:dinheiro,pix,cartao_credito,cartao_debito,carteira,outro'],
             'codigo_tpag' => ['required', 'string', 'max:2'],
         ]);
 
@@ -3027,7 +3027,7 @@ class DashboardController extends Controller
 
         $dados = $request->validate([
             'descricao' => ['sometimes', 'string', 'max:255'],
-            'tipo' => ['sometimes', 'in:dinheiro,pix,cartao_credito,cartao_debito,outro'],
+            'tipo' => ['sometimes', 'in:dinheiro,pix,cartao_credito,cartao_debito,carteira,outro'],
             'codigo_tpag' => ['sometimes', 'string', 'max:2'],
             'ativo' => ['sometimes', 'boolean'],
         ]);
