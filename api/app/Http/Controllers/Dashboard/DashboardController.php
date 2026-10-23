@@ -1499,18 +1499,19 @@ class DashboardController extends Controller
     private function relatorioVendasPorPessoa(string $colunaPessoa, string $modeloPessoa, Empresa $empresaAtual, array $dados)
     {
         $tipo = $dados['tipo'] ?? 'todos';
+        $fuso = 'America/Sao_Paulo';
 
         return $modeloPessoa::where('empresa_id', $empresaAtual->id)
             ->when($dados['pessoa_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->orderBy('nome')
             ->get()
-            ->map(function ($pessoa) use ($colunaPessoa, $dados, $tipo) {
-                $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoa, $dados) {
+            ->map(function ($pessoa) use ($colunaPessoa, $dados, $tipo, $fuso) {
+                $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoa, $dados, $fuso) {
                     $q->where($colunaPessoa, $pessoa->id)
                         ->where('status_pagamento', '!=', 'cancelado')
                         ->when($this->canalFiltro($dados), fn ($qq, $c) => $qq->where('canal', $c))
-                        ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', $d))
-                        ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', $d));
+                        ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+                        ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()));
                 })
                     ->when($tipo === 'produtos', fn ($q) => $q->whereNotNull('produto_id'))
                     ->when($tipo === 'visitacoes', fn ($q) => $q->whereNotNull('agenda_visitacao_id'));
@@ -1544,12 +1545,12 @@ class DashboardController extends Controller
             return collect();
         }
 
-        $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoas, $dados) {
+        $itens = ItemVenda::whereHas('venda', function ($q) use ($colunaPessoa, $pessoas, $dados, $fuso) {
             $q->whereIn($colunaPessoa, $pessoas->keys())
                 ->where('status_pagamento', '!=', 'cancelado')
                 ->when($this->canalFiltro($dados), fn ($qq, $c) => $qq->where('canal', $c))
-                ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', $d))
-                ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', $d));
+                ->when($dados['data_inicio'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '>=', \Illuminate\Support\Carbon::parse($d, $fuso)->startOfDay()->utc()))
+                ->when($dados['data_fim'] ?? null, fn ($qq, $d) => $qq->where('data_venda', '<=', \Illuminate\Support\Carbon::parse($d, $fuso)->endOfDay()->utc()));
         })
             ->when($tipo === 'produtos', fn ($q) => $q->whereNotNull('produto_id'))
             ->when($tipo === 'visitacoes', fn ($q) => $q->whereNotNull('agenda_visitacao_id'))

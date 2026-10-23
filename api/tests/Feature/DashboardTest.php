@@ -292,6 +292,41 @@ class DashboardTest extends TestCase
         $this->assertEquals(30.0, $dadosVisitacoes['valor_total']);
     }
 
+    /**
+     * Bug encontrado em produção: filtrar De/Até no mesmo dia (ex.: só "hoje") devolvia
+     * tudo zerado, porque data_fim comparava com a data crua ("<= 2026-10-13"), que o
+     * Postgres interpreta como meia-noite - cortando o dia inteiro fora do período.
+     */
+    public function test_relatorio_de_atendentes_inclui_vendas_do_proprio_dia_quando_filtra_um_unico_dia(): void
+    {
+        $atendente = \App\Models\Atendente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Atendente Hoje', 'ativo' => true,
+        ]);
+        $produto = Produto::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Produto Hoje', 'tipo' => 'fisico', 'preco_venda' => 40,
+        ]);
+
+        $venda = Venda::create([
+            'empresa_id' => $this->empresa->id, 'atendente_id' => $atendente->id,
+            'canal' => 'pdv', 'tipo_doc' => 'nao_fiscal', 'status_pagamento' => 'pago',
+            'valor_total' => 40, 'data_venda' => now(),
+        ]);
+        ItemVenda::create([
+            'empresa_id' => $this->empresa->id, 'venda_id' => $venda->id, 'produto_id' => $produto->id,
+            'quantidade' => 1, 'valor_unitario' => 40, 'valor_total' => 40,
+        ]);
+
+        $hoje = now()->toDateString();
+        $response = $this->actingAs($this->admin)->getJson(
+            "/dashboard/{$this->empresa->slug}/atendentes-relatorio?data_inicio={$hoje}&data_fim={$hoje}"
+        );
+
+        $response->assertOk();
+        $dados = collect($response->json())->firstWhere('nome', 'Atendente Hoje');
+        $this->assertSame(1, $dados['vendas_count']);
+        $this->assertEquals(40.0, $dados['valor_total']);
+    }
+
     public function test_lanca_conta_a_pagar_e_marca_como_paga(): void
     {
         $criar = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/contas-pagar", [
