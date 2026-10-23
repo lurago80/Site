@@ -1010,19 +1010,25 @@
                 <h1>Atendentes</h1>
                 <p style="font-size:12px; color:var(--cor-texto-suave);">
                     Quem opera a venda no PDV - diferente do vendedor/guia, que recebe comissão pela visita.
-                    Uma venda pode ter os dois preenchidos ao mesmo tempo.
+                    Uma venda pode ter os dois preenchidos ao mesmo tempo. O atendente também pode ganhar
+                    comissão, com um percentual independente para produtos e para visitas (liga só o que se aplica).
                 </p>
                 <div class="card">
                     <input type="hidden" id="at-id">
                     <div class="linha-form">
                         <div><label>Nome</label><input type="text" id="at-nome"></div>
                         <div><label>Telefone</label><input type="text" id="at-telefone" style="width:140px"></div>
-                        <div><label>Comissão (%)</label><input type="number" step="0.01" id="at-comissao" value="3" style="width:100px"></div>
+                    </div>
+                    <div class="linha-form">
+                        <div><label><input type="checkbox" id="at-comissao-produtos-ativa"> Comissão em produtos (%)</label><input type="number" step="0.01" id="at-comissao-produtos" value="3" style="width:100px"></div>
+                        <div><label><input type="checkbox" id="at-comissao-visitas-ativa"> Comissão em visitas (%)</label><input type="number" step="0.01" id="at-comissao-visitas" value="3" style="width:100px"></div>
+                    </div>
+                    <div class="linha-form">
                         <div><button class="acao" id="at-botao" onclick="salvarAtendente()">Cadastrar</button></div>
                         <div><button class="secundario" onclick="limparFormularioAtendente()" style="display:none;" id="at-cancelar">Cancelar edição</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Nome</th><th>Telefone</th><th>Comissão</th><th>Ativo</th><th></th></tr></thead>
+                        <thead><tr><th>Nome</th><th>Telefone</th><th>Comissão produtos</th><th>Comissão visitas</th><th>Ativo</th><th></th></tr></thead>
                         <tbody id="tbody-atendentes"></tbody>
                     </table>
                     <p class="msg" id="msg-atendentes"></p>
@@ -4003,11 +4009,12 @@
                 <tr>
                     <td>${a.nome}</td>
                     <td>${a.telefone || '-'}</td>
-                    <td>${a.percentual_comissao}%</td>
+                    <td>${a.comissao_produtos_ativa ? a.percentual_comissao_produtos + '%' : '-'}</td>
+                    <td>${a.comissao_visitas_ativa ? a.percentual_comissao_visitas + '%' : '-'}</td>
                     <td>${a.ativo ? 'Sim' : 'Não'}</td>
                     <td><button class="secundario" onclick="editarAtendente(${a.id})">Editar</button></td>
                 </tr>
-            `).join('') || '<tr><td colspan="5">Nenhum atendente cadastrado.</td></tr>';
+            `).join('') || '<tr><td colspan="6">Nenhum atendente cadastrado.</td></tr>';
         }
 
         function editarAtendente(id) {
@@ -4016,7 +4023,10 @@
             document.getElementById('at-id').value = a.id;
             document.getElementById('at-nome').value = a.nome;
             document.getElementById('at-telefone').value = a.telefone || '';
-            document.getElementById('at-comissao').value = a.percentual_comissao;
+            document.getElementById('at-comissao-produtos-ativa').checked = !!a.comissao_produtos_ativa;
+            document.getElementById('at-comissao-produtos').value = a.percentual_comissao_produtos ?? '3';
+            document.getElementById('at-comissao-visitas-ativa').checked = !!a.comissao_visitas_ativa;
+            document.getElementById('at-comissao-visitas').value = a.percentual_comissao_visitas ?? '3';
             document.getElementById('at-botao').textContent = 'Salvar edição';
             document.getElementById('at-cancelar').style.display = 'inline-block';
         }
@@ -4025,7 +4035,10 @@
             document.getElementById('at-id').value = '';
             document.getElementById('at-nome').value = '';
             document.getElementById('at-telefone').value = '';
-            document.getElementById('at-comissao').value = '3';
+            document.getElementById('at-comissao-produtos-ativa').checked = false;
+            document.getElementById('at-comissao-produtos').value = '3';
+            document.getElementById('at-comissao-visitas-ativa').checked = false;
+            document.getElementById('at-comissao-visitas').value = '3';
             document.getElementById('at-botao').textContent = 'Cadastrar';
             document.getElementById('at-cancelar').style.display = 'none';
         }
@@ -4035,7 +4048,10 @@
             const dados = {
                 nome: document.getElementById('at-nome').value,
                 telefone: document.getElementById('at-telefone').value || null,
-                percentual_comissao: document.getElementById('at-comissao').value ? Number(document.getElementById('at-comissao').value) : 3,
+                comissao_produtos_ativa: document.getElementById('at-comissao-produtos-ativa').checked,
+                percentual_comissao_produtos: document.getElementById('at-comissao-produtos').value ? Number(document.getElementById('at-comissao-produtos').value) : null,
+                comissao_visitas_ativa: document.getElementById('at-comissao-visitas-ativa').checked,
+                percentual_comissao_visitas: document.getElementById('at-comissao-visitas').value ? Number(document.getElementById('at-comissao-visitas').value) : null,
             };
             const url = id ? `${base}/atendentes/${id}` : `${base}/atendentes`;
             const resp = await fetch(url, { method: id ? 'PUT' : 'POST', headers: headersJson, body: JSON.stringify(dados) });

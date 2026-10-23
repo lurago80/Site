@@ -1721,4 +1721,56 @@ class PdvTest extends TestCase
         $this->assertSame('em_aberto', $conta->status);
         $this->assertTrue($conta->vencimento->isSameDay(now()->addDays(15)));
     }
+
+    public function test_comissao_do_atendente_e_independente_para_produtos_e_visitas(): void
+    {
+        $atendente = Atendente::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Atendente Comissionado', 'ativo' => true,
+            'comissao_produtos_ativa' => true, 'percentual_comissao_produtos' => 10,
+            'comissao_visitas_ativa' => false, 'percentual_comissao_visitas' => 20,
+        ]);
+
+        // Só produto: comissão de produtos (10%) entra, visitas (desligada) não teria efeito aqui.
+        $respProduto = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $atendente->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
+            'itens' => [['produto_id' => $this->produto->id, 'quantidade' => 1]], // R$ 18,00
+        ]);
+        $respProduto->assertCreated();
+        $respProduto->assertJsonPath('comissao_atendente', '1.80'); // 10% de 18
+
+        // Visita: comissão de visitas está desligada, não deve gerar nada mesmo com percentual cadastrado.
+        $agenda = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+        $respVisita = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $atendente->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
+            'agenda_visitacao_id' => $agenda->id,
+            'agenda_quantidade' => 1,
+        ]);
+        $respVisita->assertCreated();
+        $respVisita->assertJsonPath('comissao_atendente', null);
+
+        // Liga a comissão de visitas e confere que passa a valer (20% de 60).
+        $atendente->update(['comissao_visitas_ativa' => true]);
+        $agenda2 = AgendaVisitacao::create([
+            'empresa_id' => $this->empresa->id, 'data_hora' => now()->addDay(),
+            'vagas_total' => 5, 'vagas_reservadas' => 0, 'status' => 'aberta', 'valor_visita' => 60.00,
+        ]);
+        $respVisitaComComissao = $this->postJson("/pdv/{$this->empresa->slug}/vendas", [
+            'tipo_doc' => 'nao_fiscal',
+            'atendente_id' => $atendente->id,
+            'vendedor_id' => $this->vendedorPadrao->id,
+            'pagamentos' => [['forma_pagamento_id' => $this->formaPagamentoPadrao->id]],
+            'agenda_visitacao_id' => $agenda2->id,
+            'agenda_quantidade' => 1,
+        ]);
+        $respVisitaComComissao->assertCreated();
+        $respVisitaComComissao->assertJsonPath('comissao_atendente', '12.00'); // 20% de 60
+    }
 }

@@ -76,6 +76,7 @@ class VendaPdvService
 
             $valorTotal = 0;
             $comissaoTotal = 0;
+            $comissaoAtendenteTotal = 0;
             $valorDesconto = 0;
             $cupomId = null;
             $valorProdutos = 0;
@@ -83,23 +84,26 @@ class VendaPdvService
             $quantidadeTickets = 0;
 
             foreach ($dados['itens'] ?? [] as $item) {
-                [$valorItem, $comissaoItem] = $this->criarItemProduto($venda, $item, $vendedor, $empresa);
+                [$valorItem, $comissaoItem, $comissaoAtendenteItem] = $this->criarItemProduto($venda, $item, $vendedor, $atendente, $empresa);
                 $valorTotal += $valorItem;
                 $valorProdutos += $valorItem;
                 $comissaoTotal += $comissaoItem;
+                $comissaoAtendenteTotal += $comissaoAtendenteItem;
             }
 
             if (! empty($dados['agenda_visitacao_id'])) {
-                [$valorItem, $comissaoItem] = $this->criarItemAgenda(
+                [$valorItem, $comissaoItem, $comissaoAtendenteItem] = $this->criarItemAgenda(
                     $venda,
                     (int) $dados['agenda_visitacao_id'],
                     (int) $dados['agenda_quantidade'],
                     $vendedor,
+                    $atendente,
                 );
                 $valorTotal += $valorItem;
                 $valorVisitas = $valorItem;
                 $quantidadeTickets = (int) $dados['agenda_quantidade'];
                 $comissaoTotal += $comissaoItem;
+                $comissaoAtendenteTotal += $comissaoAtendenteItem;
 
                 // Toda visita efetivada no PDV já baixa o brinde (ex.: caneca de chopp) na
                 // hora - o pagamento no PDV é sempre imediato. Na loja online esse mesmo
@@ -151,6 +155,7 @@ class VendaPdvService
             $venda->update([
                 'valor_total' => $valorTotal - $valorDesconto,
                 'comissao' => $comissaoTotal > 0 ? $comissaoTotal : null,
+                'comissao_atendente' => $comissaoAtendenteTotal > 0 ? $comissaoAtendenteTotal : null,
                 'cupom_id' => $cupomId,
                 'desconto_pdv_id' => $descontoPdvId,
                 'valor_desconto' => $valorDesconto ?: null,
@@ -264,9 +269,9 @@ class VendaPdvService
     }
 
     /**
-     * @return array{0: float, 1: float} [valorItem, comissaoItem]
+     * @return array{0: float, 1: float, 2: float} [valorItem, comissaoItem, comissaoAtendenteItem]
      */
-    private function criarItemProduto(Venda $venda, array $item, ?Vendedor $vendedor, Empresa $empresa): array
+    private function criarItemProduto(Venda $venda, array $item, ?Vendedor $vendedor, ?Atendente $atendente, Empresa $empresa): array
     {
         $produto = Produto::findOrFail($item['produto_id']);
         abort_if(! $produto->ativo, 422, "\"{$produto->nome}\" está desativado e não pode ser vendido.");
@@ -278,6 +283,7 @@ class VendaPdvService
             $composicao = $this->kitService->consumir($produto, $quantidade, $item['escolhas'] ?? []);
             $valorItem = (float) $produto->preco_venda * $quantidade;
             $comissaoItem = $vendedor ? round($valorItem * (float) $vendedor->percentual_comissao / 100, 2) : 0;
+            [$percentualAtendente, $comissaoAtendenteItem] = $this->comissaoAtendente($atendente, 'produtos', $valorItem);
 
             $venda->itens()->create([
                 'empresa_id' => $venda->empresa_id,
@@ -287,10 +293,12 @@ class VendaPdvService
                 'valor_total' => $valorItem,
                 'comissao_percentual' => $vendedor?->percentual_comissao,
                 'comissao_valor' => $comissaoItem ?: null,
+                'comissao_atendente_percentual' => $percentualAtendente,
+                'comissao_atendente_valor' => $comissaoAtendenteItem ?: null,
                 'composicao' => $composicao,
             ]);
 
-            return [$valorItem, $comissaoItem];
+            return [$valorItem, $comissaoItem, $comissaoAtendenteItem];
         }
 
         $variacao = null;
@@ -309,6 +317,7 @@ class VendaPdvService
 
         $valorItem = (float) $produto->preco_venda * $quantidade;
         $comissaoItem = $vendedor ? round($valorItem * (float) $vendedor->percentual_comissao / 100, 2) : 0;
+        [$percentualAtendente, $comissaoAtendenteItem] = $this->comissaoAtendente($atendente, 'produtos', $valorItem);
 
         $venda->itens()->create([
             'empresa_id' => $venda->empresa_id,
@@ -319,15 +328,17 @@ class VendaPdvService
             'valor_total' => $valorItem,
             'comissao_percentual' => $vendedor?->percentual_comissao,
             'comissao_valor' => $comissaoItem ?: null,
+            'comissao_atendente_percentual' => $percentualAtendente,
+            'comissao_atendente_valor' => $comissaoAtendenteItem ?: null,
         ]);
 
-        return [$valorItem, $comissaoItem];
+        return [$valorItem, $comissaoItem, $comissaoAtendenteItem];
     }
 
     /**
-     * @return array{0: float, 1: float} [valorItem, comissaoItem]
+     * @return array{0: float, 1: float, 2: float} [valorItem, comissaoItem, comissaoAtendenteItem]
      */
-    private function criarItemAgenda(Venda $venda, int $agendaVisitacaoId, int $quantidade, ?Vendedor $vendedor): array
+    private function criarItemAgenda(Venda $venda, int $agendaVisitacaoId, int $quantidade, ?Vendedor $vendedor, ?Atendente $atendente): array
     {
         $reserva = $this->reservaVagaService->reservar($agendaVisitacaoId, $quantidade);
         $this->reservaVagaService->confirmar($reserva->id);
@@ -335,6 +346,7 @@ class VendaPdvService
         $agenda = AgendaVisitacao::findOrFail($agendaVisitacaoId);
         $valorItem = (float) $agenda->valor_visita * $quantidade;
         $comissaoItem = $vendedor ? round($valorItem * (float) $vendedor->percentual_comissao / 100, 2) : 0;
+        [$percentualAtendente, $comissaoAtendenteItem] = $this->comissaoAtendente($atendente, 'visitas', $valorItem);
 
         $venda->itens()->create([
             'empresa_id' => $venda->empresa_id,
@@ -344,9 +356,34 @@ class VendaPdvService
             'valor_total' => $valorItem,
             'comissao_percentual' => $vendedor?->percentual_comissao,
             'comissao_valor' => $comissaoItem ?: null,
+            'comissao_atendente_percentual' => $percentualAtendente,
+            'comissao_atendente_valor' => $comissaoAtendenteItem ?: null,
         ]);
 
-        return [$valorItem, $comissaoItem];
+        return [$valorItem, $comissaoItem, $comissaoAtendenteItem];
+    }
+
+    /**
+     * Comissao do atendente (operador do caixa) sobre o item: liga/desliga e percentual
+     * sao independentes para produtos e visitas - ele pode ganhar so num tipo, nos dois
+     * ou em nenhum, diferente do vendedor/guia, que tem um percentual unico.
+     *
+     * @return array{0: ?float, 1: float} [percentualUsado, comissaoValor]
+     */
+    private function comissaoAtendente(?Atendente $atendente, string $tipo, float $valorItem): array
+    {
+        if ($atendente === null) {
+            return [null, 0.0];
+        }
+
+        $ativa = $tipo === 'produtos' ? $atendente->comissao_produtos_ativa : $atendente->comissao_visitas_ativa;
+        $percentual = $tipo === 'produtos' ? $atendente->percentual_comissao_produtos : $atendente->percentual_comissao_visitas;
+
+        if (! $ativa || $percentual === null) {
+            return [null, 0.0];
+        }
+
+        return [(float) $percentual, round($valorItem * (float) $percentual / 100, 2)];
     }
 
     /**

@@ -90,7 +90,12 @@ class DashboardController extends Controller
         $vendasMesCount = (clone $vendasMesQuery)->count();
         $vendasMesValor = round((float) (clone $vendasMesQuery)->sum('valor_total'), 2);
         $ticketMedioMes = $vendasMesCount > 0 ? round($vendasMesValor / $vendasMesCount, 2) : 0.0;
-        $comissoesMes = round((float) (clone $vendasMesQuery)->sum('comissao'), 2);
+        // Soma comissão do vendedor/guia e do atendente - são papéis diferentes,
+        // mas ambos entram no total de comissões a pagar no mês.
+        $comissoesMes = round(
+            (float) (clone $vendasMesQuery)->sum('comissao') + (float) (clone $vendasMesQuery)->sum('comissao_atendente'),
+            2
+        );
 
         $vendasHojeQuery = $this->vendasNoPeriodo(['data_inicio' => $hoje, 'data_fim' => $hoje]);
         $vendasHojeCount = (clone $vendasHojeQuery)->count();
@@ -1047,10 +1052,11 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
             'telefone' => ['nullable', 'string', 'max:20'],
-            'percentual_comissao' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'comissao_produtos_ativa' => ['nullable', 'boolean'],
+            'percentual_comissao_produtos' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'comissao_visitas_ativa' => ['nullable', 'boolean'],
+            'percentual_comissao_visitas' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
-
-        $dados['percentual_comissao'] ??= 3;
 
         $empresaAtual = $request->attributes->get('empresaAtual');
 
@@ -1066,7 +1072,10 @@ class DashboardController extends Controller
         $dados = $request->validate([
             'nome' => ['sometimes', 'string', 'max:255'],
             'telefone' => ['nullable', 'string', 'max:20'],
-            'percentual_comissao' => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'comissao_produtos_ativa' => ['sometimes', 'boolean'],
+            'percentual_comissao_produtos' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'comissao_visitas_ativa' => ['sometimes', 'boolean'],
+            'percentual_comissao_visitas' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'ativo' => ['sometimes', 'boolean'],
         ]);
 
