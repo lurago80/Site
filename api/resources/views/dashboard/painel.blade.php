@@ -875,6 +875,7 @@
                             <div><label>Nº nota</label><input type="text" id="co-numero" style="width:120px"></div>
                             <div><label>Série</label><input type="text" id="co-serie" style="width:80px"></div>
                             <div><label>Data entrada</label><input type="date" id="co-data-entrada"></div>
+                            <div><label>Vencimento (contas a pagar)</label><input type="date" id="co-vencimento"></div>
                             <div><label>Frete</label><input type="number" step="0.01" id="co-frete" style="width:100px" value="0"></div>
                             <div><label>Desconto</label><input type="number" step="0.01" id="co-desconto" style="width:100px" value="0"></div>
                         </div>
@@ -906,7 +907,7 @@
                 <div class="card">
                     <h2>Notas de entrada</h2>
                     <table>
-                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data entrada</th><th>Valor total</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Nº nota</th><th>Fornecedor</th><th>Data entrada</th><th>Vencimento</th><th>Valor total</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-compras"></tbody>
                     </table>
                     <p class="msg" id="msg-compras"></p>
@@ -918,6 +919,10 @@
                         Itens sem produto localizado por código de barras precisam ser vinculados a um produto
                         existente ou cadastrados como novo produto antes de confirmar a entrada.
                     </p>
+                    <div class="linha-form">
+                        <div><label>Vencimento (contas a pagar)</label><input type="date" id="compra-conf-vencimento"></div>
+                        <div><label>&nbsp;</label><button type="button" class="secundario" onclick="salvarVencimentoCompra()">Salvar vencimento</button></div>
+                    </div>
                     <table>
                         <thead><tr><th>Descrição (XML)</th><th>Qtd.</th><th>Valor unit.</th><th>Produto</th><th></th></tr></thead>
                         <tbody id="tbody-compra-conferencia"></tbody>
@@ -3406,13 +3411,14 @@
                     <td>${c.numero_nota ?? '-'}</td>
                     <td>${c.fornecedor ? c.fornecedor.razao_social : '-'}</td>
                     <td>${c.data_entrada}</td>
+                    <td>${c.vencimento_conta_pagar ? String(c.vencimento_conta_pagar).slice(0, 10) : '-'}</td>
                     <td>R$ ${Number(c.valor_total).toFixed(2)}</td>
                     <td>${c.status}</td>
                     <td>
-                        ${c.status === 'pendente' ? `<button class="secundario" onclick="abrirConferenciaCompra(${c.id})">Conferir/Confirmar</button>` : ''}
+                        ${c.status === 'pendente' ? `<button class="secundario" onclick="abrirConferenciaCompra(${c.id})">Editar/Confirmar</button>` : ''}
                     </td>
                 </tr>
-            `).join('') || '<tr><td colspan="6">Nenhuma nota de entrada registrada.</td></tr>';
+            `).join('') || '<tr><td colspan="7">Nenhuma nota de entrada registrada.</td></tr>';
         }
 
         async function carregarRelatorioEntradaNotas() {
@@ -3661,6 +3667,7 @@
                 numero_nota: document.getElementById('co-numero').value || null,
                 serie_nota: document.getElementById('co-serie').value || null,
                 data_entrada: document.getElementById('co-data-entrada').value || null,
+                vencimento_conta_pagar: document.getElementById('co-vencimento').value || null,
                 valor_frete: Number(document.getElementById('co-frete').value) || 0,
                 valor_desconto: Number(document.getElementById('co-desconto').value) || 0,
                 itens: compraItensRascunho.map(i => ({ produto_id: i.produto_id, quantidade: i.quantidade, valor_unitario: i.valor_unitario })),
@@ -3674,6 +3681,7 @@
                 renderizarItensCompraRascunho();
                 document.getElementById('co-numero').value = '';
                 document.getElementById('co-serie').value = '';
+                document.getElementById('co-vencimento').value = '';
                 carregarCompras();
             } else {
                 const erro = await resp.json();
@@ -3718,6 +3726,8 @@
             const resp = await fetch(`${base}/compras/${compraId}`);
             compraConferenciaAtual = await resp.json();
             document.getElementById('compra-conf-id').textContent = compraConferenciaAtual.id;
+            document.getElementById('compra-conf-vencimento').value = compraConferenciaAtual.vencimento_conta_pagar
+                ? String(compraConferenciaAtual.vencimento_conta_pagar).slice(0, 10) : '';
 
             document.getElementById('tbody-compra-conferencia').innerHTML = compraConferenciaAtual.itens.map(item => `
                 <tr>
@@ -3771,6 +3781,25 @@
                 const erro = await resp.json();
                 msg.className = 'msg erro';
                 msg.textContent = erro.message ?? 'Erro ao vincular item.';
+            }
+        }
+
+        async function salvarVencimentoCompra() {
+            const msg = document.getElementById('msg-compra-conferencia');
+            const resp = await fetch(`${base}/compras/${compraConferenciaAtual.id}`, {
+                method: 'PUT', headers: headersJson,
+                body: JSON.stringify({ vencimento_conta_pagar: document.getElementById('compra-conf-vencimento').value || null }),
+            });
+
+            if (resp.ok) {
+                compraConferenciaAtual = await resp.json();
+                msg.className = 'msg sucesso';
+                msg.textContent = 'Vencimento salvo.';
+                carregarCompras();
+            } else {
+                const erro = await resp.json();
+                msg.className = 'msg erro';
+                msg.textContent = erro.message ?? 'Erro ao salvar o vencimento.';
             }
         }
 
