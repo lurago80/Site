@@ -2140,6 +2140,7 @@
                                 <option value="pix">Pix</option>
                                 <option value="cartao_credito">Cartão crédito</option>
                                 <option value="cartao_debito">Cartão débito</option>
+                                <option value="carteira">Carteira</option>
                                 <option value="outro">Outro</option>
                             </select>
                         </div>
