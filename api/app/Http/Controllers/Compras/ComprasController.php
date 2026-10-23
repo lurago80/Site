@@ -43,6 +43,7 @@ class ComprasController extends Controller
             'serie_nota' => ['nullable', 'string', 'max:255'],
             'data_emissao' => ['nullable', 'date'],
             'data_entrada' => ['nullable', 'date'],
+            'vencimento_conta_pagar' => ['nullable', 'date'],
             'valor_frete' => ['nullable', 'numeric', 'min:0'],
             'valor_desconto' => ['nullable', 'numeric', 'min:0'],
             'itens' => ['required', 'array', 'min:1'],

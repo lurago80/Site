@@ -34,6 +34,7 @@ class CompraService
                 'tipo_entrada' => 'manual',
                 'data_emissao' => $dados['data_emissao'] ?? null,
                 'data_entrada' => $dados['data_entrada'] ?? now()->toDateString(),
+                'vencimento_conta_pagar' => $dados['vencimento_conta_pagar'] ?? null,
                 'valor_frete' => $dados['valor_frete'] ?? 0,
                 'valor_desconto' => $dados['valor_desconto'] ?? 0,
                 'status' => 'pendente',
@@ -206,7 +207,9 @@ class CompraService
                 'fornecedor_id' => $compra->fornecedor_id,
                 'historico' => "Compra #{$compra->id}" . ($compra->numero_nota ? " - NF {$compra->numero_nota}" : ''),
                 'valor' => $compra->valor_total,
-                'vencimento' => $compra->data_entrada,
+                // Entrada manual pode informar o vencimento combinado com o fornecedor;
+                // XML não tem como (importação sem intervenção do usuário), cai no padrão antigo.
+                'vencimento' => $compra->vencimento_conta_pagar ?? $compra->data_entrada,
                 'status' => 'em_aberto',
             ]);
 

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'empresa_id', 'fornecedor_id', 'numero_nota', 'serie_nota', 'chave_acesso',
-    'tipo_entrada', 'data_emissao', 'data_entrada', 'valor_produtos', 'valor_frete',
+    'tipo_entrada', 'data_emissao', 'data_entrada', 'vencimento_conta_pagar', 'valor_produtos', 'valor_frete',
     'valor_desconto', 'valor_total', 'status', 'xml_conteudo',
 ])]
 class Compra extends Model
@@ -19,6 +19,7 @@ class Compra extends Model
         return [
             'data_emissao' => 'date',
             'data_entrada' => 'date',
+            'vencimento_conta_pagar' => 'date',
             'valor_produtos' => 'decimal:2',
             'valor_frete' => 'decimal:2',
             'valor_desconto' => 'decimal:2',

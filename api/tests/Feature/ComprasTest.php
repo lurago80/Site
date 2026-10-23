@@ -96,6 +96,44 @@ class ComprasTest extends TestCase
         ]);
     }
 
+    public function test_vencimento_informado_na_entrada_manual_vale_para_o_contas_a_pagar(): void
+    {
+        $response = $this->actingAs($this->admin)->postJson("/dashboard/{$this->empresa->slug}/compras", [
+            'fornecedor_id' => $this->fornecedor->id,
+            'data_entrada' => '2026-10-23',
+            'vencimento_conta_pagar' => '2026-11-22',
+            'itens' => [
+                ['produto_id' => $this->produto->id, 'quantidade' => 3, 'valor_unitario' => 12],
+            ],
+        ]);
+        $response->assertCreated();
+        $compra = Compra::find($response->json('id'));
+
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar")
+            ->assertOk();
+
+        $this->assertDatabaseHas('contas_pagar', [
+            'empresa_id' => $this->empresa->id,
+            'fornecedor_id' => $this->fornecedor->id,
+            'vencimento' => '2026-11-22',
+        ]);
+    }
+
+    public function test_sem_vencimento_informado_contas_a_pagar_usa_a_data_de_entrada(): void
+    {
+        $compra = $this->registrarCompraManual();
+        $this->assertNull($compra->vencimento_conta_pagar);
+
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar")
+            ->assertOk();
+
+        $this->assertDatabaseHas('contas_pagar', [
+            'empresa_id' => $this->empresa->id,
+            'fornecedor_id' => $this->fornecedor->id,
+            'vencimento' => $compra->fresh()->data_entrada->toDateString(),
+        ]);
+    }
+
     public function test_nao_confirma_compra_ja_confirmada(): void
     {
         $compra = $this->registrarCompraManual();
