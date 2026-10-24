@@ -170,6 +170,30 @@ class FinanceiroExpandidoTest extends TestCase
 
         $response->assertOk()->assertJsonPath('status', 'pago');
         $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'debito')->count());
+        $this->assertNotNull($conta->fresh()->pago_em);
+    }
+
+    public function test_nao_permite_pagar_duas_vezes_a_mesma_conta_a_pagar(): void
+    {
+        $banco = Banco::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Banco Teste', 'tipo_conta' => 'corrente',
+            'saldo_inicial' => 500, 'ativo' => true,
+        ]);
+        $fornecedor = Fornecedor::create(['empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste']);
+        $conta = ContaPagar::create([
+            'empresa_id' => $this->empresa->id, 'fornecedor_id' => $fornecedor->id,
+            'valor' => 200, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", ['banco_id' => $banco->id])
+            ->assertOk();
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", ['banco_id' => $banco->id]);
+
+        $response->assertStatus(422);
+        $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'debito')->count());
     }
 
     public function test_marcar_conta_a_receber_paga_com_banco_lanca_movimento_de_credito(): void
@@ -188,6 +212,30 @@ class FinanceiroExpandidoTest extends TestCase
             ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", ['banco_id' => $banco->id]);
 
         $response->assertOk()->assertJsonPath('status', 'pago');
+        $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'credito')->count());
+        $this->assertNotNull($conta->fresh()->recebido_em);
+    }
+
+    public function test_nao_permite_receber_duas_vezes_a_mesma_conta_a_receber(): void
+    {
+        $banco = Banco::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Banco Teste', 'tipo_conta' => 'corrente',
+            'saldo_inicial' => 0, 'ativo' => true,
+        ]);
+        $cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'consentimento_lgpd' => true]);
+        $conta = ContaReceber::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $cliente->id,
+            'valor' => 300, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", ['banco_id' => $banco->id])
+            ->assertOk();
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", ['banco_id' => $banco->id]);
+
+        $response->assertStatus(422);
         $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'credito')->count());
     }
 

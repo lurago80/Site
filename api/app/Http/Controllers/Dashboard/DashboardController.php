@@ -1628,8 +1628,14 @@ class DashboardController extends Controller
 
         $conta = ContaPagar::findOrFail($contaId);
 
+        abort_if($conta->status === 'pago', 422, 'Esta conta já está paga.');
+
         DB::transaction(function () use ($conta, $dados, $empresaAtual) {
-            $conta->update(['status' => 'pago', 'banco_id' => $dados['banco_id'] ?? $conta->banco_id]);
+            $conta->update([
+                'status' => 'pago',
+                'banco_id' => $dados['banco_id'] ?? $conta->banco_id,
+                'pago_em' => $conta->pago_em ?? now(),
+            ]);
 
             if (! empty($dados['banco_id'])) {
                 GravaBanco::create([
@@ -1781,8 +1787,14 @@ class DashboardController extends Controller
 
         $conta = ContaReceber::findOrFail($contaId);
 
+        abort_if($conta->status === 'pago', 422, 'Esta conta já foi recebida.');
+
         DB::transaction(function () use ($conta, $dados, $empresaAtual) {
-            $conta->update(['status' => 'pago', 'banco_id' => $dados['banco_id'] ?? $conta->banco_id]);
+            $conta->update([
+                'status' => 'pago',
+                'banco_id' => $dados['banco_id'] ?? $conta->banco_id,
+                'recebido_em' => $conta->recebido_em ?? now(),
+            ]);
 
             if (! empty($dados['banco_id'])) {
                 GravaBanco::create([
