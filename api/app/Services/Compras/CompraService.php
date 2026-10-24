@@ -65,14 +65,26 @@ class CompraService
     }
 
     /**
-     * Edita uma compra ainda pendente - ex.: corrigir o vencimento do contas a pagar
-     * antes de confirmar. Depois de confirmada, a compra já gerou o lançamento no
-     * plano de contas e o contas a pagar, então não pode mais ser editada (teria
-     * que cancelar e lançar de novo).
+     * Edita uma compra. Antes de confirmar, pode alterar qualquer campo, inclusive
+     * frete/desconto (recalcula os totais). Depois de confirmada, só o vencimento
+     * do contas a pagar pode ser corrigido - já que o estoque e o lançamento no
+     * plano de contas foram efetivados -, e nesse caso o contas a pagar vinculado
+     * (ainda em aberto) é atualizado junto.
      */
     public function atualizar(Compra $compra, array $dados): Compra
     {
-        abort_if($compra->status !== 'pendente', 422, 'Só é possível editar uma compra pendente (ainda não confirmada).');
+        if ($compra->status !== 'pendente') {
+            abort_if($compra->status !== 'confirmada', 422, 'Esta compra foi cancelada e não pode ser editada.');
+            abort_if(! array_key_exists('vencimento_conta_pagar', $dados) || count($dados) > 1, 422, 'Uma compra já confirmada só permite corrigir o vencimento do contas a pagar.');
+
+            $compra->update(['vencimento_conta_pagar' => $dados['vencimento_conta_pagar']]);
+
+            ContaPagar::where('compra_id', $compra->id)
+                ->where('status', 'em_aberto')
+                ->update(['vencimento' => $dados['vencimento_conta_pagar']]);
+
+            return $compra->fresh('itens.produto');
+        }
 
         $compra->update(array_intersect_key($dados, array_flip([
             'numero_nota', 'serie_nota', 'data_emissao', 'data_entrada', 'vencimento_conta_pagar',
@@ -227,6 +239,7 @@ class CompraService
             ContaPagar::create([
                 'empresa_id' => $compra->empresa_id,
                 'fornecedor_id' => $compra->fornecedor_id,
+                'compra_id' => $compra->id,
                 'historico' => "Compra #{$compra->id}" . ($compra->numero_nota ? " - NF {$compra->numero_nota}" : ''),
                 'valor' => $compra->valor_total,
                 // Entrada manual pode informar o vencimento combinado com o fornecedor;

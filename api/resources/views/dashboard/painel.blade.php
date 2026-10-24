@@ -915,7 +915,7 @@
 
                 <div class="card" id="compra-conferencia-card" style="display:none;">
                     <h2>Conferência de itens importados (Nota #<span id="compra-conf-id"></span>)</h2>
-                    <p style="font-size:12px; color:var(--cor-texto-suave);">
+                    <p style="font-size:12px; color:var(--cor-texto-suave);" id="compra-conf-aviso-itens">
                         Itens sem produto localizado por código de barras precisam ser vinculados a um produto
                         existente ou cadastrados como novo produto antes de confirmar a entrada.
                     </p>
@@ -923,12 +923,12 @@
                         <div><label>Vencimento (contas a pagar)</label><input type="date" id="compra-conf-vencimento"></div>
                         <div><label>&nbsp;</label><button type="button" class="secundario" onclick="salvarVencimentoCompra()">Salvar vencimento</button></div>
                     </div>
-                    <table>
+                    <table id="compra-conf-tabela-itens">
                         <thead><tr><th>Descrição (XML)</th><th>Qtd.</th><th>Valor unit.</th><th>Produto</th><th></th></tr></thead>
                         <tbody id="tbody-compra-conferencia"></tbody>
                     </table>
                     <div class="form-acoes">
-                        <button class="acao" onclick="confirmarCompra()">Confirmar entrada</button>
+                        <button class="acao" id="compra-conf-btn-confirmar" onclick="confirmarCompra()">Confirmar entrada</button>
                         <button class="secundario" onclick="document.getElementById('compra-conferencia-card').style.display='none';">Fechar</button>
                     </div>
                     <p class="msg" id="msg-compra-conferencia"></p>
@@ -3415,7 +3415,7 @@
                     <td>R$ ${Number(c.valor_total).toFixed(2)}</td>
                     <td>${c.status}</td>
                     <td>
-                        ${c.status === 'pendente' ? `<button class="secundario" onclick="abrirConferenciaCompra(${c.id})">Editar/Confirmar</button>` : ''}
+                        ${c.status !== 'cancelada' ? `<button class="secundario" onclick="abrirConferenciaCompra(${c.id})">${c.status === 'pendente' ? 'Editar/Confirmar' : 'Editar vencimento'}</button>` : ''}
                     </td>
                 </tr>
             `).join('') || '<tr><td colspan="7">Nenhuma nota de entrada registrada.</td></tr>';
@@ -3728,6 +3728,11 @@
             document.getElementById('compra-conf-id').textContent = compraConferenciaAtual.id;
             document.getElementById('compra-conf-vencimento').value = compraConferenciaAtual.vencimento_conta_pagar
                 ? String(compraConferenciaAtual.vencimento_conta_pagar).slice(0, 10) : '';
+
+            const pendente = compraConferenciaAtual.status === 'pendente';
+            document.getElementById('compra-conf-tabela-itens').style.display = pendente ? '' : 'none';
+            document.getElementById('compra-conf-btn-confirmar').style.display = pendente ? '' : 'none';
+            document.getElementById('compra-conf-aviso-itens').style.display = pendente ? '' : 'none';
 
             document.getElementById('tbody-compra-conferencia').innerHTML = compraConferenciaAtual.itens.map(item => `
                 <tr>

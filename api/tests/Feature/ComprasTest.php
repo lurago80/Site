@@ -100,17 +100,28 @@ class ComprasTest extends TestCase
         ]);
     }
 
-    public function test_nao_edita_compra_ja_confirmada(): void
+    public function test_compra_confirmada_so_permite_corrigir_vencimento_e_atualiza_o_contas_a_pagar(): void
     {
         $compra = $this->registrarCompraManual();
         $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar");
 
-        $response = $this->actingAs($this->admin)
+        $edicaoInvalida = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}", [
+                'numero_nota' => '9999',
+            ]);
+        $edicaoInvalida->assertStatus(422);
+
+        $edicao = $this->actingAs($this->admin)
             ->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}", [
                 'vencimento_conta_pagar' => '2026-11-22',
             ]);
+        $edicao->assertOk();
 
-        $response->assertStatus(422);
+        $this->assertDatabaseHas('contas_pagar', [
+            'empresa_id' => $this->empresa->id,
+            'compra_id' => $compra->id,
+            'vencimento' => '2026-11-22',
+        ]);
     }
 
     public function test_confirmar_compra_manual_incrementa_estoque_e_gera_conta_a_pagar(): void
