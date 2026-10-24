@@ -173,6 +173,48 @@ class FinanceiroExpandidoTest extends TestCase
         $this->assertNotNull($conta->fresh()->pago_em);
     }
 
+    public function test_pagar_sem_informar_banco_usa_o_caixa_geral_da_empresa(): void
+    {
+        $fornecedor = Fornecedor::create(['empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste']);
+        $conta = ContaPagar::create([
+            'empresa_id' => $this->empresa->id, 'fornecedor_id' => $fornecedor->id,
+            'valor' => 150, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", []);
+
+        $response->assertOk()->assertJsonPath('status', 'pago');
+
+        $caixa = Banco::where('empresa_id', $this->empresa->id)->where('eh_caixa_geral', true)->first();
+        $this->assertNotNull($caixa, 'Caixa (dinheiro) deveria ter sido criado automaticamente.');
+        $this->assertSame(1, GravaBanco::where('banco_id', $caixa->id)->where('conta_pagar_id', $conta->id)->count());
+    }
+
+    public function test_pagamento_parcial_mantem_conta_parcial_ate_quitar(): void
+    {
+        $fornecedor = Fornecedor::create(['empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste']);
+        $conta = ContaPagar::create([
+            'empresa_id' => $this->empresa->id, 'fornecedor_id' => $fornecedor->id,
+            'valor' => 300, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $primeira = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", ['valor' => 100]);
+        $primeira->assertOk()->assertJsonPath('status', 'parcial');
+        $this->assertNull($conta->fresh()->pago_em);
+
+        $excesso = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", ['valor' => 500]);
+        $excesso->assertStatus(422);
+
+        $segunda = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", ['valor' => 200]);
+        $segunda->assertOk()->assertJsonPath('status', 'pago');
+        $this->assertNotNull($conta->fresh()->pago_em);
+        $this->assertEquals(300.0, (float) GravaBanco::where('conta_pagar_id', $conta->id)->sum('valor'));
+    }
+
     public function test_nao_permite_pagar_duas_vezes_a_mesma_conta_a_pagar(): void
     {
         $banco = Banco::create([
@@ -250,6 +292,43 @@ class FinanceiroExpandidoTest extends TestCase
 
         $response->assertOk()->assertJsonPath('status', 'pago');
         $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'credito')->count());
+        $this->assertNotNull($conta->fresh()->recebido_em);
+    }
+
+    public function test_receber_sem_informar_banco_usa_o_caixa_geral_da_empresa(): void
+    {
+        $cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'consentimento_lgpd' => true]);
+        $conta = ContaReceber::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $cliente->id,
+            'valor' => 120, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", []);
+
+        $response->assertOk()->assertJsonPath('status', 'pago');
+
+        $caixa = Banco::where('empresa_id', $this->empresa->id)->where('eh_caixa_geral', true)->first();
+        $this->assertNotNull($caixa, 'Caixa (dinheiro) deveria ter sido criado automaticamente.');
+        $this->assertSame(1, GravaBanco::where('banco_id', $caixa->id)->where('conta_receber_id', $conta->id)->count());
+    }
+
+    public function test_recebimento_parcial_mantem_conta_parcial_ate_quitar(): void
+    {
+        $cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'consentimento_lgpd' => true]);
+        $conta = ContaReceber::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $cliente->id,
+            'valor' => 300, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $primeira = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", ['valor' => 100]);
+        $primeira->assertOk()->assertJsonPath('status', 'parcial');
+        $this->assertNull($conta->fresh()->recebido_em);
+
+        $segunda = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", ['valor' => 200]);
+        $segunda->assertOk()->assertJsonPath('status', 'pago');
         $this->assertNotNull($conta->fresh()->recebido_em);
     }
 

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['empresa_id', 'cliente_id', 'venda_id', 'historico', 'plano_conta_id', 'banco_id', 'valor', 'vencimento', 'status', 'recebido_em'])]
 class ContaReceber extends Model
@@ -38,5 +39,10 @@ class ContaReceber extends Model
     public function banco(): BelongsTo
     {
         return $this->belongsTo(Banco::class);
+    }
+
+    public function movimentos(): HasMany
+    {
+        return $this->hasMany(GravaBanco::class, 'conta_receber_id');
     }
 }

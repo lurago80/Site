@@ -1308,7 +1308,7 @@
                         <div><button class="acao" onclick="criarContaPagar()">Lançar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Fornecedor</th><th>Histórico</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Fornecedor</th><th>Histórico</th><th>Valor</th><th>Restante</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-contas-pagar"></tbody>
                     </table>
                     <p class="msg" id="msg-contas-pagar"></p>
@@ -1324,7 +1324,7 @@
                         <div><button class="acao" onclick="criarContaReceber()">Lançar</button></div>
                     </div>
                     <table>
-                        <thead><tr><th>Cliente</th><th>Histórico</th><th>Valor</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
+                        <thead><tr><th>Cliente</th><th>Histórico</th><th>Valor</th><th>Restante</th><th>Vencimento</th><th>Categoria</th><th>Status</th><th></th></tr></thead>
                         <tbody id="tbody-contas-receber"></tbody>
                     </table>
                     <p class="msg" id="msg-contas-receber"></p>
@@ -4648,19 +4648,23 @@
         async function carregarContasPagar() {
             const resp = await fetch(`${base}/contas-pagar`);
             const lista = await resp.json();
-            document.getElementById('tbody-contas-pagar').innerHTML = lista.map(c => `
+            document.getElementById('tbody-contas-pagar').innerHTML = lista.map(c => {
+                const restante = Number(c.valor) - Number(c.valor_pago ?? 0);
+                return `
                 <tr>
                     <td>${c.fornecedor ? c.fornecedor.razao_social : '-'}</td>
                     <td>${c.historico ?? '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
+                    <td>${c.status === 'pago' ? '-' : `R$ ${restante.toFixed(2)}`}</td>
                     <td>${c.vencimento}</td>
                     <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
-                    <td>${c.status === 'pago'
-                        ? `<button class="secundario" onclick="estornarContaPagar(${c.id})">Desfazer</button>`
+                    <td>${['pago', 'parcial'].includes(c.status)
+                        ? `${c.status === 'parcial' ? `<button class="secundario" onclick="pagarContaPagar(${c.id})">Pagar mais</button> ` : ''}<button class="secundario" onclick="estornarContaPagar(${c.id})">Desfazer</button>`
                         : `<button class="secundario" onclick="pagarContaPagar(${c.id})">Marcar pago</button>`}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="7">Nenhuma conta a pagar.</td></tr>';
+            `;
+            }).join('') || '<tr><td colspan="8">Nenhuma conta a pagar.</td></tr>';
         }
 
         async function criarContaPagar() {
@@ -4685,7 +4689,11 @@
 
         async function pagarContaPagar(id) {
             const bancoId = document.getElementById('fin-banco-pagamento').value || null;
-            await fetch(`${base}/contas-pagar/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId }) });
+            const valorTexto = prompt('Valor a pagar agora (deixe em branco para pagar o restante todo):');
+            if (valorTexto === null) return;
+            const valor = valorTexto.trim() === '' ? null : Number(valorTexto.replace(',', '.'));
+            const resp = await fetch(`${base}/contas-pagar/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId, valor }) });
+            if (!resp.ok) { const erro = await resp.json(); alert(erro.message ?? 'Erro ao pagar.'); return; }
             carregarContasPagar();
         }
 
@@ -4698,19 +4706,23 @@
         async function carregarContasReceber() {
             const resp = await fetch(`${base}/contas-receber`);
             const lista = await resp.json();
-            document.getElementById('tbody-contas-receber').innerHTML = lista.map(c => `
+            document.getElementById('tbody-contas-receber').innerHTML = lista.map(c => {
+                const restante = Number(c.valor) - Number(c.valor_pago ?? 0);
+                return `
                 <tr>
                     <td>${c.cliente ? esc(c.cliente.nome) : '-'}</td>
                     <td>${c.historico ?? '-'}</td>
                     <td>R$ ${Number(c.valor).toFixed(2)}</td>
+                    <td>${c.status === 'pago' ? '-' : `R$ ${restante.toFixed(2)}`}</td>
                     <td>${c.vencimento}</td>
                     <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
-                    <td>${c.status === 'pago'
-                        ? `<button class="secundario" onclick="estornarContaReceber(${c.id})">Desfazer</button>`
+                    <td>${['pago', 'parcial'].includes(c.status)
+                        ? `${c.status === 'parcial' ? `<button class="secundario" onclick="pagarContaReceber(${c.id})">Receber mais</button> ` : ''}<button class="secundario" onclick="estornarContaReceber(${c.id})">Desfazer</button>`
                         : `<button class="secundario" onclick="pagarContaReceber(${c.id})">Marcar pago</button>`}</td>
                 </tr>
-            `).join('') || '<tr><td colspan="7">Nenhuma conta a receber.</td></tr>';
+            `;
+            }).join('') || '<tr><td colspan="8">Nenhuma conta a receber.</td></tr>';
         }
 
         async function criarContaReceber() {
@@ -4735,7 +4747,11 @@
 
         async function pagarContaReceber(id) {
             const bancoId = document.getElementById('fin-banco-pagamento').value || null;
-            await fetch(`${base}/contas-receber/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId }) });
+            const valorTexto = prompt('Valor a receber agora (deixe em branco para receber o restante todo):');
+            if (valorTexto === null) return;
+            const valor = valorTexto.trim() === '' ? null : Number(valorTexto.replace(',', '.'));
+            const resp = await fetch(`${base}/contas-receber/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId, valor }) });
+            if (!resp.ok) { const erro = await resp.json(); alert(erro.message ?? 'Erro ao receber.'); return; }
             carregarContasReceber();
         }
 

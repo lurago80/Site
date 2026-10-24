@@ -1599,7 +1599,11 @@ class DashboardController extends Controller
             ->update(['status' => 'atrasado']);
 
         return response()->json(
-            ContaPagar::where('empresa_id', $empresaAtual->id)->with(['fornecedor', 'planoContas', 'banco'])->orderBy('vencimento')->get()
+            ContaPagar::where('empresa_id', $empresaAtual->id)
+                ->with(['fornecedor', 'planoContas', 'banco'])
+                ->withSum('movimentos as valor_pago', 'valor')
+                ->orderBy('vencimento')
+                ->get()
         );
     }
 
@@ -1621,42 +1625,63 @@ class DashboardController extends Controller
     }
 
     /**
-     * Ao informar um banco, lança automaticamente o movimento de débito
-     * correspondente em `grava_banco` (Escopo v2, decisão de 2026-07-21) -
-     * evita ter que lançar a mesma saída duas vezes (aqui e no extrato
-     * bancário).
+     * Lança o movimento de débito correspondente em `grava_banco` (Escopo v2,
+     * decisão de 2026-07-21) - evita ter que lançar a mesma saída duas vezes
+     * (aqui e no extrato bancário). Se nenhum banco for informado, usa o
+     * "Caixa (dinheiro)" da empresa, pra pagamento em espécie também deixar
+     * rastro. Aceita baixa parcial: se o valor informado for menor que o
+     * restante, a conta fica com status "parcial" até quitar o total.
      */
     public function marcarContaPagarPaga(Request $request, string $empresa, int $contaId)
     {
-        $dados = $request->validate(['banco_id' => ['nullable', 'integer']]);
+        $dados = $request->validate([
+            'banco_id' => ['nullable', 'integer'],
+            'valor' => ['nullable', 'numeric', 'min:0.01'],
+        ]);
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         $conta = ContaPagar::findOrFail($contaId);
 
         abort_if($conta->status === 'pago', 422, 'Esta conta já está paga.');
 
-        DB::transaction(function () use ($conta, $dados, $empresaAtual) {
-            $conta->update([
-                'status' => 'pago',
-                'banco_id' => $dados['banco_id'] ?? $conta->banco_id,
-                'pago_em' => $conta->pago_em ?? now(),
+        $jaPago = (float) $conta->movimentos()->sum('valor');
+        $restante = round((float) $conta->valor - $jaPago, 2);
+        $valorPagar = round($dados['valor'] ?? $restante, 2);
+
+        abort_if($valorPagar > $restante + 0.01, 422, "Valor maior que o restante (R$ {$restante}).");
+
+        DB::transaction(function () use ($conta, $dados, $empresaAtual, $valorPagar, $restante) {
+            $bancoId = $dados['banco_id'] ?? $this->caixaGeralId($empresaAtual);
+            $quita = $valorPagar >= $restante - 0.01;
+
+            GravaBanco::create([
+                'empresa_id' => $empresaAtual->id,
+                'banco_id' => $bancoId,
+                'conta_pagar_id' => $conta->id,
+                'data_movimento' => now()->toDateString(),
+                'tipo' => 'debito',
+                'valor' => $valorPagar,
+                'descricao' => "Pagamento conta a pagar #{$conta->id}",
+                'origem' => 'conta_pagar',
             ]);
 
-            if (! empty($dados['banco_id'])) {
-                GravaBanco::create([
-                    'empresa_id' => $empresaAtual->id,
-                    'banco_id' => $dados['banco_id'],
-                    'conta_pagar_id' => $conta->id,
-                    'data_movimento' => now()->toDateString(),
-                    'tipo' => 'debito',
-                    'valor' => $conta->valor,
-                    'descricao' => "Pagamento conta a pagar #{$conta->id}",
-                    'origem' => 'conta_pagar',
-                ]);
-            }
+            $conta->update([
+                'status' => $quita ? 'pago' : 'parcial',
+                'banco_id' => $bancoId,
+                'pago_em' => $quita ? ($conta->pago_em ?? now()) : $conta->pago_em,
+            ]);
         });
 
         return response()->json($conta->fresh());
+    }
+
+    /** Busca (ou cria) o banco especial "Caixa (dinheiro)" da empresa, usado quando a baixa não informa banco. */
+    private function caixaGeralId(Empresa $empresa): int
+    {
+        return Banco::firstOrCreate(
+            ['empresa_id' => $empresa->id, 'eh_caixa_geral' => true],
+            ['nome' => 'Caixa (dinheiro)', 'tipo_conta' => 'corrente', 'saldo_inicial' => 0, 'ativo' => true]
+        )->id;
     }
 
     /**
@@ -1667,7 +1692,7 @@ class DashboardController extends Controller
     {
         $conta = ContaPagar::findOrFail($contaId);
 
-        abort_if($conta->status !== 'pago', 422, 'Esta conta não está paga.');
+        abort_if(! in_array($conta->status, ['pago', 'parcial'], true), 422, 'Esta conta não tem pagamento para desfazer.');
 
         DB::transaction(function () use ($conta) {
             GravaBanco::where('conta_pagar_id', $conta->id)->delete();
@@ -1787,7 +1812,11 @@ class DashboardController extends Controller
             ->update(['status' => 'atrasado']);
 
         return response()->json(
-            ContaReceber::where('empresa_id', $empresaAtual->id)->with(['cliente', 'planoContas', 'banco'])->orderBy('vencimento')->get()
+            ContaReceber::where('empresa_id', $empresaAtual->id)
+                ->with(['cliente', 'planoContas', 'banco'])
+                ->withSum('movimentos as valor_pago', 'valor')
+                ->orderBy('vencimento')
+                ->get()
         );
     }
 
@@ -1808,34 +1837,45 @@ class DashboardController extends Controller
         return response()->json($conta, 201);
     }
 
+    /** Espelho de marcarContaPagarPaga: banco opcional (cai no Caixa (dinheiro) da empresa) e aceita recebimento parcial. */
     public function marcarContaReceberPaga(Request $request, string $empresa, int $contaId)
     {
-        $dados = $request->validate(['banco_id' => ['nullable', 'integer']]);
+        $dados = $request->validate([
+            'banco_id' => ['nullable', 'integer'],
+            'valor' => ['nullable', 'numeric', 'min:0.01'],
+        ]);
         $empresaAtual = $request->attributes->get('empresaAtual');
 
         $conta = ContaReceber::findOrFail($contaId);
 
         abort_if($conta->status === 'pago', 422, 'Esta conta já foi recebida.');
 
-        DB::transaction(function () use ($conta, $dados, $empresaAtual) {
-            $conta->update([
-                'status' => 'pago',
-                'banco_id' => $dados['banco_id'] ?? $conta->banco_id,
-                'recebido_em' => $conta->recebido_em ?? now(),
+        $jaRecebido = (float) $conta->movimentos()->sum('valor');
+        $restante = round((float) $conta->valor - $jaRecebido, 2);
+        $valorReceber = round($dados['valor'] ?? $restante, 2);
+
+        abort_if($valorReceber > $restante + 0.01, 422, "Valor maior que o restante (R$ {$restante}).");
+
+        DB::transaction(function () use ($conta, $dados, $empresaAtual, $valorReceber, $restante) {
+            $bancoId = $dados['banco_id'] ?? $this->caixaGeralId($empresaAtual);
+            $quita = $valorReceber >= $restante - 0.01;
+
+            GravaBanco::create([
+                'empresa_id' => $empresaAtual->id,
+                'banco_id' => $bancoId,
+                'conta_receber_id' => $conta->id,
+                'data_movimento' => now()->toDateString(),
+                'tipo' => 'credito',
+                'valor' => $valorReceber,
+                'descricao' => "Recebimento conta a receber #{$conta->id}",
+                'origem' => 'conta_receber',
             ]);
 
-            if (! empty($dados['banco_id'])) {
-                GravaBanco::create([
-                    'empresa_id' => $empresaAtual->id,
-                    'banco_id' => $dados['banco_id'],
-                    'conta_receber_id' => $conta->id,
-                    'data_movimento' => now()->toDateString(),
-                    'tipo' => 'credito',
-                    'valor' => $conta->valor,
-                    'descricao' => "Recebimento conta a receber #{$conta->id}",
-                    'origem' => 'conta_receber',
-                ]);
-            }
+            $conta->update([
+                'status' => $quita ? 'pago' : 'parcial',
+                'banco_id' => $bancoId,
+                'recebido_em' => $quita ? ($conta->recebido_em ?? now()) : $conta->recebido_em,
+            ]);
         });
 
         return response()->json($conta->fresh());
@@ -1846,7 +1886,7 @@ class DashboardController extends Controller
     {
         $conta = ContaReceber::findOrFail($contaId);
 
-        abort_if($conta->status !== 'pago', 422, 'Esta conta não está recebida.');
+        abort_if(! in_array($conta->status, ['pago', 'parcial'], true), 422, 'Esta conta não tem recebimento para desfazer.');
 
         DB::transaction(function () use ($conta) {
             GravaBanco::where('conta_receber_id', $conta->id)->delete();

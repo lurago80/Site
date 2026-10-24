@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['empresa_id', 'nome', 'codigo_banco', 'agencia', 'numero_conta', 'tipo_conta', 'saldo_inicial', 'ativo'])]
+#[Fillable(['empresa_id', 'nome', 'codigo_banco', 'agencia', 'numero_conta', 'tipo_conta', 'eh_caixa_geral', 'saldo_inicial', 'ativo'])]
 class Banco extends Model
 {
     protected $table = 'bancos';
@@ -15,6 +15,7 @@ class Banco extends Model
     {
         return [
             'saldo_inicial' => 'decimal:2',
+            'eh_caixa_geral' => 'boolean',
             'ativo' => 'boolean',
         ];
     }
