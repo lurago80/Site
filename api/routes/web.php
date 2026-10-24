@@ -191,12 +191,14 @@ Route::middleware(['auth', 'tenant', 'nao_somente_pdv'])->prefix('dashboard/{emp
     Route::get('/contas-pagar', [DashboardController::class, 'contasPagar']);
     Route::post('/contas-pagar', [DashboardController::class, 'criarContaPagar']);
     Route::put('/contas-pagar/{contaId}/pagar', [DashboardController::class, 'marcarContaPagarPaga']);
+    Route::put('/contas-pagar/{contaId}/estornar', [DashboardController::class, 'estornarContaPagarPaga']);
     Route::post('/pagamentos-diretos', [DashboardController::class, 'criarPagamento']);
     Route::get('/pagamentos-diretos', [DashboardController::class, 'pagamentos']);
 
     Route::get('/contas-receber', [DashboardController::class, 'contasReceber']);
     Route::post('/contas-receber', [DashboardController::class, 'criarContaReceber']);
     Route::put('/contas-receber/{contaId}/pagar', [DashboardController::class, 'marcarContaReceberPaga']);
+    Route::put('/contas-receber/{contaId}/estornar', [DashboardController::class, 'estornarContaReceberPaga']);
 
     Route::get('/grupos', [DashboardController::class, 'grupos']);
     Route::post('/grupos', [DashboardController::class, 'criarGrupo']);

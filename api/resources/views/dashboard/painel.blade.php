@@ -4656,7 +4656,9 @@
                     <td>${c.vencimento}</td>
                     <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
-                    <td>${c.status !== 'pago' ? `<button class="secundario" onclick="pagarContaPagar(${c.id})">Marcar pago</button>` : ''}</td>
+                    <td>${c.status === 'pago'
+                        ? `<button class="secundario" onclick="estornarContaPagar(${c.id})">Desfazer</button>`
+                        : `<button class="secundario" onclick="pagarContaPagar(${c.id})">Marcar pago</button>`}</td>
                 </tr>
             `).join('') || '<tr><td colspan="7">Nenhuma conta a pagar.</td></tr>';
         }
@@ -4687,6 +4689,12 @@
             carregarContasPagar();
         }
 
+        async function estornarContaPagar(id) {
+            if (!confirm('Desfazer esta baixa? A conta volta para "em aberto" e o lançamento bancário é removido.')) return;
+            await fetch(`${base}/contas-pagar/${id}/estornar`, { method: 'PUT', headers: headersJson });
+            carregarContasPagar();
+        }
+
         async function carregarContasReceber() {
             const resp = await fetch(`${base}/contas-receber`);
             const lista = await resp.json();
@@ -4698,7 +4706,9 @@
                     <td>${c.vencimento}</td>
                     <td>${c.plano_contas ? c.plano_contas.nome : '-'}</td>
                     <td><span class="status status-${c.status}">${c.status}</span></td>
-                    <td>${c.status !== 'pago' ? `<button class="secundario" onclick="pagarContaReceber(${c.id})">Marcar pago</button>` : ''}</td>
+                    <td>${c.status === 'pago'
+                        ? `<button class="secundario" onclick="estornarContaReceber(${c.id})">Desfazer</button>`
+                        : `<button class="secundario" onclick="pagarContaReceber(${c.id})">Marcar pago</button>`}</td>
                 </tr>
             `).join('') || '<tr><td colspan="7">Nenhuma conta a receber.</td></tr>';
         }
@@ -4726,6 +4736,12 @@
         async function pagarContaReceber(id) {
             const bancoId = document.getElementById('fin-banco-pagamento').value || null;
             await fetch(`${base}/contas-receber/${id}/pagar`, { method: 'PUT', headers: headersJson, body: JSON.stringify({ banco_id: bancoId }) });
+            carregarContasReceber();
+        }
+
+        async function estornarContaReceber(id) {
+            if (!confirm('Desfazer esta baixa? A conta volta para "em aberto" e o lançamento bancário é removido.')) return;
+            await fetch(`${base}/contas-receber/${id}/estornar`, { method: 'PUT', headers: headersJson });
             carregarContasReceber();
         }
 

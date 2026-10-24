@@ -191,6 +191,31 @@ class ComprasTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_cancelar_compra_confirmada_remove_contas_a_pagar_em_aberto(): void
+    {
+        $compra = $this->registrarCompraManual();
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar");
+
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/cancelar")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('contas_pagar', ['compra_id' => $compra->id]);
+    }
+
+    public function test_nao_cancela_compra_com_contas_a_pagar_ja_paga(): void
+    {
+        $compra = $this->registrarCompraManual();
+        $this->actingAs($this->admin)->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/confirmar");
+
+        ContaPagar::where('compra_id', $compra->id)->update(['status' => 'pago']);
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/compras/{$compra->id}/cancelar");
+
+        $response->assertStatus(422);
+        $this->assertSame('confirmada', $compra->fresh()->status);
+    }
+
     public function test_cancelar_compra_confirmada_estorna_estoque(): void
     {
         $compra = $this->registrarCompraManual();

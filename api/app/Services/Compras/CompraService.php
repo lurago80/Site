@@ -268,6 +268,14 @@ class CompraService
                 }
             }
 
+            // Contas a pagar gerada na confirmação: se já foi paga, não cancela
+            // automaticamente (teria que estornar o pagamento à parte, igual venda/carteira).
+            $contasPagarVinculadas = ContaPagar::where('compra_id', $compra->id)->get();
+            if ($contasPagarVinculadas->contains(fn (ContaPagar $c) => $c->status !== 'em_aberto')) {
+                throw ValidationException::withMessages(['status' => 'Esta compra tem um contas a pagar já pago e não pode ser cancelada automaticamente.']);
+            }
+            ContaPagar::where('compra_id', $compra->id)->where('status', 'em_aberto')->delete();
+
             $compra->update(['status' => 'cancelada']);
 
             $this->lancamentoCompraService->estornar($compra);

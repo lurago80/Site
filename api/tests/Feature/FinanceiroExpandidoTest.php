@@ -196,6 +196,43 @@ class FinanceiroExpandidoTest extends TestCase
         $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'debito')->count());
     }
 
+    public function test_estorna_baixa_de_conta_a_pagar_e_remove_movimento_bancario(): void
+    {
+        $banco = Banco::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Banco Teste', 'tipo_conta' => 'corrente',
+            'saldo_inicial' => 500, 'ativo' => true,
+        ]);
+        $fornecedor = Fornecedor::create(['empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste']);
+        $conta = ContaPagar::create([
+            'empresa_id' => $this->empresa->id, 'fornecedor_id' => $fornecedor->id,
+            'valor' => 200, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/pagar", ['banco_id' => $banco->id])
+            ->assertOk();
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-pagar/{$conta->id}/estornar");
+
+        $response->assertOk()->assertJsonPath('status', 'em_aberto');
+        $this->assertNull($conta->fresh()->pago_em);
+        $this->assertSame(0, GravaBanco::where('conta_pagar_id', $conta->id)->count());
+    }
+
+    public function test_contas_a_pagar_vencidas_viram_atrasadas_ao_listar(): void
+    {
+        $fornecedor = Fornecedor::create(['empresa_id' => $this->empresa->id, 'razao_social' => 'Fornecedor Teste']);
+        $conta = ContaPagar::create([
+            'empresa_id' => $this->empresa->id, 'fornecedor_id' => $fornecedor->id,
+            'valor' => 100, 'vencimento' => now()->subDays(3), 'status' => 'em_aberto',
+        ]);
+
+        $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/contas-pagar")->assertOk();
+
+        $this->assertSame('atrasado', $conta->fresh()->status);
+    }
+
     public function test_marcar_conta_a_receber_paga_com_banco_lanca_movimento_de_credito(): void
     {
         $banco = Banco::create([
@@ -237,6 +274,43 @@ class FinanceiroExpandidoTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertSame(1, GravaBanco::where('banco_id', $banco->id)->where('tipo', 'credito')->count());
+    }
+
+    public function test_estorna_baixa_de_conta_a_receber_e_remove_movimento_bancario(): void
+    {
+        $banco = Banco::create([
+            'empresa_id' => $this->empresa->id, 'nome' => 'Banco Teste', 'tipo_conta' => 'corrente',
+            'saldo_inicial' => 0, 'ativo' => true,
+        ]);
+        $cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'consentimento_lgpd' => true]);
+        $conta = ContaReceber::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $cliente->id,
+            'valor' => 300, 'vencimento' => now(), 'status' => 'em_aberto',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/pagar", ['banco_id' => $banco->id])
+            ->assertOk();
+
+        $response = $this->actingAs($this->admin)
+            ->putJson("/dashboard/{$this->empresa->slug}/contas-receber/{$conta->id}/estornar");
+
+        $response->assertOk()->assertJsonPath('status', 'em_aberto');
+        $this->assertNull($conta->fresh()->recebido_em);
+        $this->assertSame(0, GravaBanco::where('conta_receber_id', $conta->id)->count());
+    }
+
+    public function test_contas_a_receber_vencidas_viram_atrasadas_ao_listar(): void
+    {
+        $cliente = Cliente::create(['empresa_id' => $this->empresa->id, 'nome' => 'Cliente Teste', 'consentimento_lgpd' => true]);
+        $conta = ContaReceber::create([
+            'empresa_id' => $this->empresa->id, 'cliente_id' => $cliente->id,
+            'valor' => 100, 'vencimento' => now()->subDays(3), 'status' => 'em_aberto',
+        ]);
+
+        $this->actingAs($this->admin)->getJson("/dashboard/{$this->empresa->slug}/contas-receber")->assertOk();
+
+        $this->assertSame('atrasado', $conta->fresh()->status);
     }
 
     public function test_extrato_bancario_calcula_saldo_corrente(): void

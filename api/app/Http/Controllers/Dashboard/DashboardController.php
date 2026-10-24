@@ -1593,6 +1593,11 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
+        ContaPagar::where('empresa_id', $empresaAtual->id)
+            ->where('status', 'em_aberto')
+            ->where('vencimento', '<', now()->toDateString())
+            ->update(['status' => 'atrasado']);
+
         return response()->json(
             ContaPagar::where('empresa_id', $empresaAtual->id)->with(['fornecedor', 'planoContas', 'banco'])->orderBy('vencimento')->get()
         );
@@ -1649,6 +1654,24 @@ class DashboardController extends Controller
                     'origem' => 'conta_pagar',
                 ]);
             }
+        });
+
+        return response()->json($conta->fresh());
+    }
+
+    /**
+     * Desfaz uma baixa feita por engano: volta para em_aberto, limpa pago_em e
+     * remove o(s) lançamento(s) bancário(s) que a baixa gerou (grava_banco).
+     */
+    public function estornarContaPagarPaga(Request $request, string $empresa, int $contaId)
+    {
+        $conta = ContaPagar::findOrFail($contaId);
+
+        abort_if($conta->status !== 'pago', 422, 'Esta conta não está paga.');
+
+        DB::transaction(function () use ($conta) {
+            GravaBanco::where('conta_pagar_id', $conta->id)->delete();
+            $conta->update(['status' => 'em_aberto', 'pago_em' => null]);
         });
 
         return response()->json($conta->fresh());
@@ -1758,6 +1781,11 @@ class DashboardController extends Controller
     {
         $empresaAtual = $request->attributes->get('empresaAtual');
 
+        ContaReceber::where('empresa_id', $empresaAtual->id)
+            ->where('status', 'em_aberto')
+            ->where('vencimento', '<', now()->toDateString())
+            ->update(['status' => 'atrasado']);
+
         return response()->json(
             ContaReceber::where('empresa_id', $empresaAtual->id)->with(['cliente', 'planoContas', 'banco'])->orderBy('vencimento')->get()
         );
@@ -1808,6 +1836,21 @@ class DashboardController extends Controller
                     'origem' => 'conta_receber',
                 ]);
             }
+        });
+
+        return response()->json($conta->fresh());
+    }
+
+    /** Desfaz uma baixa de recebimento feita por engano (espelho de estornarContaPagarPaga). */
+    public function estornarContaReceberPaga(Request $request, string $empresa, int $contaId)
+    {
+        $conta = ContaReceber::findOrFail($contaId);
+
+        abort_if($conta->status !== 'pago', 422, 'Esta conta não está recebida.');
+
+        DB::transaction(function () use ($conta) {
+            GravaBanco::where('conta_receber_id', $conta->id)->delete();
+            $conta->update(['status' => 'em_aberto', 'recebido_em' => null]);
         });
 
         return response()->json($conta->fresh());
