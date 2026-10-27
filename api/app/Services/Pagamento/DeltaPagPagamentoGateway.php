@@ -120,6 +120,24 @@ class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
         );
 
         if ($resposta->failed()) {
+            // 422 é a resposta da DeltaPag para cartão recusado pelo emissor/
+            // antifraude (ex.: "viola as regras de tentativas de cobrança") -
+            // é um resultado de negócio normal, não deve derrubar o checkout
+            // com um erro 500. Qualquer outro código (401, 5xx, etc) ainda é
+            // um problema de integração de verdade e continua lançando.
+            if ($resposta->status() === 422) {
+                $erros = $resposta->json();
+                $mensagem = is_array($erros) ? ($erros[0]['message'] ?? $erros['message'] ?? null) : null;
+
+                return new ResultadoCobranca(
+                    status: 'recusado',
+                    referenciaExterna: null,
+                    referenciaPedido: $orderReference,
+                    payloadBruto: is_array($erros) ? $erros : null,
+                    motivoRejeicao: $mensagem ?? 'Cartão recusado pela DeltaPag.',
+                );
+            }
+
             throw new \RuntimeException('DeltaPag recusou a cobrança no cartão: '.$resposta->body());
         }
 
