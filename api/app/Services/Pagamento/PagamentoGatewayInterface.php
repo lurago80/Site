@@ -33,4 +33,15 @@ interface PagamentoGatewayInterface
     ): ResultadoCobranca;
 
     public function consultarStatus(ConfigPagamento $config, string $referenciaExterna): string;
+
+    /**
+     * Cancela um Pix ainda não pago ou estorna um cartão já autorizado/
+     * capturado. Cada gateway integrado precisa decidir se já tem suporte
+     * a isso - os que não têm devem lançar RuntimeException em vez de
+     * fingir que cancelou (ver DeltaPagPagamentoGateway::cancelarCobranca
+     * para a primeira implementação real).
+     *
+     * @return string novo status da cobrança (ex.: 'cancelado')
+     */
+    public function cancelarCobranca(ConfigPagamento $config, string $referenciaExterna, string $metodo): string;
 }

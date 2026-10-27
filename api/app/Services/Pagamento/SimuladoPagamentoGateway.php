@@ -42,4 +42,9 @@ class SimuladoPagamentoGateway implements PagamentoGatewayInterface
     {
         return 'aprovado';
     }
+
+    public function cancelarCobranca(ConfigPagamento $config, string $referenciaExterna, string $metodo): string
+    {
+        return 'cancelado';
+    }
 }

@@ -96,6 +96,17 @@ class MercadoPagoPagamentoGateway implements PagamentoGatewayInterface
         return $this->mapearStatus($resposta->json('status'));
     }
 
+    /**
+     * PENDENTE: o Mercado Pago tem endpoint de cancelamento/estorno
+     * (PUT /v1/payments/{id} com status=cancelled), mas não foi testado
+     * contra a API real - mesmo princípio dos gateways Cielo/PagSeguro
+     * abaixo, não escrevemos integração sem poder validar.
+     */
+    public function cancelarCobranca(ConfigPagamento $config, string $referenciaExterna, string $metodo): string
+    {
+        throw new \RuntimeException('Cancelamento/estorno ainda não implementado para o Mercado Pago - endpoint existe mas não foi testado.');
+    }
+
     private function cliente(ConfigPagamento $config)
     {
         return Http::withToken($config->access_token)->acceptJson();

@@ -104,6 +104,26 @@ class PagamentoService
     }
 
     /**
+     * Cancela um Pix ainda não pago ou estorna um cartão já autorizado/
+     * capturado - usado quando a venda é cancelada e ainda existe uma
+     * cobrança online em aberto ou aprovada. Gateways sem suporte a isso
+     * lançam RuntimeException (ver cada implementação).
+     */
+    public function cancelarCobranca(Cobranca $cobranca): Cobranca
+    {
+        return DB::transaction(function () use ($cobranca) {
+            $config = ConfigPagamento::where('empresa_id', $cobranca->empresa_id)->first();
+            $gateway = $this->factory->paraEmpresa($config);
+
+            $novoStatus = $gateway->cancelarCobranca($config ?? new ConfigPagamento(), $cobranca->referencia_externa, $cobranca->metodo);
+
+            $cobranca->update(['status' => $novoStatus]);
+
+            return $cobranca->fresh();
+        });
+    }
+
+    /**
      * Aplica diretamente um status recebido via webhook (o gateway já
      * manda o status pronto, não precisamos consultar de novo).
      */

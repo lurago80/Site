@@ -38,4 +38,9 @@ class PagSeguroPagamentoGateway implements PagamentoGatewayInterface
     {
         throw new \RuntimeException('Gateway PagSeguro ainda não implementado - aguardando credenciais de teste.');
     }
+
+    public function cancelarCobranca(ConfigPagamento $config, string $referenciaExterna, string $metodo): string
+    {
+        throw new \RuntimeException('Gateway PagSeguro ainda não implementado - aguardando credenciais de teste.');
+    }
 }

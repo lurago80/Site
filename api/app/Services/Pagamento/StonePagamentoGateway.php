@@ -112,6 +112,16 @@ class StonePagamentoGateway implements PagamentoGatewayInterface
         return $this->mapearStatus($resposta->json('status'));
     }
 
+    /**
+     * PENDENTE: a Pagar.me tem endpoint de cancelamento (DELETE
+     * /charges/{id}), mas, assim como o resto desta integração, nunca foi
+     * testado contra a API real.
+     */
+    public function cancelarCobranca(ConfigPagamento $config, string $referenciaExterna, string $metodo): string
+    {
+        throw new \RuntimeException('Cancelamento/estorno ainda não implementado para a Stone - endpoint existe mas não foi testado.');
+    }
+
     private function cliente(ConfigPagamento $config)
     {
         return Http::withBasicAuth($config->access_token, '')->acceptJson();

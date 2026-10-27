@@ -3,6 +3,7 @@
 namespace App\Services\Pdv;
 
 use App\Models\AgendaVisitacao;
+use App\Models\Cobranca;
 use App\Models\ContaReceber;
 use App\Models\Cupom;
 use App\Models\DocumentoFiscal;
@@ -11,6 +12,7 @@ use App\Models\Produto;
 use App\Models\ProdutoVariacao;
 use App\Models\Venda;
 use App\Services\Fiscal\EmissaoFiscalService;
+use App\Services\Pagamento\PagamentoService;
 use App\Services\Vendas\KitService;
 use Illuminate\Support\Facades\DB;
 
@@ -31,6 +33,7 @@ class CancelamentoVendaPdvService
         private readonly EmissaoFiscalService $emissaoFiscalService,
         private readonly CaixaService $caixaService,
         private readonly KitService $kitService,
+        private readonly PagamentoService $pagamentoService,
     ) {}
 
     public function cancelar(Venda $venda, int $usuarioId, string $motivo): Venda
@@ -56,6 +59,20 @@ class CancelamentoVendaPdvService
             // Dinheiro: o estorno no caixa pode ser recusado (caixa fechado / outro turno),
             // então vem antes de qualquer alteração.
             $this->caixaService->estornarVenda($venda->empresa, $usuarioId, $venda);
+
+            // Pagamento online (Pix/cartão): cancela o Pix não pago ou estorna o
+            // cartão no gateway. Só a DeltaPag tem isso implementado de verdade
+            // por enquanto (ver PagamentoGatewayInterface::cancelarCobranca) -
+            // para os outros, deixamos como estava (sem tentar e sem travar o
+            // cancelamento da venda por uma funcionalidade que ainda não existe).
+            $cobranca = Cobranca::where('venda_id', $venda->id)
+                ->where('gateway', 'deltapag')
+                ->whereIn('status', ['pendente', 'aprovado'])
+                ->first();
+
+            if ($cobranca !== null) {
+                $this->pagamentoService->cancelarCobranca($cobranca);
+            }
 
             // Carteira: remove o título gerado contra o cliente. Se já foi pago (cliente
             // já acertou a conta), não cancela - teria que estornar o pagamento à parte.

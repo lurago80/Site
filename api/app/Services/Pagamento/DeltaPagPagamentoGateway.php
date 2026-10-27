@@ -159,6 +159,29 @@ class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
         return $this->mapearStatus($this->buscarCobranca($config, $referenciaExterna)['status'] ?? null);
     }
 
+    /**
+     * Pix ainda não pago: cancela o QR code (o cliente não consegue mais
+     * pagar aquela cobrança). Cartão: usa o mesmo endpoint de estorno tanto
+     * para desfazer uma autorização quanto para estornar uma captura - a
+     * DeltaPag decide o comportamento certo a partir do estado da cobrança.
+     */
+    public function cancelarCobranca(ConfigPagamento $config, string $referenciaExterna, string $metodo): string
+    {
+        $url = match ($metodo) {
+            'pix' => $this->baseUrl($config)."/api/v2/charges/{$referenciaExterna}/pix/cancel",
+            'cartao_credito' => $this->baseUrl($config)."/api/v2/charges/{$referenciaExterna}/credit-card/refund",
+            default => throw new \RuntimeException("DeltaPag: cancelamento não suportado para o método \"{$metodo}\"."),
+        };
+
+        $resposta = $this->cliente($config)->post($url, $metodo === 'cartao_credito' ? ['reason' => 'OTHERS'] : []);
+
+        if ($resposta->failed()) {
+            throw new \RuntimeException("DeltaPag recusou o cancelamento da cobrança {$referenciaExterna}: ".$resposta->body());
+        }
+
+        return $this->consultarStatus($config, $referenciaExterna);
+    }
+
     private function cliente(ConfigPagamento $config): PendingRequest
     {
         return Http::withToken($config->access_token)->acceptJson();
