@@ -261,9 +261,11 @@ class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
             throw new \RuntimeException('DeltaPag recusou a autorização 3DS: '.$resposta->body());
         }
 
+        // O header Link vem no formato padrão RFC 8288: <url>; rel="challenge".
         $linkChallenge = null;
-        foreach ((array) $resposta->header('Link') as $link) {
-            $linkChallenge = $link;
+        $linkBruto = $resposta->header('Link');
+        if ($linkBruto !== null && preg_match('/<([^>]+)>/', $linkBruto, $m)) {
+            $linkChallenge = $m[1];
         }
 
         $corpo = $resposta->json() ?? [];
