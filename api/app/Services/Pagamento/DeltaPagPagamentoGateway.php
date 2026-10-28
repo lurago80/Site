@@ -31,17 +31,17 @@ use Illuminate\Support\Facades\Http;
  * PagamentoService em `cobrancas.referencia_pedido` - ver
  * WebhookPagamentoController::deltaPag().
  *
- * Escrita a partir da documentação oficial, SEM integração anterior para
- * copiar e SEM ter testado contra o sandbox ainda (aguardando
- * credenciais) - testar de ponta a ponta antes de ativar para qualquer
- * empresa cliente em produção. Pontos que merecem atenção especial no
- * primeiro teste real:
- * - O corpo exato de POST /api/v2/charges/credit/card não está detalhado
- *   na documentação (por isso usamos o fluxo orders/credit-card/authorize
- *   com operationType=AUTHORIZE_AND_CAPTURE, que está bem documentado).
- * - O nome do campo de motivo de recusa em transactions[] não é
- *   documentado (motivoRejeicao pode vir vazio).
- * - Cartão de débito não é mencionado na documentação - bloqueado aqui.
+ * Testada de ponta a ponta no sandbox em 2026-10-27/28 (Pix, cartão de
+ * crédito, recusa, cancelamento/estorno) e homologada pelo suporte da
+ * DeltaPag - ver doc "Homologação DeltaPag - Sandbox". Pontos confirmados
+ * com o suporte:
+ * - Motivo de recusa: transactions[].returnCode/returnMessage (tabela
+ *   ABECS), lista não fechada - código desconhecido = tratar como
+ *   irreversível. Ver motivoRejeicao().
+ * - Cartão de débito tokenizado (mesmo fluxo do crédito) não é
+ *   documentado - continua bloqueado aqui. O que existe documentado para
+ *   débito é o fluxo de 3D Secure (ver autorizarComThreeDSecure), que usa
+ *   o número do cartão direto, não token.
  */
 class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
 {
@@ -150,8 +150,134 @@ class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
             referenciaExterna: $id !== null ? (string) $id : null,
             referenciaPedido: $orderReference,
             payloadBruto: $cobranca,
-            motivoRejeicao: $transacao['message'] ?? $transacao['reason'] ?? null,
+            motivoRejeicao: $this->motivoRejeicao($transacao),
         );
+    }
+
+    /**
+     * Fluxo de 3D Secure 2.0 - DIFERENTE do criarCobrancaCartao: usa o
+     * número do cartão direto (não um token) e exige dados completos do
+     * comprador (endereço/telefone/e-mail) e do navegador (fingerprint).
+     * Confirmado com o suporte da DeltaPag em 2026-10-28: no sandbox usar
+     * mode=DEBIT; cartões de teste 4918019199883839 (com desafio) e
+     * 4918019160034602 (frictionless).
+     *
+     * Quando há desafio, o retorno traz a URL pra redirecionar o
+     * comprador (ver `link`) - a confirmação final chega pelo webhook,
+     * igual aos outros fluxos. Ainda não ligado ao checkout da loja
+     * pública (exige telas novas pra coletar endereço/telefone/e-mail e
+     * capturar o fingerprint do navegador via JS) - por enquanto só serve
+     * pra validar a integração com o suporte da DeltaPag.
+     *
+     * @param  array{numero: string, cvv?: string, mes: int, ano: int}  $cartao
+     * @param  array{ip: string, userAgent: string, successUrl: string, failureUrl: string, deviceFingerprint?: string}  $navegador
+     */
+    public function autorizarComThreeDSecure(
+        Venda $venda,
+        ConfigPagamento $config,
+        array $cartao,
+        array $navegador,
+        string $modo = 'DEBIT',
+    ): array {
+        $cliente = $venda->cliente;
+
+        if ($cliente === null) {
+            throw new \RuntimeException('3DS exige dados completos do cliente (endereço, telefone, e-mail) - esta venda não tem cliente associado.');
+        }
+
+        $orderReference = $this->orderReference($venda);
+
+        $resposta = $this->cliente($config)->post(
+            $this->baseUrl($config)."/api/v2/sellers/{$config->client_id}/orders/credit-card/three-d-secure/authorize",
+            [
+                'mode' => $modo,
+                'value' => $this->emCentavos($venda->valor_total),
+                'installments' => 1,
+                'orderReference' => $orderReference,
+                'notificationUrl' => $this->notificationUrl($orderReference),
+                'customer' => [
+                    'name' => $cliente->nome,
+                    'document' => preg_replace('/\D/', '', $cliente->cpf_cnpj ?? '') ?: '00000000000',
+                    'email' => $cliente->email ?: 'consumidor@'.$venda->empresa->slug.'.naoresponda.com',
+                    'phone' => [
+                        'countryCode' => 55,
+                        'areaCode' => (int) mb_substr(preg_replace('/\D/', '', $cliente->telefone ?? ''), 0, 2),
+                        'number' => (int) mb_substr(preg_replace('/\D/', '', $cliente->telefone ?? ''), 2),
+                    ],
+                    'address' => [
+                        'street' => $cliente->logradouro ?? '',
+                        'streetNumber' => $cliente->numero ?? '',
+                        'neighborhood' => $cliente->bairro ?? '',
+                        'city' => $cliente->municipio ?? '',
+                        'state' => $cliente->uf ?? '',
+                        'zipCode' => preg_replace('/\D/', '', $cliente->cep ?? ''),
+                    ],
+                ],
+                'card' => [
+                    'cardNumber' => $cartao['numero'],
+                    'cvv' => $cartao['cvv'] ?? null,
+                    'expiration' => ['month' => $cartao['mes'], 'year' => $cartao['ano']],
+                    'holder' => ['name' => $cliente->nome],
+                ],
+                'threeDSecure' => [
+                    'device' => [
+                        'deviceType3ds' => 'BROWSER',
+                        'screenWidth' => 1920,
+                        'screenHeight' => 1080,
+                        'colorDepth' => 24,
+                        'javaEnabled' => false,
+                        'javascriptEnabled' => true,
+                        'language' => 'pt-BR',
+                        'timeZoneOffset' => -3,
+                        'deviceFingerprint' => $navegador['deviceFingerprint'] ?? null,
+                    ],
+                    'onFailure' => 'DECLINE',
+                    'ipAddress' => $navegador['ip'],
+                    'userAgent' => $navegador['userAgent'],
+                    'embedded' => false,
+                    'successUrl' => $navegador['successUrl'],
+                    'failureUrl' => $navegador['failureUrl'],
+                    'billing' => [
+                        'address' => [
+                            'street' => $cliente->logradouro ?? '',
+                            'streetNumber' => $cliente->numero ?? '',
+                            'zipCode' => preg_replace('/\D/', '', $cliente->cep ?? ''),
+                            'neighborhood' => $cliente->bairro ?? '',
+                            'city' => $cliente->municipio ?? '',
+                            'state' => $cliente->uf ?? '',
+                        ],
+                        'phone' => [
+                            'country' => 'BRAZIL',
+                            'areaCode' => mb_substr(preg_replace('/\D/', '', $cliente->telefone ?? ''), 0, 2),
+                            'number' => mb_substr(preg_replace('/\D/', '', $cliente->telefone ?? ''), 2),
+                        ],
+                        'email' => $cliente->email ?: 'consumidor@'.$venda->empresa->slug.'.naoresponda.com',
+                    ],
+                ],
+            ],
+        );
+
+        if ($resposta->failed()) {
+            throw new \RuntimeException('DeltaPag recusou a autorização 3DS: '.$resposta->body());
+        }
+
+        $linkChallenge = null;
+        foreach ((array) $resposta->header('Link') as $link) {
+            $linkChallenge = $link;
+        }
+
+        $corpo = $resposta->json() ?? [];
+
+        return [
+            'referenciaExterna' => $resposta->header('Content-ID'),
+            'referenciaPedido' => $orderReference,
+            'temDesafio' => $linkChallenge !== null,
+            'linkDesafio' => $linkChallenge,
+            'acsUrl' => $corpo['acsUrl'] ?? null,
+            'creq' => $corpo['creq'] ?? null,
+            'authenticationTransactionId' => $corpo['authenticationTransactionId'] ?? null,
+            'payloadBruto' => $corpo,
+        ];
     }
 
     public function consultarStatus(ConfigPagamento $config, string $referenciaExterna): string
@@ -247,6 +373,26 @@ class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
     private function notificationUrl(string $orderReference): string
     {
         return url('/api/webhooks/pagamento/deltapag').'?ref='.urlencode($orderReference);
+    }
+
+    /**
+     * O código de recusa vem em transactions[].returnCode/returnMessage,
+     * seguindo a tabela ABECS (confirmado com o suporte da DeltaPag em
+     * 2026-10-28). A lista de códigos não é fechada - sempre tratar um
+     * código desconhecido como irreversível (nunca sugerir "tente de
+     * novo"). returnCode pode vir como "5" ou "05", então é tratado só
+     * como string, nunca convertido pra número.
+     */
+    private function motivoRejeicao(array $transacao): ?string
+    {
+        $codigo = $transacao['returnCode'] ?? null;
+        $mensagem = $transacao['returnMessage'] ?? $transacao['message'] ?? $transacao['reason'] ?? null;
+
+        if ($codigo === null && $mensagem === null) {
+            return null;
+        }
+
+        return trim(($codigo !== null ? "[{$codigo}] " : '').($mensagem ?? ''));
     }
 
     private function mapearStatus(?string $statusDeltaPag): string
