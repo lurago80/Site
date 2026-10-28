@@ -272,6 +272,7 @@ class DeltaPagPagamentoGateway implements PagamentoGatewayInterface
 
         return [
             'referenciaExterna' => $resposta->header('Content-ID'),
+            'location' => $resposta->header('Location'),
             'referenciaPedido' => $orderReference,
             'temDesafio' => $linkChallenge !== null,
             'linkDesafio' => $linkChallenge,
